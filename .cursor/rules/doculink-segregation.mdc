@@ -1,0 +1,51 @@
+---
+description: Avoid monolithic files and duplicated logic; enforce layered segregation for DocuLink (VSTO, web, Python).
+alwaysApply: true
+---
+
+# DocuLink segregation and DRY
+
+## Goals
+
+- No **monolithic** “god files” that mix composition, UI, domain, and IO.
+- No **duplicate functions** or copy-pasted protocol/serialization logic across surfaces.
+
+## Segregation pattern (use consistently)
+
+1. **Runtime boundary (hard split)**  
+   - **C#:** Excel COM, WebView2 hosting, process lifecycle, workbook mutations.  
+   - **Web (TS):** Task pane / viewer UI and PDF interaction only; no direct Python or file paths to workers.  
+   - **Python:** OCR and heavy file/PDF processing only; no Excel APIs.  
+   Cross-boundary data must go through **versioned JSON contracts** (schemas in `contracts/`), not ad-hoc duplicated shapes.
+
+2. **Within C# (`src/DocuLink.Addin/`)**  
+   - **Composition** (`Addin/`): startup wiring only; keep `ThisAddIn` thin.  
+   - **UI integration** (`Ribbon/`, `WebView/`): ribbons and WebView hosts; delegate to services.  
+   - **Domain** (`Excel/`): workbook/session and Custom XML; no WebView2 types here.  
+   - **Infrastructure** (`Services/`, `Infrastructure/`): OCR client, settings, logging, paths.  
+   Do not fold ribbon callbacks, Excel mutation, and WebView message parsing into one class.
+
+3. **Within web (`web/`)**  
+   - Shared **host bridge**, protocol types, and PDF helpers live in `packages/shared`.  
+   - `apps/taskpane` and `apps/viewer` stay thin; **no duplicated** `postMessage` handlers or JSON parsers.
+
+4. **Within Python (`python/`)**  
+   - Split **CLI/worker loop**, **engines** (e.g. Tesseract), and **schemas/models**; one module per major concern.
+
+## File size and responsibility
+
+- Prefer **one primary type or workflow** per file (e.g. one host factory, one metadata service).  
+- If a file grows past **~250–300 lines** or mixes unrelated concerns, **split** before adding features.  
+- New features → **new small types + folder** rather than an extra 200 lines in an existing grab-bag.
+
+## Duplication rules
+
+- **One definition** of message/job shapes: schema first, then generated or mirrored types—never parallel hand-written DTOs that drift.  
+- **One orchestration path** to Python from the host; viewers/task panes do not spawn workers.  
+- Before copying a helper into a second app or language, **extract** to the shared package (`web/packages/shared`), C# `Infrastructure`, or a small Python utility module.
+
+## Quick checklist before finishing a change
+
+- [ ] Does this file still have a single clear purpose?  
+- [ ] Is any logic duplicated from another layer or app? If yes, extract or call shared code.  
+- [ ] Would a new contributor find the right folder in under a minute?
