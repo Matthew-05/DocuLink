@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<customUI xmlns="http://schemas.microsoft.com/office/2006/01/customui" onLoad="Ribbon_Load">
+  <ribbon>
+    <tabs>
+      <tab id="DocuLink.Tab" label="DocuLink">
+        <group id="DocuLink.Group.General" label="General">
+          <button id="DocuLink.BtnHelloWorld"
+                  label="Hello World"
+                  size="large"
+                  onAction="OnHelloWorld" />
+        </group>
+      </tab>
+    </tabs>
+  </ribbon>
+</customUI>
