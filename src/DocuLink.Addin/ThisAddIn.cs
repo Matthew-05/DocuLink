@@ -5,6 +5,7 @@ using System.Text;
 using System.Xml.Linq;
 using Excel = Microsoft.Office.Interop.Excel;
 using Office = Microsoft.Office.Core;
+using DocuLink.Addin.Ribbon;
 using Microsoft.Office.Tools.Excel;
 
 namespace DocuLink.Addin
@@ -17,6 +18,11 @@ namespace DocuLink.Addin
 
         private void ThisAddIn_Shutdown(object sender, System.EventArgs e)
         {
+        }
+
+        protected override Office.IRibbonExtensibility CreateRibbonExtensibilityObject()
+        {
+            return new DocuLinkRibbon();
         }
 
         #region VSTO generated code
