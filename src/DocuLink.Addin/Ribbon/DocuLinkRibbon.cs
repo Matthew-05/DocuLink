@@ -1,6 +1,12 @@
 using System;
+using System.Collections.Generic;
+using System.IO;
+using DocuLink.Addin;
 using System.Reflection;
 using System.Runtime.InteropServices;
+using System.Text;
+using System.Windows.Forms;
+using DocuLink.Addin.Modules.Services;
 using Microsoft.Office.Core;
 
 namespace DocuLink.Addin.Ribbon
@@ -13,13 +19,56 @@ namespace DocuLink.Addin.Ribbon
             return LoadRibbonXmlFromResources();
         }
 
-        public void OnHelloWorld(IRibbonControl control)
+        public void OnAddPdfDocuments(IRibbonControl control)
         {
-            System.Windows.Forms.MessageBox.Show(
-                text: "Hello, world!",
-                caption: "DocuLink",
-                buttons: System.Windows.Forms.MessageBoxButtons.OK,
-                icon: System.Windows.Forms.MessageBoxIcon.Information);
+            var app = Globals.ThisAddIn.Application;
+            if (app.ActiveWorkbook == null)
+            {
+                MessageBox.Show(
+                    text: "Open or create a workbook before adding PDFs.",
+                    caption: "DocuLink",
+                    buttons: MessageBoxButtons.OK,
+                    icon: MessageBoxIcon.Information);
+                return;
+            }
+
+            using (var dialog = new OpenFileDialog())
+            {
+                dialog.Title = "Add PDFs to workbook";
+                dialog.Filter = "PDF files (*.pdf)|*.pdf|All files (*.*)|*.*";
+                dialog.Multiselect = true;
+                dialog.CheckFileExists = true;
+
+                if (dialog.ShowDialog() != DialogResult.OK || dialog.FileNames == null || dialog.FileNames.Length == 0)
+                    return;
+
+                var service = new AddPdfDocumentService();
+                int added = 0;
+                var errors = new List<string>();
+
+                foreach (string path in dialog.FileNames)
+                {
+                    try
+                    {
+                        service.AddEmbeddedPdf(app.ActiveWorkbook, path);
+                        added++;
+                    }
+                    catch (Exception ex)
+                    {
+                        errors.Add($"{Path.GetFileName(path)}: {ex.Message}");
+                    }
+                }
+
+                if (errors.Count > 0)
+                {
+                    var message = new StringBuilder();
+                    if (added > 0)
+                        message.AppendLine($"Added {added} PDF(s).").AppendLine();
+                    message.AppendLine("Some files could not be added:");
+                    message.AppendLine(string.Join(Environment.NewLine, errors));
+                    MessageBox.Show(message.ToString(), "DocuLink", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                }
+            }
         }
 
         private static string LoadRibbonXmlFromResources()
