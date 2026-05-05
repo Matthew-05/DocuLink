@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<DocuLinkStore xmlns="http://doculink.dev/schemas/storage/1" version="1">
+  <Links>
+    <Link id="3fa85f64-5717-4562-b3fc-2c963f66afa6">
+      <Pdf Base64="JVBERi0xLjQKJeLjz9M=" />
+      <Cell sheet="Sheet1" address="$B$5" />
+      <Rect page="0" x="0.12" y="0.34" width="0.44" height="0.08" coordinateSpace="normalized" />
+    </Link>
+  </Links>
+</DocuLinkStore>

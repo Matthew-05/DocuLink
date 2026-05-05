@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="utf-8"?>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           targetNamespace="http://doculink.dev/schemas/storage/1"
+           xmlns:dl="http://doculink.dev/schemas/storage/1"
+           elementFormDefault="qualified">
+
+  <xs:element name="DocuLinkStore" type="dl:DocuLinkStoreType" />
+
+  <xs:complexType name="DocuLinkStoreType">
+    <xs:sequence>
+      <xs:element name="Links" type="dl:LinksType" />
+    </xs:sequence>
+    <xs:attribute name="version" type="xs:unsignedInt" use="required" />
+  </xs:complexType>
+
+  <xs:complexType name="LinksType">
+    <xs:sequence>
+      <xs:element name="Link" type="dl:LinkType" minOccurs="0" maxOccurs="unbounded" />
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="LinkType">
+    <xs:sequence>
+      <xs:element name="Pdf" type="dl:PdfType" />
+      <xs:element name="Cell" type="dl:CellType" />
+      <xs:element name="Rect" type="dl:RectType" />
+    </xs:sequence>
+    <xs:attribute name="id" type="xs:string" use="required" />
+  </xs:complexType>
+
+  <xs:complexType name="PdfType">
+    <xs:attribute name="Base64" type="xs:string" use="required" />
+  </xs:complexType>
+
+  <xs:complexType name="CellType">
+    <xs:attribute name="sheet" type="xs:string" use="required" />
+    <xs:attribute name="address" type="xs:string" use="required" />
+  </xs:complexType>
+
+  <xs:simpleType name="CoordinateSpaceType">
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="normalized" />
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:complexType name="RectType">
+    <xs:attribute name="page" type="xs:unsignedInt" use="required" />
+    <xs:attribute name="x" type="xs:double" use="required" />
+    <xs:attribute name="y" type="xs:double" use="required" />
+    <xs:attribute name="width" type="xs:double" use="required" />
+    <xs:attribute name="height" type="xs:double" use="required" />
+    <xs:attribute name="coordinateSpace" type="dl:CoordinateSpaceType" use="required" />
+  </xs:complexType>
+</xs:schema>
