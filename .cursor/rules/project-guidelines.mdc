@@ -46,3 +46,6 @@ alwaysApply: true
 - [ ] Does this file still have a single clear purpose?  
 - [ ] Is any logic duplicated from another layer or app? If yes, extract or call shared code.  
 - [ ] Would a new contributor find the right folder in under a minute?
+
+## Additional
+   - During the current development cycle do not concern yourself with backwards compatability. If a change is made that would break on previous saves, this is fine as there are no users currently.
