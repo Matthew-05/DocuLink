@@ -4,10 +4,10 @@
     <tabs>
       <tab id="DocuLink.Tab" label="DocuLink">
         <group id="DocuLink.Group.General" label="General">
-          <button id="DocuLink.BtnHelloWorld"
-                  label="Hello World"
+          <button id="DocuLink.BtnAddPdf"
+                  label="Add PDF"
                   size="large"
-                  onAction="OnHelloWorld" />
+                  onAction="OnAddPdfDocuments" />
         </group>
       </tab>
     </tabs>

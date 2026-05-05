@@ -1,4 +1,4 @@
-﻿<Project ToolsVersion="18.0" DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+<Project ToolsVersion="18.0" DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <Import Project="$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props" Condition="Exists('$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props')" />
   <!--
     This section defines project-level properties.
@@ -226,7 +226,7 @@
     <Compile Include="Modules\CustomXml\Models\PdfRectangle.cs" />
     <Compile Include="Modules\CustomXml\Models\RectangleCoordinateSpace.cs" />
     <Compile Include="Modules\CustomXml\Serialization\DocuLinkStorageSerializer.cs" />
-    <Compile Include="Modules\Services\AddPdfDocumentLinkService.cs" />
+    <Compile Include="Modules\Services\AddPdfDocumentService.cs" />
     <Compile Include="Ribbon\DocuLinkRibbon.cs" />
     <EmbeddedResource Include="Ribbon\DocuLinkRibbon.xml" />
     <AppDesigner Include="Properties\" />
