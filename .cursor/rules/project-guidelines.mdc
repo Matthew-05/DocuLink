@@ -21,8 +21,8 @@ alwaysApply: true
 2. **Within C# (`src/DocuLink.Addin/`)**  
    - **Composition** (`Addin/`): startup wiring only; keep `ThisAddIn` thin.  
    - **UI integration** (`Ribbon/`, `WebView/`): ribbons and WebView hosts; delegate to services.  
-   - **Domain** (`Modules/`): workbook/session and Custom XML; no WebView2 types here.  
-   - **Infrastructure** (`Services/`, `Infrastructure/`): OCR client, settings, logging, paths.  
+   - **Domain** (`Modules/CustomXml`): 
+   - **Infrastructure** (`Modules/`): OCR client, settings, logging, paths.  
    Do not fold ribbon callbacks, Excel mutation, and WebView message parsing into one class.
 
 3. **Within web (`web/`)**  
