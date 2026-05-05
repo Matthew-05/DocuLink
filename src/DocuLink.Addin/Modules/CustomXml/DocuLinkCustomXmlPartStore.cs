@@ -23,11 +23,11 @@ namespace DocuLink.Addin.Modules.CustomXml
         {
             Office.CustomXMLPart part = FindDocuLinkPart();
             if (part == null)
-                return new DocuLinkStorage(DocuLinkXml.SchemaVersion, new DocumentLink[0]);
+                return new DocuLinkStorage(DocuLinkXml.SchemaVersion, new PdfDocument[0], new LinkedRectangle[0]);
 
             string xml = part.XML;
             if (string.IsNullOrWhiteSpace(xml))
-                return new DocuLinkStorage(DocuLinkXml.SchemaVersion, new DocumentLink[0]);
+                return new DocuLinkStorage(DocuLinkXml.SchemaVersion, new PdfDocument[0], new LinkedRectangle[0]);
 
             try
             {
@@ -56,44 +56,87 @@ namespace DocuLink.Addin.Modules.CustomXml
             parts.Add(xml, missing);
         }
 
-        public bool TryGetLink(string id, out DocumentLink link)
+        public bool TryGetPdf(string id, out PdfDocument pdf)
         {
             if (string.IsNullOrWhiteSpace(id))
-                throw new ArgumentException("Link id must be non-empty.", nameof(id));
+                throw new ArgumentException("PDF id must be non-empty.", nameof(id));
 
             DocuLinkStorage storage = Load();
-            link = storage.Links.FirstOrDefault(l => string.Equals(l.Id, id, StringComparison.Ordinal));
-            return link != null;
+            pdf = storage.Pdfs.FirstOrDefault(p => string.Equals(p.Id, id, StringComparison.Ordinal));
+            return pdf != null;
         }
 
-        public void UpsertLink(DocumentLink link)
+        public void UpsertPdf(PdfDocument pdf)
         {
-            if (link == null) throw new ArgumentNullException(nameof(link));
-            if (string.IsNullOrWhiteSpace(link.Id))
-                throw new ArgumentException("Document link id must be non-empty.", nameof(link));
+            if (pdf == null) throw new ArgumentNullException(nameof(pdf));
+            if (string.IsNullOrWhiteSpace(pdf.Id))
+                throw new ArgumentException("PDF id must be non-empty.", nameof(pdf));
 
             DocuLinkStorage storage = Load();
-            List<DocumentLink> links = storage.Links.ToList();
-            int index = links.FindIndex(l => string.Equals(l.Id, link.Id, StringComparison.Ordinal));
+            List<PdfDocument> pdfs = storage.Pdfs.ToList();
+            int index = pdfs.FindIndex(p => string.Equals(p.Id, pdf.Id, StringComparison.Ordinal));
             if (index >= 0)
-                links[index] = link;
+                pdfs[index] = pdf;
             else
-                links.Add(link);
+                pdfs.Add(pdf);
 
-            Save(new DocuLinkStorage(DocuLinkXml.SchemaVersion, links));
+            Save(new DocuLinkStorage(DocuLinkXml.SchemaVersion, pdfs, storage.LinkedRectangles));
         }
 
-        public bool RemoveLink(string id)
+        public bool RemovePdf(string id)
         {
             if (string.IsNullOrWhiteSpace(id))
-                throw new ArgumentException("Link id must be non-empty.", nameof(id));
+                throw new ArgumentException("PDF id must be non-empty.", nameof(id));
 
             DocuLinkStorage storage = Load();
-            List<DocumentLink> links = storage.Links.Where(l => !string.Equals(l.Id, id, StringComparison.Ordinal)).ToList();
-            if (links.Count == storage.Links.Count)
+            List<PdfDocument> pdfs = storage.Pdfs.Where(p => !string.Equals(p.Id, id, StringComparison.Ordinal)).ToList();
+            if (pdfs.Count == storage.Pdfs.Count)
                 return false;
 
-            Save(new DocuLinkStorage(DocuLinkXml.SchemaVersion, links));
+            Save(new DocuLinkStorage(DocuLinkXml.SchemaVersion, pdfs, storage.LinkedRectangles));
+            return true;
+        }
+
+        public bool TryGetLinkedRectangle(string id, out LinkedRectangle linkedRectangle)
+        {
+            if (string.IsNullOrWhiteSpace(id))
+                throw new ArgumentException("LinkedRectangle id must be non-empty.", nameof(id));
+
+            DocuLinkStorage storage = Load();
+            linkedRectangle = storage.LinkedRectangles.FirstOrDefault(r => string.Equals(r.Id, id, StringComparison.Ordinal));
+            return linkedRectangle != null;
+        }
+
+        public void UpsertLinkedRectangle(LinkedRectangle linkedRectangle)
+        {
+            if (linkedRectangle == null) throw new ArgumentNullException(nameof(linkedRectangle));
+            if (string.IsNullOrWhiteSpace(linkedRectangle.Id))
+                throw new ArgumentException("LinkedRectangle id must be non-empty.", nameof(linkedRectangle));
+
+            DocuLinkStorage storage = Load();
+            List<LinkedRectangle> linkedRectangles = storage.LinkedRectangles.ToList();
+            int index = linkedRectangles.FindIndex(r => string.Equals(r.Id, linkedRectangle.Id, StringComparison.Ordinal));
+            if (index >= 0)
+                linkedRectangles[index] = linkedRectangle;
+            else
+                linkedRectangles.Add(linkedRectangle);
+
+            Save(new DocuLinkStorage(DocuLinkXml.SchemaVersion, storage.Pdfs, linkedRectangles));
+        }
+
+        public bool RemoveLinkedRectangle(string id)
+        {
+            if (string.IsNullOrWhiteSpace(id))
+                throw new ArgumentException("LinkedRectangle id must be non-empty.", nameof(id));
+
+            DocuLinkStorage storage = Load();
+            List<LinkedRectangle> linkedRectangles = storage.LinkedRectangles
+                .Where(r => !string.Equals(r.Id, id, StringComparison.Ordinal))
+                .ToList();
+            if (linkedRectangles.Count == storage.LinkedRectangles.Count)
+                return false;
+
+            Save(new DocuLinkStorage(DocuLinkXml.SchemaVersion, storage.Pdfs, linkedRectangles));
             return true;
         }
 

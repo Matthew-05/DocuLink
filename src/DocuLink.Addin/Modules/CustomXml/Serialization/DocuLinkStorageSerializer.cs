@@ -52,17 +52,27 @@ namespace DocuLink.Addin.Modules.CustomXml.Serialization
                 throw new InvalidOperationException(
                     "Unsupported DocuLink storage version; expected " + DocuLinkXml.SchemaVersion + ".");
 
-            XElement linksElement = root.Element(DocuLinkXml.Ns + DocuLinkXml.LinksElementName);
-            if (linksElement == null)
+            XElement pdfsElement = root.Element(DocuLinkXml.Ns + DocuLinkXml.PdfsElementName);
+            if (pdfsElement == null)
                 throw new InvalidOperationException(
-                    "DocuLink storage is missing required element '" + DocuLinkXml.LinksElementName + "'.");
+                    "DocuLink storage is missing required element '" + DocuLinkXml.PdfsElementName + "'.");
 
-            var links = new List<DocumentLink>(
-                linksElement
-                    .Elements(DocuLinkXml.Ns + DocuLinkXml.LinkElementName)
-                    .Select((element, idx) => ParseLink(element, idx)));
+            var pdfs = new List<PdfDocument>(
+                pdfsElement
+                    .Elements(DocuLinkXml.Ns + DocuLinkXml.PdfElementName)
+                    .Select((element, idx) => ParsePdf(element, idx)));
 
-            return new DocuLinkStorage(fileVersion, links);
+            XElement linkedRectanglesElement = root.Element(DocuLinkXml.Ns + DocuLinkXml.LinkedRectanglesElementName);
+            if (linkedRectanglesElement == null)
+                throw new InvalidOperationException(
+                    "DocuLink storage is missing required element '" + DocuLinkXml.LinkedRectanglesElementName + "'.");
+
+            var linkedRectangles = new List<LinkedRectangle>(
+                linkedRectanglesElement
+                    .Elements(DocuLinkXml.Ns + DocuLinkXml.LinkedRectangleElementName)
+                    .Select((element, idx) => ParseLinkedRectangle(element, idx)));
+
+            return new DocuLinkStorage(fileVersion, pdfs, linkedRectangles);
         }
 
         public static XDocument ToXDocument(DocuLinkStorage storage)
@@ -73,63 +83,77 @@ namespace DocuLink.Addin.Modules.CustomXml.Serialization
                 throw new InvalidOperationException(
                     "Unsupported storage version for serialization; expected " + DocuLinkXml.SchemaVersion + ".");
 
-            var linksElement = new XElement(
-                DocuLinkXml.Ns + DocuLinkXml.LinksElementName,
-                storage.Links.Select((link, i) => SerializeLink(link, i)));
+            var pdfsElement = new XElement(
+                DocuLinkXml.Ns + DocuLinkXml.PdfsElementName,
+                storage.Pdfs.Select((pdf, i) => SerializePdf(pdf, i)));
+
+            var linkedRectanglesElement = new XElement(
+                DocuLinkXml.Ns + DocuLinkXml.LinkedRectanglesElementName,
+                storage.LinkedRectangles.Select((rect, i) => SerializeLinkedRectangle(rect, i)));
 
             var root = new XElement(
                 DocuLinkXml.Ns + DocuLinkXml.RootElementName,
                 new XAttribute(VersionAttribute, DocuLinkXml.SchemaVersion),
-                linksElement);
+                pdfsElement,
+                linkedRectanglesElement);
 
-            var document = new XDocument(new XDeclaration("1.0", "utf-8", null), root);
-            return document;
+            return new XDocument(new XDeclaration("1.0", "utf-8", null), root);
         }
 
-        private static DocumentLink ParseLink(XElement linkElement, int index)
+        private static PdfDocument ParsePdf(XElement pdfElement, int index)
         {
-            XAttribute idAttribute = linkElement.Attribute(IdAttribute);
+            XAttribute idAttribute = pdfElement.Attribute(IdAttribute);
             if (idAttribute == null || string.IsNullOrWhiteSpace(idAttribute.Value))
                 throw new InvalidOperationException(
-                    "DocuLink storage Link #" + index + " is missing required attribute 'id'.");
-
-            XElement pdfElement = linkElement.Element(DocuLinkXml.Ns + DocuLinkXml.PdfElementName);
-            if (pdfElement == null)
-                throw new InvalidOperationException(
-                    "DocuLink storage Link #" + index + " is missing required element '" + DocuLinkXml.PdfElementName + "'.");
+                    "DocuLink storage Pdf #" + index + " is missing required attribute 'id'.");
 
             XAttribute base64Attribute = pdfElement.Attribute(Base64Attribute);
             if (base64Attribute == null)
                 throw new InvalidOperationException(
-                    "DocuLink storage Link #" + index + " Pdf is missing required attribute 'Base64'.");
+                    "DocuLink storage Pdf #" + index + " is missing required attribute 'Base64'.");
 
-            XElement cellElement = linkElement.Element(DocuLinkXml.Ns + DocuLinkXml.CellElementName);
+            return new PdfDocument(idAttribute.Value.Trim(), base64Attribute.Value ?? string.Empty);
+        }
+
+        private static LinkedRectangle ParseLinkedRectangle(XElement element, int index)
+        {
+            XAttribute idAttribute = element.Attribute(IdAttribute);
+            if (idAttribute == null || string.IsNullOrWhiteSpace(idAttribute.Value))
+                throw new InvalidOperationException(
+                    "DocuLink storage LinkedRectangle #" + index + " is missing required attribute 'id'.");
+
+            XAttribute pdfIdAttribute = element.Attribute(DocuLinkXml.PdfIdAttribute);
+            if (pdfIdAttribute == null || string.IsNullOrWhiteSpace(pdfIdAttribute.Value))
+                throw new InvalidOperationException(
+                    "DocuLink storage LinkedRectangle #" + index + " is missing required attribute 'pdfId'.");
+
+            XElement cellElement = element.Element(DocuLinkXml.Ns + DocuLinkXml.CellElementName);
             if (cellElement == null)
                 throw new InvalidOperationException(
-                    "DocuLink storage Link #" + index + " is missing required element '" + DocuLinkXml.CellElementName + "'.");
+                    "DocuLink storage LinkedRectangle #" + index + " is missing required element '" + DocuLinkXml.CellElementName + "'.");
 
             XAttribute sheetAttribute = cellElement.Attribute(SheetAttribute);
             XAttribute addressAttribute = cellElement.Attribute(AddressAttribute);
             if (sheetAttribute == null || string.IsNullOrWhiteSpace(sheetAttribute.Value))
                 throw new InvalidOperationException(
-                    "DocuLink storage Link #" + index + " Cell is missing required attribute 'sheet'.");
+                    "DocuLink storage LinkedRectangle #" + index + " Cell is missing required attribute 'sheet'.");
             if (addressAttribute == null || string.IsNullOrWhiteSpace(addressAttribute.Value))
                 throw new InvalidOperationException(
-                    "DocuLink storage Link #" + index + " Cell is missing required attribute 'address'.");
+                    "DocuLink storage LinkedRectangle #" + index + " Cell is missing required attribute 'address'.");
 
-            XElement rectElement = linkElement.Element(DocuLinkXml.Ns + DocuLinkXml.RectElementName);
+            XElement rectElement = element.Element(DocuLinkXml.Ns + DocuLinkXml.RectElementName);
             if (rectElement == null)
                 throw new InvalidOperationException(
-                    "DocuLink storage Link #" + index + " is missing required element '" + DocuLinkXml.RectElementName + "'.");
+                    "DocuLink storage LinkedRectangle #" + index + " is missing required element '" + DocuLinkXml.RectElementName + "'.");
 
             XAttribute pageAttr = rectElement.Attribute(PageAttribute);
             if (pageAttr == null
                 || !uint.TryParse(pageAttr.Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out uint pageValue))
                 throw new InvalidOperationException(
-                    "DocuLink storage Link #" + index + " Rect is missing a valid non-negative 'page' attribute.");
+                    "DocuLink storage LinkedRectangle #" + index + " Rect is missing a valid non-negative 'page' attribute.");
 
             if (pageValue > int.MaxValue)
-                throw new InvalidOperationException("DocuLink storage Link #" + index + " page index is too large.");
+                throw new InvalidOperationException("DocuLink storage LinkedRectangle #" + index + " page index is too large.");
 
             RectangleCoordinateSpace space = ParseCoordinateSpace(rectElement, index);
             double x = ReadRequiredDouble(rectElement, XAttribute, index);
@@ -137,17 +161,10 @@ namespace DocuLink.Addin.Modules.CustomXml.Serialization
             double w = ReadRequiredDouble(rectElement, WidthAttribute, index);
             double h = ReadRequiredDouble(rectElement, HeightAttribute, index);
 
-            var rect = new PdfRectangle(
-                (int)pageValue,
-                x,
-                y,
-                w,
-                h,
-                space);
+            var rect = new PdfRectangle((int)pageValue, x, y, w, h, space);
+            var cell = new LinkedCell(sheetAttribute.Value, addressAttribute.Value);
 
-            var cell = new LinkedCellRef(sheetAttribute.Value, addressAttribute.Value);
-
-            return new DocumentLink(idAttribute.Value.Trim(), base64Attribute.Value ?? string.Empty, cell, rect);
+            return new LinkedRectangle(idAttribute.Value.Trim(), pdfIdAttribute.Value.Trim(), cell, rect);
         }
 
         private static RectangleCoordinateSpace ParseCoordinateSpace(XElement rectElement, int index)
@@ -155,59 +172,73 @@ namespace DocuLink.Addin.Modules.CustomXml.Serialization
             XAttribute spaceAttr = rectElement.Attribute(CoordinateSpaceAttribute);
             if (spaceAttr == null || string.IsNullOrWhiteSpace(spaceAttr.Value))
                 throw new InvalidOperationException(
-                    "DocuLink storage Link #" + index + " Rect is missing required attribute 'coordinateSpace'.");
+                    "DocuLink storage LinkedRectangle #" + index + " Rect is missing required attribute 'coordinateSpace'.");
 
             string value = spaceAttr.Value.Trim();
             if (string.Equals(value, "normalized", StringComparison.OrdinalIgnoreCase))
                 return RectangleCoordinateSpace.Normalized;
 
             throw new InvalidOperationException(
-                "DocuLink storage Link #" + index + " has unsupported coordinateSpace '" + value + "'.");
+                "DocuLink storage LinkedRectangle #" + index + " has unsupported coordinateSpace '" + value + "'.");
         }
 
-        private static double ReadRequiredDouble(XElement element, string attributeName, int linkIndex)
+        private static double ReadRequiredDouble(XElement element, string attributeName, int index)
         {
             XAttribute attribute = element.Attribute(attributeName);
             if (attribute == null)
                 throw new InvalidOperationException(
-                    "DocuLink storage Link #" + linkIndex + " Rect is missing required attribute '" + attributeName + "'.");
+                    "DocuLink storage LinkedRectangle #" + index + " Rect is missing required attribute '" + attributeName + "'.");
 
             if (!double.TryParse(attribute.Value, NumberStyles.Float, CultureInfo.InvariantCulture, out double value))
                 throw new InvalidOperationException(
-                    "DocuLink storage Link #" + linkIndex + " Rect attribute '" + attributeName + "' is not a valid number.");
+                    "DocuLink storage LinkedRectangle #" + index + " Rect attribute '" + attributeName + "' is not a valid number.");
 
             return value;
         }
 
-        private static XElement SerializeLink(DocumentLink link, int index)
+        private static XElement SerializePdf(PdfDocument pdf, int index)
         {
-            if (link == null) throw new ArgumentNullException(nameof(link));
-            if (string.IsNullOrWhiteSpace(link.Id))
-                throw new InvalidOperationException("DocumentLink at index " + index + " has an empty Id.");
-            if (link.LinkedCell == null) throw new InvalidOperationException("DocumentLink '" + link.Id + "' has no LinkedCell.");
-            if (link.Rectangle == null) throw new InvalidOperationException("DocumentLink '" + link.Id + "' has no Rectangle.");
+            if (pdf == null) throw new ArgumentNullException(nameof(pdf));
+            if (string.IsNullOrWhiteSpace(pdf.Id))
+                throw new InvalidOperationException("PdfDocument at index " + index + " has an empty Id.");
 
             return new XElement(
-                DocuLinkXml.Ns + DocuLinkXml.LinkElementName,
-                new XAttribute(IdAttribute, link.Id),
-                new XElement(
-                    DocuLinkXml.Ns + DocuLinkXml.PdfElementName,
-                    new XAttribute(Base64Attribute, link.PdfBase64 ?? string.Empty)),
-                new XElement(
-                    DocuLinkXml.Ns + DocuLinkXml.CellElementName,
-                    new XAttribute(SheetAttribute, link.LinkedCell.SheetName ?? string.Empty),
-                    new XAttribute(AddressAttribute, link.LinkedCell.Address ?? string.Empty)),
-                SerializeRect(link.Rectangle, link.Id));
+                DocuLinkXml.Ns + DocuLinkXml.PdfElementName,
+                new XAttribute(IdAttribute, pdf.Id),
+                new XAttribute(Base64Attribute, pdf.Base64 ?? string.Empty));
         }
 
-        private static XElement SerializeRect(PdfRectangle rect, string linkId)
+        private static XElement SerializeLinkedRectangle(LinkedRectangle linkedRect, int index)
+        {
+            if (linkedRect == null) throw new ArgumentNullException(nameof(linkedRect));
+            if (string.IsNullOrWhiteSpace(linkedRect.Id))
+                throw new InvalidOperationException("LinkedRectangle at index " + index + " has an empty Id.");
+            if (string.IsNullOrWhiteSpace(linkedRect.PdfId))
+                throw new InvalidOperationException("LinkedRectangle '" + linkedRect.Id + "' has an empty PdfId.");
+            if (linkedRect.LinkedCell == null)
+                throw new InvalidOperationException("LinkedRectangle '" + linkedRect.Id + "' has no LinkedCell.");
+            if (linkedRect.Rectangle == null)
+                throw new InvalidOperationException("LinkedRectangle '" + linkedRect.Id + "' has no Rectangle.");
+
+            return new XElement(
+                DocuLinkXml.Ns + DocuLinkXml.LinkedRectangleElementName,
+                new XAttribute(IdAttribute, linkedRect.Id),
+                new XAttribute(DocuLinkXml.PdfIdAttribute, linkedRect.PdfId),
+                new XElement(
+                    DocuLinkXml.Ns + DocuLinkXml.CellElementName,
+                    new XAttribute(SheetAttribute, linkedRect.LinkedCell.SheetName ?? string.Empty),
+                    new XAttribute(AddressAttribute, linkedRect.LinkedCell.Address ?? string.Empty)),
+                SerializeRect(linkedRect.Rectangle, linkedRect.Id));
+        }
+
+        private static XElement SerializeRect(PdfRectangle rect, string linkedRectId)
         {
             if (rect.PageIndex < 0)
-                throw new InvalidOperationException("Rectangle for link '" + linkId + "' has a negative page index.");
+                throw new InvalidOperationException("Rectangle for LinkedRectangle '" + linkedRectId + "' has a negative page index.");
 
             if (rect.CoordinateSpace != RectangleCoordinateSpace.Normalized)
                 throw new InvalidOperationException(
-                    "Rectangle for link '" + linkId + "' uses a coordinate space that is not supported for serialization.");
+                    "Rectangle for LinkedRectangle '" + linkedRectId + "' uses a coordinate space that is not supported for serialization.");
 
             return new XElement(
                 DocuLinkXml.Ns + DocuLinkXml.RectElementName,

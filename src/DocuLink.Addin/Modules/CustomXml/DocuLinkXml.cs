@@ -12,14 +12,18 @@ namespace DocuLink.Addin.Modules.CustomXml
 
         public const string RootElementName = "DocuLinkStore";
 
-        public const string LinksElementName = "Links";
-
-        public const string LinkElementName = "Link";
+        public const string PdfsElementName = "Pdfs";
 
         public const string PdfElementName = "Pdf";
+
+        public const string LinkedRectanglesElementName = "LinkedRectangles";
+
+        public const string LinkedRectangleElementName = "LinkedRectangle";
 
         public const string CellElementName = "Cell";
 
         public const string RectElementName = "Rect";
+
+        public const string PdfIdAttribute = "pdfId";
     }
 }

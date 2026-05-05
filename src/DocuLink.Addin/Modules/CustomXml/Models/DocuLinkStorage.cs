@@ -4,14 +4,17 @@ namespace DocuLink.Addin.Modules.CustomXml.Models
 {
     public sealed class DocuLinkStorage
     {
-        public DocuLinkStorage(uint version, IEnumerable<DocumentLink> links)
+        public DocuLinkStorage(uint version, IEnumerable<PdfDocument> pdfs, IEnumerable<LinkedRectangle> linkedRectangles)
         {
             Version = version;
-            Links = links != null ? new List<DocumentLink>(links) : new List<DocumentLink>();
+            Pdfs = pdfs != null ? new List<PdfDocument>(pdfs) : new List<PdfDocument>();
+            LinkedRectangles = linkedRectangles != null ? new List<LinkedRectangle>(linkedRectangles) : new List<LinkedRectangle>();
         }
 
         public uint Version { get; set; }
 
-        public IList<DocumentLink> Links { get; }
+        public IList<PdfDocument> Pdfs { get; }
+
+        public IList<LinkedRectangle> LinkedRectangles { get; }
     }
 }
