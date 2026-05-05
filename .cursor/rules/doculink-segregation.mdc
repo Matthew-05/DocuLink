@@ -21,7 +21,7 @@ alwaysApply: true
 2. **Within C# (`src/DocuLink.Addin/`)**  
    - **Composition** (`Addin/`): startup wiring only; keep `ThisAddIn` thin.  
    - **UI integration** (`Ribbon/`, `WebView/`): ribbons and WebView hosts; delegate to services.  
-   - **Domain** (`Excel/`): workbook/session and Custom XML; no WebView2 types here.  
+   - **Domain** (`Modules/`): workbook/session and Custom XML; no WebView2 types here.  
    - **Infrastructure** (`Services/`, `Infrastructure/`): OCR client, settings, logging, paths.  
    Do not fold ribbon callbacks, Excel mutation, and WebView message parsing into one class.
 
@@ -32,11 +32,8 @@ alwaysApply: true
 4. **Within Python (`python/`)**  
    - Split **CLI/worker loop**, **engines** (e.g. Tesseract), and **schemas/models**; one module per major concern.
 
-## File size and responsibility
-
-- Prefer **one primary type or workflow** per file (e.g. one host factory, one metadata service).  
-- If a file grows past **~250–300 lines** or mixes unrelated concerns, **split** before adding features.  
-- New features → **new small types + folder** rather than an extra 200 lines in an existing grab-bag.
+## File responsibility
+   - When adding new logic, first search to see if there is an existing file that already provides the funciton or a similar function, if it exists, modify the existing. IF it does not, determine if there is an existing folder that would make sense to create the new file for the logic, if the new logic is truly new and too different from existing logic, consider creating a new folder to host the related file(s)
 
 ## Duplication rules
 
