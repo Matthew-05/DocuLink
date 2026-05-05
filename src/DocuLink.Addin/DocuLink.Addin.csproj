@@ -217,6 +217,14 @@
     <Compile Include="ThisAddIn.Designer.cs">
       <DependentUpon>ThisAddIn.Designer.xml</DependentUpon>
     </Compile>
+    <Compile Include="Modules\CustomXml\DocuLinkCustomXmlPartStore.cs" />
+    <Compile Include="Modules\CustomXml\DocuLinkXml.cs" />
+    <Compile Include="Modules\CustomXml\Models\DocumentLink.cs" />
+    <Compile Include="Modules\CustomXml\Models\DocuLinkStorage.cs" />
+    <Compile Include="Modules\CustomXml\Models\LinkedCellRef.cs" />
+    <Compile Include="Modules\CustomXml\Models\PdfRectangle.cs" />
+    <Compile Include="Modules\CustomXml\Models\RectangleCoordinateSpace.cs" />
+    <Compile Include="Modules\CustomXml\Serialization\DocuLinkStorageSerializer.cs" />
     <Compile Include="Ribbon\DocuLinkRibbon.cs" />
     <EmbeddedResource Include="Ribbon\DocuLinkRibbon.xml" />
     <AppDesigner Include="Properties\" />
