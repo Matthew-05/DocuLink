@@ -1,8 +1,8 @@
 namespace DocuLink.Addin.Modules.CustomXml.Models
 {
-    public sealed class LinkedCellRef
+    public sealed class LinkedCell
     {
-        public LinkedCellRef(string sheetName, string address)
+        public LinkedCell(string sheetName, string address)
         {
             SheetName = sheetName;
             Address = address;
