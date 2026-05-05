@@ -4,6 +4,10 @@
     <tabs>
       <tab id="DocuLink.Tab" label="DocuLink">
         <group id="DocuLink.Group.General" label="General">
+          <button id="DocuLink.BtnTaskPane"
+                  label="Open Task Pane"
+                  size="large"
+                  onAction="OnShowTaskPane" />
           <button id="DocuLink.BtnAddPdf"
                   label="Add PDF"
                   size="large"

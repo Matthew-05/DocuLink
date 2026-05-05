@@ -19,6 +19,11 @@ namespace DocuLink.Addin.Ribbon
             return LoadRibbonXmlFromResources();
         }
 
+        public void OnShowTaskPane(IRibbonControl control)
+        {
+            Globals.ThisAddIn.ShowTaskPane();
+        }
+
         public void OnAddPdfDocuments(IRibbonControl control)
         {
             var app = Globals.ThisAddIn.Application;
