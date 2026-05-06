@@ -176,6 +176,11 @@
       <Private>False</Private>
     </Reference>
   </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Web.WebView2">
+      <Version>1.0.3912.50</Version>
+    </PackageReference>
+  </ItemGroup>
   <!--
     This section defines the user source files that are part of the project.
      
@@ -248,6 +253,27 @@
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <!-- Include additional build rules for an Office application add-in. -->
   <Import Project="$(VSToolsPath)\OfficeTools\Microsoft.VisualStudio.Tools.Office.targets" Condition="'$(VSToolsPath)' != ''" />
+
+  <!-- ── Web asset build ── -->
+  <PropertyGroup>
+    <WebRootDir>$(MSBuildProjectDirectory)\..\web</WebRootDir>
+    <ViewerDistDir>$(WebRootDir)\apps\document-viewer\dist</ViewerDistDir>
+  </PropertyGroup>
+  <Target Name="BuildWebAssets" BeforeTargets="Build">
+    <Message Text="[DocuLink] Installing web dependencies…" Importance="high" />
+    <Exec Command="cmd /c npm install" WorkingDirectory="$(WebRootDir)"
+          Condition="!Exists('$(WebRootDir)\node_modules')" />
+    <Message Text="[DocuLink] Building web assets…" Importance="high" />
+    <Exec Command="cmd /c npm run build" WorkingDirectory="$(WebRootDir)" />
+  </Target>
+  <Target Name="CopyWebUiToOutput" AfterTargets="BuildWebAssets">
+    <Message Text="[DocuLink] Copying web UI to output…" Importance="high" />
+    <ItemGroup>
+      <WebUiFiles Include="$(ViewerDistDir)\**\*.*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(WebUiFiles)"
+          DestinationFiles="@(WebUiFiles->'$(OutputPath)webui\%(RecursiveDir)%(Filename)%(Extension)')" />
+  </Target>
   <!-- This section defines VSTO properties that describe the host-changeable project properties. -->
   <ProjectExtensions>
     <VisualStudio>
