@@ -20,7 +20,8 @@ namespace DocuLink.Addin.Modules.Services
             string base64 = Convert.ToBase64String(bytes);
 
             string pdfId = Guid.NewGuid().ToString("D");
-            var pdf = new PdfDocument(pdfId, base64);
+            string name = Path.GetFileName(pdfFilePath);
+            var pdf = new PdfDocument(pdfId, name, base64);
 
             var store = new DocuLinkCustomXmlPartStore(workbook);
             store.UpsertPdf(pdf);
@@ -39,7 +40,8 @@ namespace DocuLink.Addin.Modules.Services
             string base64 = Convert.ToBase64String(bytes);
 
             string pdfId = Guid.NewGuid().ToString("D");
-            var pdf = new PdfDocument(pdfId, base64);
+            string name = Path.GetFileName(pdfFilePath);
+            var pdf = new PdfDocument(pdfId, name, base64);
 
             string rectId = Guid.NewGuid().ToString("D");
             var rectangle = new PdfRectangle(0, 0, 0, 1, 1, RectangleCoordinateSpace.Normalized);

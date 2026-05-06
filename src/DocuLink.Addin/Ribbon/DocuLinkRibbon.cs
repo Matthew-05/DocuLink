@@ -64,6 +64,9 @@ namespace DocuLink.Addin.Ribbon
                     }
                 }
 
+                if (added > 0)
+                    Globals.ThisAddIn.RefreshTaskPanePdfs();
+
                 if (errors.Count > 0)
                 {
                     var message = new StringBuilder();
