@@ -68,8 +68,8 @@ lerna-debug.log*
 # Bundler output (regenerated on build)
 /dist/
 /dist-ssr/
-web/**/dist/
-web/**/dist-ssr/
+src/web/**/dist/
+src/web/**/dist-ssr/
 *.local
 
 # Vite / tooling caches
