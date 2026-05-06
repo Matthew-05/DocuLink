@@ -3,7 +3,7 @@ import type { PageState } from "../../types/index.js";
 export class PageController {
   readonly element: HTMLElement;
 
-  private _state: PageState = { current: 1, total: 0 };
+  private _state: PageState = { current: 0, total: 0 };
   private _input: HTMLInputElement;
   private _totalSpan: HTMLSpanElement;
   private readonly _callbacks: Array<(page: number) => void> = [];
@@ -14,9 +14,9 @@ export class PageController {
 
     this._input = document.createElement("input");
     this._input.className = "page-controller__input";
-    this._input.type = "number";
-    this._input.min = "1";
-    this._input.value = "1";
+    this._input.type = "text";
+    this._input.inputMode = "numeric";
+    this._input.value = "0";
     this._input.addEventListener("change", () => this._handleInputChange());
     this._input.addEventListener("keydown", (e) => {
       if (e.key === "Enter") this._handleInputChange();
@@ -49,6 +49,10 @@ export class PageController {
   }
 
   private _handleInputChange(): void {
+    if (this._state.total === 0) {
+      this._input.value = "0";
+      return;
+    }
     const raw = parseInt(this._input.value, 10);
     if (isNaN(raw)) {
       this._input.value = String(this._state.current);
