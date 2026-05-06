@@ -13,6 +13,8 @@ namespace DocuLink.Addin.Modules.CustomXml.Serialization
 
         private const string IdAttribute = "id";
 
+        private const string NameAttribute = "name";
+
         private const string Base64Attribute = "Base64";
 
         private const string SheetAttribute = "sheet";
@@ -112,7 +114,9 @@ namespace DocuLink.Addin.Modules.CustomXml.Serialization
                 throw new InvalidOperationException(
                     "DocuLink storage Pdf #" + index + " is missing required attribute 'Base64'.");
 
-            return new PdfDocument(idAttribute.Value.Trim(), base64Attribute.Value ?? string.Empty);
+            string name = pdfElement.Attribute(NameAttribute)?.Value ?? string.Empty;
+
+            return new PdfDocument(idAttribute.Value.Trim(), name, base64Attribute.Value ?? string.Empty);
         }
 
         private static LinkedRectangle ParseLinkedRectangle(XElement element, int index)
@@ -205,6 +209,7 @@ namespace DocuLink.Addin.Modules.CustomXml.Serialization
             return new XElement(
                 DocuLinkXml.Ns + DocuLinkXml.PdfElementName,
                 new XAttribute(IdAttribute, pdf.Id),
+                new XAttribute(NameAttribute, pdf.Name ?? string.Empty),
                 new XAttribute(Base64Attribute, pdf.Base64 ?? string.Empty));
         }
 

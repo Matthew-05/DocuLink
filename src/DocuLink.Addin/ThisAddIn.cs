@@ -14,6 +14,7 @@ namespace DocuLink.Addin
     public partial class ThisAddIn
     {
         private Microsoft.Office.Tools.CustomTaskPane _taskPane;
+        private TaskPaneHost _taskPaneHost;
 
         internal void ShowTaskPane()
         {
@@ -21,13 +22,22 @@ namespace DocuLink.Addin
             _taskPane.Visible = true;
         }
 
+        /// <summary>
+        /// Pushes the current workbook's PDF list to the task pane viewer.
+        /// No-ops if the task pane has not been created yet.
+        /// </summary>
+        internal void RefreshTaskPanePdfs()
+        {
+            _taskPaneHost?.SendPdfsToWebView();
+        }
+
         private void EnsureTaskPaneCreated()
         {
             if (_taskPane != null)
                 return;
 
-            var host = new TaskPaneHost();
-            _taskPane = CustomTaskPanes.Add(host, "DocuLink");
+            _taskPaneHost = new TaskPaneHost();
+            _taskPane = CustomTaskPanes.Add(_taskPaneHost, "DocuLink");
             _taskPane.DockPosition = Office.MsoCTPDockPosition.msoCTPDockPositionRight;
             _taskPane.Width = 420;
         }

@@ -1,7 +1,8 @@
-import * as pdfjsLib from "pdfjs-dist";
+import type * as pdfjsLib from "pdfjs-dist";
 import type { ZoomLevel } from "../../types/index.js";
-
-pdfjsLib.GlobalWorkerOptions.workerSrc = "pdf.worker.min.mjs";
+import { loadPdfDocument } from "./pdf-loader.js";
+import { renderPage } from "./page-renderer.js";
+import { ensureCanvases } from "./canvas-manager.js";
 
 export class PdfViewer {
   readonly element: HTMLElement;
@@ -10,7 +11,6 @@ export class PdfViewer {
   private _scale: ZoomLevel = 1.0;
   private _renderingQueue: Promise<void> = Promise.resolve();
 
-  /** Fired when a document finishes loading; detail contains total page count. */
   private readonly _onLoadedCallbacks: Array<(totalPages: number) => void> = [];
 
   constructor() {
@@ -28,15 +28,9 @@ export class PdfViewer {
   }
 
   async loadDocument(url: string): Promise<void> {
-    if (this._doc) {
-      this._doc.destroy();
-      this._doc = null;
-    }
-
     this.element.replaceChildren();
 
-    const loadingTask = pdfjsLib.getDocument(url);
-    this._doc = await loadingTask.promise;
+    this._doc = await loadPdfDocument(url, this._doc);
 
     for (const cb of this._onLoadedCallbacks) {
       cb(this._doc.numPages);
@@ -60,53 +54,12 @@ export class PdfViewer {
   private async _renderAll(): Promise<void> {
     if (!this._doc) return;
 
-    const total = this._doc.numPages;
-    const canvases = this._ensureCanvases(total);
+    const canvases = ensureCanvases(this.element, this._doc.numPages);
 
-    for (let i = 1; i <= total; i++) {
+    for (let i = 1; i <= this._doc.numPages; i++) {
       const canvas = canvases[i - 1];
       if (!canvas) continue;
-      await this._renderPage(i, canvas);
+      await renderPage(this._doc, i, canvas, this._scale);
     }
-  }
-
-  private _ensureCanvases(total: number): HTMLCanvasElement[] {
-    const existing = Array.from(
-      this.element.querySelectorAll<HTMLCanvasElement>("canvas[data-page]")
-    );
-
-    if (existing.length === total) return existing;
-
-    this.element.replaceChildren();
-    const result: HTMLCanvasElement[] = [];
-
-    for (let i = 1; i <= total; i++) {
-      const canvas = document.createElement("canvas");
-      canvas.className = "viewer__page";
-      canvas.dataset["page"] = String(i);
-      this.element.appendChild(canvas);
-      result.push(canvas);
-    }
-
-    return result;
-  }
-
-  private async _renderPage(
-    pageNumber: number,
-    canvas: HTMLCanvasElement
-  ): Promise<void> {
-    if (!this._doc) return;
-
-    const page = await this._doc.getPage(pageNumber);
-    const viewport = page.getViewport({ scale: this._scale });
-
-    canvas.width = viewport.width;
-    canvas.height = viewport.height;
-
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-
-    await page.render({ canvasContext: ctx, viewport }).promise;
-    page.cleanup();
   }
 }
