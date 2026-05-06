@@ -26,11 +26,10 @@ alwaysApply: true
    - **Infrastructure** (`Modules/`): OCR client, settings, logging, paths.  
    Do not fold ribbon callbacks, Excel mutation, and WebView message parsing into one class.
 
-3. **Within web (`web/`)**  
-   - Shared **host bridge**, protocol types, and PDF helpers live in `packages/shared`.  
-   - `apps/taskpane` and `apps/viewer` stay thin; **no duplicated** `postMessage` handlers or JSON parsers.
+3. **Within web (`src/web/`)**  
+   - `apps/document-viewer` and `apps/file-manager`
 
-4. **Within Python (`python/`)**  
+4. **Within Python (`src/python/`)**  
    - Split **CLI/worker loop**, **engines** (e.g. Tesseract), and **schemas/models**; one module per major concern.
 
 ## File responsibility
