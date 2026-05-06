@@ -2,7 +2,6 @@ import * as esbuild from "esbuild";
 import { copyFileSync, mkdirSync, writeFileSync } from "fs";
 
 const isProd = process.argv.includes("--prod");
-const isWatch = process.argv.includes("--watch");
 
 mkdirSync("dist", { recursive: true });
 
@@ -35,7 +34,7 @@ const sharedOptions = {
   sourcemap: !isProd ? "inline" : false,
 };
 
-const jsCtx = await esbuild.context({
+await esbuild.build({
   ...sharedOptions,
   entryPoints: ["src/main.ts"],
   outfile: "dist/index.js",
@@ -43,20 +42,10 @@ const jsCtx = await esbuild.context({
   platform: "browser",
 });
 
-const cssCtx = await esbuild.context({
+await esbuild.build({
   ...sharedOptions,
   entryPoints: ["src/styles/main.css"],
   outfile: "dist/index.css",
 });
 
-if (isWatch) {
-  await jsCtx.watch();
-  await cssCtx.watch();
-  console.log("[DocuLink] esbuild watching — Ctrl+C to stop");
-} else {
-  await jsCtx.rebuild();
-  await cssCtx.rebuild();
-  await jsCtx.dispose();
-  await cssCtx.dispose();
-  console.log("[DocuLink] build complete");
-}
+console.log("[DocuLink] build complete");

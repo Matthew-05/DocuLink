@@ -73,6 +73,8 @@
     <EnableUnmanagedDebugging>false</EnableUnmanagedDebugging>
     <DefineConstants>$(DefineConstants);DEBUG;TRACE</DefineConstants>
     <WarningLevel>4</WarningLevel>
+    <!-- Always invoke MSBuild so web source changes are picked up on next debug run -->
+    <DisableFastUpToDateCheck>true</DisableFastUpToDateCheck>
   </PropertyGroup>
   <!--
     This section defines properties that are set when the "Release" configuration is selected.
@@ -259,7 +261,14 @@
     <WebRootDir>$(MSBuildProjectDirectory)\..\web</WebRootDir>
     <ViewerDistDir>$(WebRootDir)\apps\document-viewer\dist</ViewerDistDir>
   </PropertyGroup>
-  <Target Name="BuildWebAssets" BeforeTargets="Build">
+  <!-- Enumerate web source files so MSBuild can skip npm build when nothing changed -->
+  <ItemGroup>
+    <WebSourceFiles Include="$(WebRootDir)\apps\document-viewer\src\**\*.*" />
+    <WebSourceFiles Include="$(WebRootDir)\packages\**\src\**\*.*" />
+  </ItemGroup>
+  <Target Name="BuildWebAssets" BeforeTargets="Build"
+          Inputs="@(WebSourceFiles)"
+          Outputs="$(ViewerDistDir)\index.js;$(ViewerDistDir)\index.css">
     <Message Text="[DocuLink] Installing web dependencies…" Importance="high" />
     <Exec Command="cmd /c npm install" WorkingDirectory="$(WebRootDir)"
           Condition="!Exists('$(WebRootDir)\node_modules')" />
