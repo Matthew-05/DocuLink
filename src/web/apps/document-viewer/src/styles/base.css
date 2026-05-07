@@ -1,11 +1,11 @@
 :root {
   /* Colors */
-  --color-bg: #1e1e1e;
-  --color-surface: #252526;
-  --color-surface-hover: #2d2d2d;
-  --color-border: #3c3c3c;
-  --color-text: #cccccc;
-  --color-text-muted: #858585;
+  --color-bg: #f0f0f0;
+  --color-surface: #ffffff;
+  --color-surface-hover: #e8e8e8;
+  --color-border: #d0d0d0;
+  --color-text: #333333;
+  --color-text-muted: #767676;
   --color-accent: #0e639c;
   --color-accent-hover: #1177bb;
 

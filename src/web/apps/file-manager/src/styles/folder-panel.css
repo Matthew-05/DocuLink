@@ -85,10 +85,6 @@
   display: flex;
 }
 
-.folder-panel__item:hover .folder-panel__item-count {
-  display: none;
-}
-
 /* New-folder inline row */
 
 .folder-panel__new-row {

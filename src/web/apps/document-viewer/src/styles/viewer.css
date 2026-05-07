@@ -13,7 +13,7 @@
 .viewer__page {
   position: relative;
   flex-shrink: 0;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
 }
 
 .viewer__canvas {
