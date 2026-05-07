@@ -17,15 +17,16 @@ namespace DocuLink.Addin
         {
             EnsureTaskPaneCreated();
             _taskPane.Visible = true;
+            _taskPaneHost.RefreshDataIfReady();
         }
 
         /// <summary>
-        /// Pushes the current workbook's PDF list to the task pane viewer.
-        /// No-ops if the task pane has not been created yet.
+        /// Pushes the current workbook's PDFs and linked rectangles to the task
+        /// pane viewer. No-ops if the task pane has not been created yet.
         /// </summary>
         internal void RefreshTaskPanePdfs()
         {
-            _taskPaneHost?.SendPdfsToWebView();
+            _taskPaneHost?.RefreshDataIfReady();
         }
 
         internal void ShowManageFilesWindow()
@@ -35,6 +36,7 @@ namespace DocuLink.Addin
 
             _fileManagerWindow.Show();
             _fileManagerWindow.BringToFront();
+            _fileManagerWindow.RefreshDataIfReady();
         }
 
         internal TaskPaneHost TaskPaneHost => _taskPaneHost;

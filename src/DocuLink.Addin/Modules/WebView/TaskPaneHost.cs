@@ -25,6 +25,7 @@ namespace DocuLink.Addin.Modules.WebView
 
         private readonly WebView2 _webView = new WebView2();
         private ProgressScope _cacheProgressScope;
+        private bool _webViewReady;
 
         public TaskPaneHost()
         {
@@ -84,6 +85,7 @@ namespace DocuLink.Addin.Modules.WebView
                 switch (HostMessageParser.GetMessageType(raw))
                 {
                     case "viewer-ready":
+                        _webViewReady = true;
                         SendPdfsToWebView();
                         SendLinkedRectanglesToWebView();
                         break;
@@ -144,6 +146,19 @@ namespace DocuLink.Addin.Modules.WebView
                 }
                 catch { }
             }));
+        }
+
+        /// <summary>
+        /// Pushes both the PDF list and linked rectangles to the web UI, but only
+        /// if the web app has already signalled <c>viewer-ready</c>. Call this
+        /// whenever the task pane becomes visible after a warm-load so the web UI
+        /// receives data that was unavailable at pre-init time.
+        /// </summary>
+        public void RefreshDataIfReady()
+        {
+            if (!_webViewReady) return;
+            SendPdfsToWebView();
+            SendLinkedRectanglesToWebView();
         }
 
         /// <summary>

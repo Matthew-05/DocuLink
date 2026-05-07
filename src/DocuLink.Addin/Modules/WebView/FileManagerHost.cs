@@ -31,6 +31,8 @@ namespace DocuLink.Addin.Modules.WebView
         /// <summary>The folder GUID currently selected in the web UI (<c>null</c> for All Files).</summary>
         private string _selectedFolderId;
 
+        private bool _webViewReady;
+
         private readonly object _osImportLock = new object();
         private readonly Dictionary<string, long> _recentOsImportTicks =
             new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
@@ -257,6 +259,7 @@ namespace DocuLink.Addin.Modules.WebView
                 switch (type)
                 {
                     case "manager-ready":
+                        _webViewReady = true;
                         SendFilesToWebView();
                         break;
 
@@ -401,6 +404,17 @@ namespace DocuLink.Addin.Modules.WebView
             Excel.Workbook wb = GetActiveWorkbook();
             if (wb == null) return;
             _service.RemoveFolder(wb, req.Id);
+            SendFilesToWebView();
+        }
+
+        /// <summary>
+        /// Pushes the current workbook's file list to the web UI, but only if the web app
+        /// has already signalled <c>manager-ready</c>. Call this whenever the window is
+        /// shown after a warm-load so the web UI receives data unavailable at pre-init time.
+        /// </summary>
+        public void RefreshDataIfReady()
+        {
+            if (!_webViewReady) return;
             SendFilesToWebView();
         }
 
