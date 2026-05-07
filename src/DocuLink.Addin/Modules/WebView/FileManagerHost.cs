@@ -429,6 +429,17 @@ namespace DocuLink.Addin.Modules.WebView
             return Globals.ThisAddIn.Application?.ActiveWorkbook;
         }
 
+        protected override void OnFormClosing(FormClosingEventArgs e)
+        {
+            if (e.CloseReason == CloseReason.UserClosing)
+            {
+                e.Cancel = true;
+                Hide();
+                return;
+            }
+            base.OnFormClosing(e);
+        }
+
         private static string GetWebUiPath()
         {
             string codeBase = Assembly.GetExecutingAssembly().CodeBase;
