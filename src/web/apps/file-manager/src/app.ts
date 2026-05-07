@@ -6,13 +6,13 @@ import { FileTable } from "./components/file-table/file-table.js";
 import { TableToolbar } from "./components/table-toolbar/table-toolbar.js";
 
 export function mountApp(root: HTMLElement): void {
-  root.className = "app";
+  root.className = "file-manager";
 
   const leftCol = document.createElement("div");
-  leftCol.className = "left-col";
+  leftCol.className = "file-manager__sidebar";
 
   const rightCol = document.createElement("div");
-  rightCol.className = "right-col";
+  rightCol.className = "file-manager__content";
 
   root.appendChild(leftCol);
   root.appendChild(rightCol);

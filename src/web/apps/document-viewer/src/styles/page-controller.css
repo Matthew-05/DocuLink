@@ -1,0 +1,27 @@
+.page-controller {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--font-size-sm);
+  color: var(--color-text);
+}
+
+.page-controller__input {
+  width: 36px;
+  height: 24px;
+  text-align: center;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  color: var(--color-text);
+  font-size: var(--font-size-sm);
+}
+
+.page-controller__input:focus {
+  border-color: var(--color-accent);
+}
+
+.page-controller__separator,
+.page-controller__total {
+  color: var(--color-text-muted);
+}

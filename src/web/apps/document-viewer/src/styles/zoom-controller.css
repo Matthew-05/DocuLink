@@ -1,0 +1,27 @@
+.zoom-controller {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.zoom-controller__btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-sm);
+  color: var(--color-text);
+  transition: background 0.1s;
+}
+
+.zoom-controller__btn:hover {
+  background: var(--color-surface-hover);
+}
+
+.zoom-controller__label {
+  min-width: 42px;
+  text-align: center;
+  font-size: var(--font-size-sm);
+  color: var(--color-text);
+}

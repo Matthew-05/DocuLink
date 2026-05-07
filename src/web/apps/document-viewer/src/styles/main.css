@@ -1,3 +1,7 @@
-@import "./base.css";
+@import "@doculink/shared/base.css";
 @import "./toolbar.css";
+@import "./zoom-controller.css";
+@import "./page-controller.css";
+@import "./pdf-selector.css";
+@import "./search-bar.css";
 @import "./viewer.css";
