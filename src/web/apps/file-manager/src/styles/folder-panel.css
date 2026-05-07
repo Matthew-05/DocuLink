@@ -107,6 +107,27 @@
   outline: none;
 }
 
+/* Icon buttons inside an active (selected) folder row */
+
+.folder-panel__item--active .icon-btn {
+  color: rgba(255, 255, 255, 0.75);
+}
+
+.folder-panel__item--active .icon-btn:hover {
+  background: rgba(255, 255, 255, 0.18);
+  color: #fff;
+}
+
+.folder-panel__item--active .icon-btn--danger:hover {
+  background: rgba(255, 255, 255, 0.18);
+  color: #fff;
+}
+
+.folder-panel__item--active .icon-btn--confirm:hover {
+  background: rgba(255, 255, 255, 0.18);
+  color: #fff;
+}
+
 /* Inline delete confirmation */
 
 .folder-panel__delete-confirm {
@@ -120,4 +141,8 @@
   font-size: 11px;
   color: var(--color-danger);
   font-weight: 500;
+}
+
+.folder-panel__item--active .delete-confirm-label {
+  color: rgba(255, 255, 255, 0.9);
 }
