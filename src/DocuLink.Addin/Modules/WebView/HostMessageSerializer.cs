@@ -32,6 +32,40 @@ namespace DocuLink.Addin.Modules.WebView
             return sb.ToString();
         }
 
+        /// <summary>
+        /// Returns the JSON payload for a <c>linked-rectangles-loaded</c> message.
+        /// </summary>
+        public static string BuildLinkedRectanglesLoaded(IList<LinkedRectangle> rects)
+        {
+            var sb = new StringBuilder();
+            sb.Append("{\"type\":\"linked-rectangles-loaded\",\"rectangles\":[");
+
+            for (int i = 0; i < rects.Count; i++)
+            {
+                LinkedRectangle r = rects[i];
+                if (i > 0) sb.Append(',');
+
+                sb.Append('{');
+                sb.Append("\"id\":"); AppendString(sb, r.Id);
+                sb.Append(",\"pdfId\":"); AppendString(sb, r.PdfId);
+                sb.Append(",\"page\":"); sb.Append(r.Rectangle.PageIndex);
+                sb.Append(",\"rect\":{");
+                sb.Append("\"x\":"); AppendDouble(sb, r.Rectangle.X);
+                sb.Append(",\"y\":"); AppendDouble(sb, r.Rectangle.Y);
+                sb.Append(",\"width\":"); AppendDouble(sb, r.Rectangle.Width);
+                sb.Append(",\"height\":"); AppendDouble(sb, r.Rectangle.Height);
+                sb.Append("}}");
+            }
+
+            sb.Append("]}");
+            return sb.ToString();
+        }
+
+        private static void AppendDouble(StringBuilder sb, double value)
+        {
+            sb.Append(value.ToString("G", System.Globalization.CultureInfo.InvariantCulture));
+        }
+
         private static void AppendString(StringBuilder sb, string value)
         {
             sb.Append('"');

@@ -1,0 +1,19 @@
+.viewer {
+  cursor: crosshair;
+}
+
+.rect-draw__selection {
+  position: absolute;
+  border: 1.5px dashed #2563eb;
+  background: rgba(37, 99, 235, 0.1);
+  pointer-events: none;
+  box-sizing: border-box;
+}
+
+.rect-draw__link {
+  position: absolute;
+  border: 1.5px solid #2563eb;
+  background: rgba(37, 99, 235, 0.12);
+  pointer-events: none;
+  box-sizing: border-box;
+}

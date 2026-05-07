@@ -1,4 +1,4 @@
-import type { PdfEntry } from "./types/index.js";
+import type { PdfEntry, LinkRectPayload, LinkedRectEntry, NormalizedRect } from "./types/index.js";
 
 interface PdfPayload {
   id: string;
@@ -11,7 +11,17 @@ interface PdfsLoadedMessage {
   pdfs: PdfPayload[];
 }
 
-type HostMessage = PdfsLoadedMessage;
+interface LinkedRectPayload {
+  id: string;
+  pdfId: string;
+  page: number;
+  rect: { x: number; y: number; width: number; height: number };
+}
+
+interface LinkedRectanglesLoadedMessage {
+  type: "linked-rectangles-loaded";
+  rectangles: LinkedRectPayload[];
+}
 
 /** Revoke previously created object URLs to avoid memory leaks. */
 let _activeObjectUrls: string[] = [];
@@ -37,40 +47,60 @@ function base64ToObjectUrl(base64: string): string {
 
 function handleMessage(
   raw: unknown,
-  onEntries: (entries: PdfEntry[]) => void
+  onEntries: (entries: PdfEntry[]) => void,
+  onLinkedRectangles?: (rects: LinkedRectEntry[]) => void,
 ): void {
-  let msg: HostMessage;
-
   try {
     const parsed: unknown =
       typeof raw === "string" ? (JSON.parse(raw) as unknown) : raw;
 
     if (
       typeof parsed !== "object" ||
-      parsed === null ||
-      (parsed as { type?: unknown }).type !== "pdfs-loaded"
+      parsed === null
     ) {
       return;
     }
 
-    msg = parsed as PdfsLoadedMessage;
+    const type = (parsed as { type?: unknown }).type;
+
+    if (type === "pdfs-loaded") {
+      const msg = parsed as PdfsLoadedMessage;
+
+      revokeActiveUrls();
+      const entries: PdfEntry[] = msg.pdfs.map((pdf) => ({
+        id:  pdf.id,
+        name: pdf.name || pdf.id,
+        url:  base64ToObjectUrl(pdf.base64),
+      }));
+      onEntries(entries);
+      return;
+    }
+
+    if (type === "linked-rectangles-loaded") {
+      if (!onLinkedRectangles) return;
+      const lrMsg = parsed as LinkedRectanglesLoadedMessage;
+      const rects: LinkedRectEntry[] = lrMsg.rectangles.map((r) => ({
+        id:    r.id,
+        pdfId: r.pdfId,
+        page:  r.page,
+        rect:  r.rect as NormalizedRect,
+      }));
+      onLinkedRectangles(rects);
+      return;
+    }
   } catch {
-    return;
+    // Malformed JSON or unexpected shape — silently ignore.
   }
-
-  revokeActiveUrls();
-
-  const entries: PdfEntry[] = msg.pdfs.map((pdf) => ({
-    id: pdf.id,
-    name: pdf.name || pdf.id,
-    url: base64ToObjectUrl(pdf.base64),
-  }));
-
-  onEntries(entries);
 }
 
 interface WebView2Bridge extends EventTarget {
   postMessage(message: string): void;
+}
+
+let _webview: WebView2Bridge | null = null;
+
+function postToHost(message: object): void {
+  _webview?.postMessage(JSON.stringify(message));
 }
 
 /**
@@ -84,7 +114,10 @@ interface WebView2Bridge extends EventTarget {
  * Safe to call in non-WebView2 environments — does nothing when
  * `window.chrome.webview` is absent.
  */
-export function initHostBridge(onEntries: (entries: PdfEntry[]) => void): void {
+export function initHostBridge(
+  onEntries: (entries: PdfEntry[]) => void,
+  onLinkedRectangles?: (rects: LinkedRectEntry[]) => void,
+): void {
   const webview = (
     window as unknown as { chrome?: { webview?: WebView2Bridge } }
   ).chrome?.webview;
@@ -93,10 +126,30 @@ export function initHostBridge(onEntries: (entries: PdfEntry[]) => void): void {
     return;
   }
 
+  _webview = webview;
+
   webview.addEventListener("message", (event: Event) => {
     const data = (event as MessageEvent<unknown>).data;
-    handleMessage(data, onEntries);
+    handleMessage(data, onEntries, onLinkedRectangles);
   });
 
-  webview.postMessage(JSON.stringify({ type: "viewer-ready" }));
+  postToHost({ type: "viewer-ready" });
+}
+
+export function sendLinkRectangleCreated(payload: LinkRectPayload): void {
+  postToHost({
+    type:  "link-rectangle-created",
+    pdfId: payload.pdfId,
+    page:  payload.page,
+    rect:  payload.rect,
+    text:  payload.text,
+  });
+}
+
+export function sendCacheBuildStarted(): void {
+  postToHost({ type: "cache-build-started" });
+}
+
+export function sendCacheBuildComplete(): void {
+  postToHost({ type: "cache-build-complete" });
 }

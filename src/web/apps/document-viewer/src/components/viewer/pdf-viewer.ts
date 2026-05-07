@@ -15,12 +15,14 @@ export class PdfViewer {
   readonly element: HTMLElement;
 
   private _doc: pdfjsLib.PDFDocumentProxy | null = null;
+  private _activePdfId: string | null = null;
   private _scale: ZoomLevel = 1.0;
   private _pageEntries: PageEntry[] = [];
   private _renderingQueue: Promise<void> = Promise.resolve();
   private _zoomDebounce: ReturnType<typeof setTimeout> | null = null;
 
   private readonly _onLoadedCallbacks: Array<(totalPages: number) => void> = [];
+  private readonly _onDocumentChangedCallbacks: Array<() => void> = [];
 
   constructor() {
     this.element = document.createElement("div");
@@ -36,8 +38,32 @@ export class PdfViewer {
     this._onLoadedCallbacks.push(cb);
   }
 
-  async loadDocument(url: string): Promise<void> {
+  onDocumentChanged(cb: () => void): void {
+    this._onDocumentChangedCallbacks.push(cb);
+  }
+
+  getDocument(): pdfjsLib.PDFDocumentProxy | null {
+    return this._doc;
+  }
+
+  getActivePdfId(): string | null {
+    return this._activePdfId;
+  }
+
+  getPageLayout(): Array<{ pageNumber: number; wrapper: HTMLDivElement }> {
+    const result: Array<{ pageNumber: number; wrapper: HTMLDivElement }> = [];
+    for (let i = 0; i < this._pageEntries.length; i++) {
+      const entry = this._pageEntries[i];
+      if (entry) {
+        result.push({ pageNumber: i + 1, wrapper: entry.wrapper });
+      }
+    }
+    return result;
+  }
+
+  async loadDocument(url: string, pdfId?: string): Promise<void> {
     this._cancelZoomDebounce();
+    this._activePdfId = pdfId ?? null;
     this._pageEntries = [];
     this.element.replaceChildren();
 
@@ -48,6 +74,10 @@ export class PdfViewer {
     }
 
     await this._renderAll();
+
+    for (const cb of this._onDocumentChangedCallbacks) {
+      cb();
+    }
   }
 
   setZoom(scale: ZoomLevel): void {

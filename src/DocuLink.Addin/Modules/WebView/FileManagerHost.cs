@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using System.Windows.Forms;
 using DocuLink.Addin.Modules.CustomXml;
 using DocuLink.Addin.Modules.Services;
+using DocuLink.Addin.Modules.UI;
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.WinForms;
 using Excel = Microsoft.Office.Interop.Excel;
@@ -131,38 +132,41 @@ namespace DocuLink.Addin.Modules.WebView
             var folderIdCache = new Dictionary<string, string>(StringComparer.Ordinal);
             int added = 0;
 
-            foreach (string raw in paths)
+            using (new ProgressScope("Importing documents\u2026"))
             {
-                if (string.IsNullOrWhiteSpace(raw))
-                    continue;
-
-                string path;
-                try
+                foreach (string raw in paths)
                 {
-                    path = Path.GetFullPath(raw.Trim());
-                }
-                catch
-                {
-                    continue;
-                }
+                    if (string.IsNullOrWhiteSpace(raw))
+                        continue;
 
-                if (ShouldSkipDuplicateOsImport(path))
-                    continue;
-
-                try
-                {
-                    FileAttributes attr = File.GetAttributes(path);
-                    if ((attr & FileAttributes.Directory) == FileAttributes.Directory)
-                        added += ImportDirectoryOfPdfs(wb, path, folderIdCache);
-                    else if (path.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase))
+                    string path;
+                    try
                     {
-                        _service.AddPdfFromFilePath(wb, path, _selectedFolderId);
-                        added++;
+                        path = Path.GetFullPath(raw.Trim());
                     }
-                }
-                catch (Exception ex)
-                {
-                    System.Diagnostics.Debug.WriteLine($"[DocuLink] OS import failed for '{path}': {ex.Message}");
+                    catch
+                    {
+                        continue;
+                    }
+
+                    if (ShouldSkipDuplicateOsImport(path))
+                        continue;
+
+                    try
+                    {
+                        FileAttributes attr = File.GetAttributes(path);
+                        if ((attr & FileAttributes.Directory) == FileAttributes.Directory)
+                            added += ImportDirectoryOfPdfs(wb, path, folderIdCache);
+                        else if (path.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase))
+                        {
+                            _service.AddPdfFromFilePath(wb, path, _selectedFolderId);
+                            added++;
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"[DocuLink] OS import failed for '{path}': {ex.Message}");
+                    }
                 }
             }
 
@@ -302,19 +306,21 @@ namespace DocuLink.Addin.Modules.WebView
 
             // Cache resolved folder ids so that a dropped directory only creates one folder
             // even if it contains many files.
-            var resolvedFolderIds = new Dictionary<string, string>(
-                StringComparer.Ordinal);
+            var resolvedFolderIds = new Dictionary<string, string>(StringComparer.Ordinal);
 
-            foreach (var file in req.Files)
+            using (new ProgressScope("Importing documents\u2026"))
             {
-                try
+                foreach (var file in req.Files)
                 {
-                    string folderId = ResolveFolderId(wb, file.FolderId, resolvedFolderIds);
-                    _service.AddPdf(wb, file.Name, file.Base64, folderId);
-                }
-                catch (Exception ex)
-                {
-                    System.Diagnostics.Debug.WriteLine($"[DocuLink] AddPdf failed for '{file.Name}': {ex.Message}");
+                    try
+                    {
+                        string folderId = ResolveFolderId(wb, file.FolderId, resolvedFolderIds);
+                        _service.AddPdf(wb, file.Name, file.Base64, folderId);
+                    }
+                    catch (Exception ex)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"[DocuLink] AddPdf failed for '{file.Name}': {ex.Message}");
+                    }
                 }
             }
 

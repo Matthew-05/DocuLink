@@ -209,6 +209,108 @@
         "type":     { "const": "set-selected-folder" },
         "folderId": { "type": "string", "description": "GUID of the selected folder, absent for uncategorised / All Files." }
       }
+    },
+
+    "RectPayload": {
+      "description": "A normalized rectangle (0–1 coordinate space, top-left origin) on a single PDF page.",
+      "type": "object",
+      "required": ["x", "y", "width", "height"],
+      "additionalProperties": false,
+      "properties": {
+        "x":      { "type": "number", "description": "Left edge, normalized 0–1." },
+        "y":      { "type": "number", "description": "Top edge, normalized 0–1." },
+        "width":  { "type": "number", "description": "Width, normalized 0–1." },
+        "height": { "type": "number", "description": "Height, normalized 0–1." }
+      }
+    },
+
+    "LinkRectangleCreatedMessage": {
+      "description": "Sent by the document-viewer when the user finishes drawing a link rectangle. Contains the PDF region and the extracted, formatted text ready for cell insertion.",
+      "type": "object",
+      "required": ["type", "pdfId", "page", "rect", "text"],
+      "additionalProperties": false,
+      "properties": {
+        "type":  { "const": "link-rectangle-created" },
+        "pdfId": { "type": "string", "description": "GUID of the PDF the rectangle was drawn on." },
+        "page":  { "type": "integer", "minimum": 0, "description": "0-based page index." },
+        "rect":  { "$ref": "#/definitions/RectPayload" },
+        "text":  { "type": "string", "description": "Extracted and formatted text contained within the rectangle." }
+      },
+      "examples": [
+        {
+          "type": "link-rectangle-created",
+          "pdfId": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+          "page": 0,
+          "rect": { "x": 0.1, "y": 0.2, "width": 0.4, "height": 0.05 },
+          "text": "Invoice Total: $1,234.56"
+        }
+      ]
+    },
+
+    "CacheBuildStartedMessage": {
+      "description": "Sent by the document-viewer immediately before building the per-page text-content cache for the loaded PDF. The host should show a loading indicator.",
+      "type": "object",
+      "required": ["type"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "const": "cache-build-started" }
+      },
+      "examples": [
+        { "type": "cache-build-started" }
+      ]
+    },
+
+    "CacheBuildCompleteMessage": {
+      "description": "Sent by the document-viewer once the text-content cache has been fully built. The host should hide the loading indicator.",
+      "type": "object",
+      "required": ["type"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "const": "cache-build-complete" }
+      },
+      "examples": [
+        { "type": "cache-build-complete" }
+      ]
+    },
+
+    "LinkedRectanglePayload": {
+      "description": "A single persisted link rectangle, as sent from the C# host to the viewer.",
+      "type": "object",
+      "required": ["id", "pdfId", "page", "rect"],
+      "additionalProperties": false,
+      "properties": {
+        "id":    { "type": "string", "description": "GUID that uniquely identifies this linked rectangle." },
+        "pdfId": { "type": "string", "description": "GUID of the PDF this rectangle belongs to." },
+        "page":  { "type": "integer", "minimum": 0, "description": "0-based page index." },
+        "rect":  { "$ref": "#/definitions/RectPayload" }
+      }
+    },
+
+    "LinkedRectanglesLoadedMessage": {
+      "description": "Sent by the C# host to push the full set of persisted link rectangles to the viewer. Re-sent after any add operation so the viewer stays in sync.",
+      "type": "object",
+      "required": ["type", "rectangles"],
+      "additionalProperties": false,
+      "properties": {
+        "type":       { "const": "linked-rectangles-loaded" },
+        "rectangles": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/LinkedRectanglePayload" }
+        }
+      },
+      "examples": [
+        {
+          "type": "linked-rectangles-loaded",
+          "rectangles": [
+            {
+              "id":    "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+              "pdfId": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+              "page":  0,
+              "rect":  { "x": 0.1, "y": 0.2, "width": 0.4, "height": 0.05 }
+            }
+          ]
+        }
+      ]
     }
 
   },
@@ -225,6 +327,10 @@
     { "$ref": "#/definitions/AddFolderMessage" },
     { "$ref": "#/definitions/RenameFolderMessage" },
     { "$ref": "#/definitions/RemoveFolderMessage" },
-    { "$ref": "#/definitions/SetSelectedFolderMessage" }
+    { "$ref": "#/definitions/SetSelectedFolderMessage" },
+    { "$ref": "#/definitions/LinkRectangleCreatedMessage" },
+    { "$ref": "#/definitions/CacheBuildStartedMessage" },
+    { "$ref": "#/definitions/CacheBuildCompleteMessage" },
+    { "$ref": "#/definitions/LinkedRectanglesLoadedMessage" }
   ]
 }

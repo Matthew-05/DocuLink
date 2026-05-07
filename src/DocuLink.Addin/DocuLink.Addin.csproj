@@ -236,7 +236,11 @@
     <Compile Include="Modules\CustomXml\Models\RectangleCoordinateSpace.cs" />
     <Compile Include="Modules\CustomXml\Serialization\DocuLinkStorageSerializer.cs" />
     <Compile Include="Modules\Services\AddPdfDocumentService.cs" />
+    <Compile Include="Modules\Services\CellFormatter.cs" />
+    <Compile Include="Modules\Services\CreateLinkService.cs" />
     <Compile Include="Modules\Services\ManageFilesService.cs" />
+    <Compile Include="Modules\UI\ProgressDialog.cs" />
+    <Compile Include="Modules\UI\ProgressScope.cs" />
     <Compile Include="Modules\WebView\FileManagerHost.cs">
       <SubType>Form</SubType>
     </Compile>
