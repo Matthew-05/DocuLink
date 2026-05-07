@@ -1,0 +1,49 @@
+/* Reset & design tokens */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+:root {
+  --color-bg:           #1e1e2e;
+  --color-surface:      #2a2a3d;
+  --color-surface-2:    #32324a;
+  --color-border:       #3d3d58;
+  --color-text:         #e0e0f0;
+  --color-text-muted:   #8888aa;
+  --color-accent:       #7c6af7;
+  --color-accent-hover: #6a5ae0;
+  --color-danger:       #e05555;
+  --color-danger-hover: #c43f3f;
+  --color-success:      #3ecf6e;
+  --radius:             6px;
+  --gap:                12px;
+  font-size: 13px;
+  font-family: "Segoe UI", system-ui, sans-serif;
+  color: var(--color-text);
+}
+
+body {
+  background: var(--color-bg);
+  height: 100vh;
+  overflow: hidden;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-text-muted);
+}

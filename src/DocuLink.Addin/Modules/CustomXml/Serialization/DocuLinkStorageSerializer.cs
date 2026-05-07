@@ -10,27 +10,16 @@ namespace DocuLink.Addin.Modules.CustomXml.Serialization
     public static class DocuLinkStorageSerializer
     {
         private const string VersionAttribute = "version";
-
         private const string IdAttribute = "id";
-
         private const string NameAttribute = "name";
-
         private const string Base64Attribute = "Base64";
-
         private const string SheetAttribute = "sheet";
-
         private const string AddressAttribute = "address";
-
         private const string PageAttribute = "page";
-
         private const string XAttribute = "x";
-
         private const string YAttribute = "y";
-
         private const string WidthAttribute = "width";
-
         private const string HeightAttribute = "height";
-
         private const string CoordinateSpaceAttribute = "coordinateSpace";
 
         public static DocuLinkStorage FromXDocument(XDocument document)
@@ -54,6 +43,14 @@ namespace DocuLink.Addin.Modules.CustomXml.Serialization
                 throw new InvalidOperationException(
                     "Unsupported DocuLink storage version; expected " + DocuLinkXml.SchemaVersion + ".");
 
+            // Folders element is optional for backwards compat with stores that predate this field.
+            XElement foldersElement = root.Element(DocuLinkXml.Ns + DocuLinkXml.FoldersElementName);
+            var folders = foldersElement != null
+                ? new List<PdfFolder>(foldersElement
+                    .Elements(DocuLinkXml.Ns + DocuLinkXml.FolderElementName)
+                    .Select((el, i) => ParseFolder(el, i)))
+                : new List<PdfFolder>();
+
             XElement pdfsElement = root.Element(DocuLinkXml.Ns + DocuLinkXml.PdfsElementName);
             if (pdfsElement == null)
                 throw new InvalidOperationException(
@@ -74,7 +71,7 @@ namespace DocuLink.Addin.Modules.CustomXml.Serialization
                     .Elements(DocuLinkXml.Ns + DocuLinkXml.LinkedRectangleElementName)
                     .Select((element, idx) => ParseLinkedRectangle(element, idx)));
 
-            return new DocuLinkStorage(fileVersion, pdfs, linkedRectangles);
+            return new DocuLinkStorage(fileVersion, folders, pdfs, linkedRectangles);
         }
 
         public static XDocument ToXDocument(DocuLinkStorage storage)
@@ -84,6 +81,10 @@ namespace DocuLink.Addin.Modules.CustomXml.Serialization
             if (storage.Version != DocuLinkXml.SchemaVersion)
                 throw new InvalidOperationException(
                     "Unsupported storage version for serialization; expected " + DocuLinkXml.SchemaVersion + ".");
+
+            var foldersElement = new XElement(
+                DocuLinkXml.Ns + DocuLinkXml.FoldersElementName,
+                storage.Folders.Select((folder, i) => SerializeFolder(folder, i)));
 
             var pdfsElement = new XElement(
                 DocuLinkXml.Ns + DocuLinkXml.PdfsElementName,
@@ -96,10 +97,35 @@ namespace DocuLink.Addin.Modules.CustomXml.Serialization
             var root = new XElement(
                 DocuLinkXml.Ns + DocuLinkXml.RootElementName,
                 new XAttribute(VersionAttribute, DocuLinkXml.SchemaVersion),
+                foldersElement,
                 pdfsElement,
                 linkedRectanglesElement);
 
             return new XDocument(new XDeclaration("1.0", "utf-8", null), root);
+        }
+
+        private static PdfFolder ParseFolder(XElement element, int index)
+        {
+            XAttribute idAttr = element.Attribute(IdAttribute);
+            if (idAttr == null || string.IsNullOrWhiteSpace(idAttr.Value))
+                throw new InvalidOperationException("DocuLink storage Folder #" + index + " is missing required attribute 'id'.");
+
+            XAttribute nameAttr = element.Attribute(NameAttribute);
+            string name = nameAttr?.Value ?? string.Empty;
+
+            return new PdfFolder(idAttr.Value.Trim(), name);
+        }
+
+        private static XElement SerializeFolder(PdfFolder folder, int index)
+        {
+            if (folder == null) throw new ArgumentNullException(nameof(folder));
+            if (string.IsNullOrWhiteSpace(folder.Id))
+                throw new InvalidOperationException("PdfFolder at index " + index + " has an empty Id.");
+
+            return new XElement(
+                DocuLinkXml.Ns + DocuLinkXml.FolderElementName,
+                new XAttribute(IdAttribute, folder.Id),
+                new XAttribute(NameAttribute, folder.Name ?? string.Empty));
         }
 
         private static PdfDocument ParsePdf(XElement pdfElement, int index)
@@ -115,8 +141,54 @@ namespace DocuLink.Addin.Modules.CustomXml.Serialization
                     "DocuLink storage Pdf #" + index + " is missing required attribute 'Base64'.");
 
             string name = pdfElement.Attribute(NameAttribute)?.Value ?? string.Empty;
+            string folderId = pdfElement.Attribute(DocuLinkXml.FolderIdAttribute)?.Value;
+            if (string.IsNullOrWhiteSpace(folderId))
+                folderId = null;
 
-            return new PdfDocument(idAttribute.Value.Trim(), name, base64Attribute.Value ?? string.Empty);
+            DateTime? dateAdded = null;
+            string dateAddedStr = pdfElement.Attribute(DocuLinkXml.DateAddedAttribute)?.Value;
+            if (!string.IsNullOrWhiteSpace(dateAddedStr)
+                && DateTime.TryParse(dateAddedStr, null, System.Globalization.DateTimeStyles.RoundtripKind, out DateTime parsedDate))
+                dateAdded = parsedDate;
+
+            long fileSizeBytes = 0;
+            string fileSizeStr = pdfElement.Attribute(DocuLinkXml.FileSizeBytesAttribute)?.Value;
+            if (!string.IsNullOrWhiteSpace(fileSizeStr))
+                long.TryParse(fileSizeStr, NumberStyles.Integer, CultureInfo.InvariantCulture, out fileSizeBytes);
+
+            return new PdfDocument(
+                idAttribute.Value.Trim(),
+                name,
+                base64Attribute.Value ?? string.Empty,
+                folderId,
+                dateAdded,
+                fileSizeBytes);
+        }
+
+        private static XElement SerializePdf(PdfDocument pdf, int index)
+        {
+            if (pdf == null) throw new ArgumentNullException(nameof(pdf));
+            if (string.IsNullOrWhiteSpace(pdf.Id))
+                throw new InvalidOperationException("PdfDocument at index " + index + " has an empty Id.");
+
+            var element = new XElement(
+                DocuLinkXml.Ns + DocuLinkXml.PdfElementName,
+                new XAttribute(IdAttribute, pdf.Id),
+                new XAttribute(NameAttribute, pdf.Name ?? string.Empty),
+                new XAttribute(Base64Attribute, pdf.Base64 ?? string.Empty));
+
+            if (!string.IsNullOrWhiteSpace(pdf.FolderId))
+                element.Add(new XAttribute(DocuLinkXml.FolderIdAttribute, pdf.FolderId));
+
+            if (pdf.DateAdded.HasValue)
+                element.Add(new XAttribute(DocuLinkXml.DateAddedAttribute,
+                    pdf.DateAdded.Value.ToUniversalTime().ToString("O", CultureInfo.InvariantCulture)));
+
+            if (pdf.FileSizeBytes > 0)
+                element.Add(new XAttribute(DocuLinkXml.FileSizeBytesAttribute,
+                    pdf.FileSizeBytes.ToString(CultureInfo.InvariantCulture)));
+
+            return element;
         }
 
         private static LinkedRectangle ParseLinkedRectangle(XElement element, int index)
@@ -198,19 +270,6 @@ namespace DocuLink.Addin.Modules.CustomXml.Serialization
                     "DocuLink storage LinkedRectangle #" + index + " Rect attribute '" + attributeName + "' is not a valid number.");
 
             return value;
-        }
-
-        private static XElement SerializePdf(PdfDocument pdf, int index)
-        {
-            if (pdf == null) throw new ArgumentNullException(nameof(pdf));
-            if (string.IsNullOrWhiteSpace(pdf.Id))
-                throw new InvalidOperationException("PdfDocument at index " + index + " has an empty Id.");
-
-            return new XElement(
-                DocuLinkXml.Ns + DocuLinkXml.PdfElementName,
-                new XAttribute(IdAttribute, pdf.Id),
-                new XAttribute(NameAttribute, pdf.Name ?? string.Empty),
-                new XAttribute(Base64Attribute, pdf.Base64 ?? string.Empty));
         }
 
         private static XElement SerializeLinkedRectangle(LinkedRectangle linkedRect, int index)

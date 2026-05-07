@@ -2,12 +2,12 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "http://doculink.dev/schemas/webview-messages/1",
   "title": "DocuLink WebView2 Message Protocol v1",
-  "description": "Defines all messages exchanged between the C# host (TaskPaneHost) and the document-viewer web app over the WebView2 postMessage channel.",
+  "description": "Defines all messages exchanged between the C# host and the web apps over the WebView2 postMessage channel.",
 
   "definitions": {
 
     "ViewerReadyMessage": {
-      "description": "Sent once by the web app after JavaScript has initialised. The host responds by posting a PdfsLoadedMessage.",
+      "description": "Sent once by the document-viewer web app after JavaScript has initialised. The host responds by posting a PdfsLoadedMessage.",
       "type": "object",
       "required": ["type"],
       "additionalProperties": false,
@@ -55,12 +55,176 @@
           ]
         }
       ]
+    },
+
+    "ManagerReadyMessage": {
+      "description": "Sent once by the file-manager web app after JavaScript has initialised. The host responds by posting a FilesLoadedMessage.",
+      "type": "object",
+      "required": ["type"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "const": "manager-ready" }
+      },
+      "examples": [
+        { "type": "manager-ready" }
+      ]
+    },
+
+    "FolderPayload": {
+      "description": "A named folder used to organise PDF documents.",
+      "type": "object",
+      "required": ["id", "name"],
+      "additionalProperties": false,
+      "properties": {
+        "id":   { "type": "string", "description": "GUID that uniquely identifies this folder." },
+        "name": { "type": "string", "description": "Display name of the folder." }
+      }
+    },
+
+    "FileMetadataPayload": {
+      "description": "Metadata for a single PDF in the file manager. Does NOT include base64 bytes.",
+      "type": "object",
+      "required": ["id", "name", "status", "fileSizeBytes", "dateAdded"],
+      "additionalProperties": false,
+      "properties": {
+        "id":            { "type": "string", "description": "GUID matching the storage Pdf id." },
+        "name":          { "type": "string", "description": "Display name." },
+        "folderId":      { "type": "string", "description": "GUID of the owning folder, or omitted if uncategorised." },
+        "status":        { "type": "string", "description": "Placeholder status string (e.g. 'ready')." },
+        "fileSizeBytes": { "type": "number", "description": "File size in bytes." },
+        "dateAdded":     { "type": "string", "description": "ISO 8601 UTC datetime when the file was added." }
+      }
+    },
+
+    "FilesLoadedMessage": {
+      "description": "Sent by the C# host to push the current workbook's file list to the file manager. Re-sent after any mutation.",
+      "type": "object",
+      "required": ["type", "folders", "files"],
+      "additionalProperties": false,
+      "properties": {
+        "type":    { "const": "files-loaded" },
+        "folders": { "type": "array", "items": { "$ref": "#/definitions/FolderPayload" } },
+        "files":   { "type": "array", "items": { "$ref": "#/definitions/FileMetadataPayload" } }
+      }
+    },
+
+    "AddFilePayload": {
+      "description": "A single file to be added, as sent from the web UI.",
+      "type": "object",
+      "required": ["name", "base64"],
+      "additionalProperties": false,
+      "properties": {
+        "name":     { "type": "string" },
+        "base64":   { "type": "string" },
+        "folderId": { "type": "string", "description": "Optional target folder GUID." }
+      }
+    },
+
+    "AddFilesMessage": {
+      "description": "Sent by the file-manager web app when the user drops or picks files.",
+      "type": "object",
+      "required": ["type", "files"],
+      "additionalProperties": false,
+      "properties": {
+        "type":  { "const": "add-files" },
+        "files": { "type": "array", "items": { "$ref": "#/definitions/AddFilePayload" }, "minItems": 1 }
+      }
+    },
+
+    "RenameFileMessage": {
+      "description": "Sent by the file-manager web app when the user renames a file.",
+      "type": "object",
+      "required": ["type", "id", "newName"],
+      "additionalProperties": false,
+      "properties": {
+        "type":    { "const": "rename-file" },
+        "id":      { "type": "string" },
+        "newName": { "type": "string" }
+      }
+    },
+
+    "RemoveFileMessage": {
+      "description": "Sent by the file-manager web app when the user removes a file.",
+      "type": "object",
+      "required": ["type", "id"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "const": "remove-file" },
+        "id":   { "type": "string" }
+      }
+    },
+
+    "MoveFileMessage": {
+      "description": "Sent by the file-manager web app when the user moves a file to a different folder. Send folderId as null/omitted to move to uncategorised.",
+      "type": "object",
+      "required": ["type", "id"],
+      "additionalProperties": false,
+      "properties": {
+        "type":     { "const": "move-file" },
+        "id":       { "type": "string" },
+        "folderId": { "type": "string" }
+      }
+    },
+
+    "AddFolderMessage": {
+      "description": "Sent by the file-manager web app when the user creates a new folder.",
+      "type": "object",
+      "required": ["type", "name"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "const": "add-folder" },
+        "name": { "type": "string" }
+      }
+    },
+
+    "RenameFolderMessage": {
+      "description": "Sent by the file-manager web app when the user renames a folder.",
+      "type": "object",
+      "required": ["type", "id", "newName"],
+      "additionalProperties": false,
+      "properties": {
+        "type":    { "const": "rename-folder" },
+        "id":      { "type": "string" },
+        "newName": { "type": "string" }
+      }
+    },
+
+    "RemoveFolderMessage": {
+      "description": "Sent by the file-manager web app when the user deletes a folder. Files in the folder become uncategorised.",
+      "type": "object",
+      "required": ["type", "id"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "const": "remove-folder" },
+        "id":   { "type": "string" }
+      }
+    },
+
+    "SetSelectedFolderMessage": {
+      "description": "Sent when the user changes the active folder in the file manager. Used by the host when importing files from OS drag/drop (Explorer) so new PDFs match the current selection. Omit folderId when 'All Files' is selected.",
+      "type": "object",
+      "required": ["type"],
+      "additionalProperties": false,
+      "properties": {
+        "type":     { "const": "set-selected-folder" },
+        "folderId": { "type": "string", "description": "GUID of the selected folder, absent for uncategorised / All Files." }
+      }
     }
 
   },
 
   "oneOf": [
     { "$ref": "#/definitions/ViewerReadyMessage" },
-    { "$ref": "#/definitions/PdfsLoadedMessage" }
+    { "$ref": "#/definitions/PdfsLoadedMessage" },
+    { "$ref": "#/definitions/ManagerReadyMessage" },
+    { "$ref": "#/definitions/FilesLoadedMessage" },
+    { "$ref": "#/definitions/AddFilesMessage" },
+    { "$ref": "#/definitions/RenameFileMessage" },
+    { "$ref": "#/definitions/RemoveFileMessage" },
+    { "$ref": "#/definitions/MoveFileMessage" },
+    { "$ref": "#/definitions/AddFolderMessage" },
+    { "$ref": "#/definitions/RenameFolderMessage" },
+    { "$ref": "#/definitions/RemoveFolderMessage" },
+    { "$ref": "#/definitions/SetSelectedFolderMessage" }
   ]
 }

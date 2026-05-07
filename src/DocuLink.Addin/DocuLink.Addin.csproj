@@ -231,10 +231,17 @@
     <Compile Include="Modules\CustomXml\Models\LinkedCell.cs" />
     <Compile Include="Modules\CustomXml\Models\LinkedRectangle.cs" />
     <Compile Include="Modules\CustomXml\Models\PdfDocument.cs" />
+    <Compile Include="Modules\CustomXml\Models\PdfFolder.cs" />
     <Compile Include="Modules\CustomXml\Models\PdfRectangle.cs" />
     <Compile Include="Modules\CustomXml\Models\RectangleCoordinateSpace.cs" />
     <Compile Include="Modules\CustomXml\Serialization\DocuLinkStorageSerializer.cs" />
     <Compile Include="Modules\Services\AddPdfDocumentService.cs" />
+    <Compile Include="Modules\Services\ManageFilesService.cs" />
+    <Compile Include="Modules\WebView\FileManagerHost.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="Modules\WebView\FileManagerMessageParser.cs" />
+    <Compile Include="Modules\WebView\FileManagerMessageSerializer.cs" />
     <Compile Include="Modules\WebView\HostMessageParser.cs" />
     <Compile Include="Modules\WebView\HostMessageSerializer.cs" />
     <Compile Include="Modules\WebView\TaskPaneHost.cs">
@@ -262,13 +269,15 @@
   <PropertyGroup>
     <WebRootDir>$(MSBuildProjectDirectory)\..\web</WebRootDir>
     <ViewerDistDir>$(WebRootDir)\apps\document-viewer\dist</ViewerDistDir>
+    <FileManagerDistDir>$(WebRootDir)\apps\file-manager\dist</FileManagerDistDir>
   </PropertyGroup>
   <!-- Enumerate web source files so MSBuild can skip npm build when nothing changed -->
   <ItemGroup>
     <WebSourceFiles Include="$(WebRootDir)\apps\document-viewer\src\**\*.*" />
+    <WebSourceFiles Include="$(WebRootDir)\apps\file-manager\src\**\*.*" />
     <WebSourceFiles Include="$(WebRootDir)\packages\**\src\**\*.*" />
   </ItemGroup>
-  <Target Name="BuildWebAssets" BeforeTargets="Build" Inputs="@(WebSourceFiles)" Outputs="$(ViewerDistDir)\index.js;$(ViewerDistDir)\index.css">
+  <Target Name="BuildWebAssets" BeforeTargets="Build" Inputs="@(WebSourceFiles)" Outputs="$(ViewerDistDir)\index.js;$(ViewerDistDir)\index.css;$(FileManagerDistDir)\index.js;$(FileManagerDistDir)\index.css">
     <Message Text="[DocuLink] Installing web dependencies…" Importance="high" />
     <Exec Command="cmd /c npm install" WorkingDirectory="$(WebRootDir)" Condition="!Exists('$(WebRootDir)\node_modules')" />
     <Message Text="[DocuLink] Building web assets…" Importance="high" />
@@ -277,9 +286,15 @@
   <Target Name="CopyWebUiToOutput" AfterTargets="BuildWebAssets">
     <Message Text="[DocuLink] Copying web UI to output…" Importance="high" />
     <ItemGroup>
-      <WebUiFiles Include="$(ViewerDistDir)\**\*.*" />
+      <!-- document-viewer dist → webui/ (root) -->
+      <ViewerUiFiles Include="$(ViewerDistDir)\**\*.*" />
+      <!-- file-manager dist → webui/file-manager/ -->
+      <FileManagerUiFiles Include="$(FileManagerDistDir)\**\*.*" />
     </ItemGroup>
-    <Copy SourceFiles="@(WebUiFiles)" DestinationFiles="@(WebUiFiles->'$(OutputPath)webui\%(RecursiveDir)%(Filename)%(Extension)')" />
+    <Copy SourceFiles="@(ViewerUiFiles)"
+          DestinationFiles="@(ViewerUiFiles->'$(OutputPath)webui\%(RecursiveDir)%(Filename)%(Extension)')" />
+    <Copy SourceFiles="@(FileManagerUiFiles)"
+          DestinationFiles="@(FileManagerUiFiles->'$(OutputPath)webui\file-manager\%(RecursiveDir)%(Filename)%(Extension)')" />
   </Target>
   <!-- This section defines VSTO properties that describe the host-changeable project properties. -->
   <ProjectExtensions>

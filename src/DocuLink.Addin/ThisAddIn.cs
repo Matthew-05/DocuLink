@@ -11,6 +11,7 @@ namespace DocuLink.Addin
     {
         private Microsoft.Office.Tools.CustomTaskPane _taskPane;
         private TaskPaneHost _taskPaneHost;
+        private FileManagerHost _fileManagerWindow;
 
         internal void ShowTaskPane()
         {
@@ -25,6 +26,18 @@ namespace DocuLink.Addin
         internal void RefreshTaskPanePdfs()
         {
             _taskPaneHost?.SendPdfsToWebView();
+        }
+
+        internal void ShowManageFilesWindow()
+        {
+            if (_fileManagerWindow == null || _fileManagerWindow.IsDisposed)
+            {
+                _fileManagerWindow = new FileManagerHost();
+                _fileManagerWindow.FormClosed += (s, e) => _fileManagerWindow = null;
+            }
+
+            _fileManagerWindow.Show();
+            _fileManagerWindow.BringToFront();
         }
 
         private void EnsureTaskPaneCreated()
