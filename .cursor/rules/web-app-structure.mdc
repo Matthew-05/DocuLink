@@ -1,0 +1,71 @@
+---
+description: Structure and import conventions for DocuLink web apps (file-manager, document-viewer)
+globs: src/web/**/*
+alwaysApply: false
+---
+
+# Web App Structure
+
+Both apps (`file-manager`, `document-viewer`) share the same layout conventions.
+
+## Entry points
+
+- `main.ts` — imports `{ mountApp }` from `./app.js` and calls it. No logic here.
+- `app.ts` — exports a single `mountApp(root: HTMLElement): void` function that wires components together and mounts them.
+
+```ts
+// ✅ app.ts
+export function mountApp(root: HTMLElement): void {
+  const viewer = new PdfViewer();
+  const { toolbarElement } = initializeViewer(viewer);
+  root.append(toolbarElement, viewer.element);
+}
+
+// ❌ not a class
+export class App { ... }
+```
+
+## Component folders
+
+Each component lives in its own folder named after it. The single `.ts` file inside shares the folder name — no `index.ts` barrels.
+
+```
+components/
+  toolbar/
+    toolbar.ts        ✅ named file
+    zoom-controller.ts
+    page-controller.ts
+    pdf-selector.ts
+    search-bar.ts
+  viewer/
+    pdf-viewer.ts
+    initialize-viewer.ts
+```
+
+Import directly from the named file, never from a barrel:
+
+```ts
+// ✅
+import { createToolbar } from "../toolbar/toolbar.js";
+import { ZoomController } from "../toolbar/zoom-controller.js";
+
+// ❌
+import { createToolbar } from "../toolbar/index.js";
+```
+
+## Styles
+
+Each component has a dedicated CSS file in `src/styles/`. `main.css` is the sole entry point that `@import`s them all — styles are never imported inside `.ts` files.
+
+```css
+/* main.css */
+@import "@doculink/shared/base.css";   /* always first */
+@import "./toolbar.css";
+@import "./zoom-controller.css";
+@import "./page-controller.css";
+@import "./pdf-selector.css";
+@import "./search-bar.css";
+@import "./viewer.css";
+```
+
+One CSS file per component. Do not lump multiple components into a single CSS file.

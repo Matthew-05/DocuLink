@@ -1,4 +1,4 @@
-import { createToolbar } from "../toolbar/index.js";
+import { createToolbar } from "../toolbar/toolbar.js";
 import { ZoomController } from "../toolbar/zoom-controller.js";
 import { connectViewerToHostBridge } from "./viewer-bridge.js";
 import type { PdfViewer } from "./pdf-viewer.js";

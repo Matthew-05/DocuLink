@@ -1,0 +1,82 @@
+/* DocuLink shared design tokens, CSS reset, and base element styles.
+   Import this as the first stylesheet in every DocuLink web app. */
+
+/* ── Design tokens ─────────────────────────────────────────────── */
+:root {
+  /* Palette */
+  --color-bg:           #f4f4f9;
+  --color-surface:      #ffffff;
+  --color-surface-2:    #ececf2;
+  --color-border:       #d4d4e0;
+  --color-text:         #1a1a28;
+  --color-text-muted:   #5c5c70;
+  --color-accent:       #7c6af7;
+  --color-accent-hover: #6a5ae0;
+  --color-accent-rgb:   124, 106, 247;
+  --color-danger:       #c42b2b;
+  --color-danger-hover: #a82424;
+  --color-success:      #1f8f4a;
+  --color-surface-hover: var(--color-surface-2);
+
+  /* Spacing & shape */
+  --radius:    6px;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --gap:       12px;
+
+  /* Typography */
+  --font-sans: "Segoe UI", system-ui, sans-serif;
+  --font-mono: "Cascadia Code", "Fira Code", monospace;
+  --font-size-sm:   12px;
+  --font-size-base: 13px;
+}
+
+/* ── Reset ─────────────────────────────────────────────────────── */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body {
+  height: 100%;
+  overflow: hidden;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  font-size: var(--font-size-base);
+}
+
+button {
+  cursor: pointer;
+  background: none;
+  border: none;
+  color: inherit;
+  font: inherit;
+}
+
+input {
+  background: none;
+  border: none;
+  color: inherit;
+  font: inherit;
+  outline: none;
+}
+
+#app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+/* ── Scrollbars ────────────────────────────────────────────────── */
+::-webkit-scrollbar       { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover { background: var(--color-text-muted); }
