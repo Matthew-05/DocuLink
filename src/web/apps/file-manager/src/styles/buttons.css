@@ -1,0 +1,36 @@
+/* Shared icon-button utilities used across folder panel and file table */
+
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  border-radius: var(--radius);
+  padding: 3px 6px;
+  font-size: 14px;
+  line-height: 1;
+  transition: background 0.1s, color 0.1s;
+}
+
+.icon-btn:hover {
+  background: var(--color-surface-2);
+  color: var(--color-text);
+}
+
+.icon-btn--sm {
+  font-size: 12px;
+  padding: 2px 5px;
+}
+
+.icon-btn--danger:hover {
+  background: rgba(224, 85, 85, 0.15);
+  color: var(--color-danger);
+}
+
+.icon-btn--confirm:hover {
+  background: rgba(62, 207, 110, 0.15);
+  color: var(--color-success);
+}

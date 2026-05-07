@@ -1,9 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <DocuLinkStore xmlns="http://doculink.dev/schemas/storage/1" version="1">
+  <Folders>
+    <Folder id="f1a2b3c4-d5e6-7890-abcd-ef1234567890" name="Invoices" />
+  </Folders>
   <Pdfs>
     <Pdf id="3fa85f64-5717-4562-b3fc-2c963f66afa6"
          name="Invoice Q1 2026.pdf"
-         Base64="JVBERi0xLjQKJeLjz9M=" />
+         Base64="JVBERi0xLjQKJeLjz9M="
+         folderId="f1a2b3c4-d5e6-7890-abcd-ef1234567890"
+         dateAdded="2026-05-07T18:00:00Z"
+         fileSizeBytes="12345" />
   </Pdfs>
   <LinkedRectangles>
     <LinkedRectangle id="a1b2c3d4-e5f6-7890-abcd-ef1234567890"

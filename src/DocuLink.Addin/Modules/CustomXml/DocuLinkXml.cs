@@ -12,6 +12,10 @@ namespace DocuLink.Addin.Modules.CustomXml
 
         public const string RootElementName = "DocuLinkStore";
 
+        public const string FoldersElementName = "Folders";
+
+        public const string FolderElementName = "Folder";
+
         public const string PdfsElementName = "Pdfs";
 
         public const string PdfElementName = "Pdf";
@@ -25,5 +29,11 @@ namespace DocuLink.Addin.Modules.CustomXml
         public const string RectElementName = "Rect";
 
         public const string PdfIdAttribute = "pdfId";
+
+        public const string FolderIdAttribute = "folderId";
+
+        public const string DateAddedAttribute = "dateAdded";
+
+        public const string FileSizeBytesAttribute = "fileSizeBytes";
     }
 }

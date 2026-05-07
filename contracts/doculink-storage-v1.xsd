@@ -8,10 +8,24 @@
 
   <xs:complexType name="DocuLinkStoreType">
     <xs:sequence>
+      <xs:element name="Folders" type="dl:FoldersType" />
       <xs:element name="Pdfs" type="dl:PdfsType" />
       <xs:element name="LinkedRectangles" type="dl:LinkedRectanglesType" />
     </xs:sequence>
     <xs:attribute name="version" type="xs:unsignedInt" use="required" />
+  </xs:complexType>
+
+  <!-- ── Folder catalogue ───────────────────────────────────────────────── -->
+
+  <xs:complexType name="FoldersType">
+    <xs:sequence>
+      <xs:element name="Folder" type="dl:FolderType" minOccurs="0" maxOccurs="unbounded" />
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="FolderType">
+    <xs:attribute name="id"   type="xs:string" use="required" />
+    <xs:attribute name="name" type="xs:string" use="required" />
   </xs:complexType>
 
   <!-- ── PDF catalogue ──────────────────────────────────────────────────── -->
@@ -23,9 +37,12 @@
   </xs:complexType>
 
   <xs:complexType name="PdfType">
-    <xs:attribute name="id"     type="xs:string" use="required" />
-    <xs:attribute name="name"   type="xs:string" use="required" />
-    <xs:attribute name="Base64" type="xs:string" use="required" />
+    <xs:attribute name="id"            type="xs:string"   use="required" />
+    <xs:attribute name="name"          type="xs:string"   use="required" />
+    <xs:attribute name="Base64"        type="xs:string"   use="required" />
+    <xs:attribute name="folderId"      type="xs:string"   use="optional" />
+    <xs:attribute name="dateAdded"     type="xs:dateTime" use="optional" />
+    <xs:attribute name="fileSizeBytes" type="xs:long"     use="optional" />
   </xs:complexType>
 
   <!-- ── Cell-to-PDF-region links ───────────────────────────────────────── -->

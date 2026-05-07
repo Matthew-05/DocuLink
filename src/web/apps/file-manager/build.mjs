@@ -1,0 +1,46 @@
+import * as esbuild from "esbuild";
+import { mkdirSync, writeFileSync } from "fs";
+
+const isProd = process.argv.includes("--prod");
+
+mkdirSync("dist", { recursive: true });
+
+writeFileSync(
+  "dist/index.html",
+  `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>DocuLink — Manage Files</title>
+    <link rel="stylesheet" href="index.css" />
+  </head>
+  <body>
+    <div id="app"></div>
+    <script src="index.js"></script>
+  </body>
+</html>
+`
+);
+
+const sharedOptions = {
+  bundle: true,
+  minify: isProd,
+  sourcemap: !isProd ? "inline" : false,
+};
+
+await esbuild.build({
+  ...sharedOptions,
+  entryPoints: ["src/main.ts"],
+  outfile: "dist/index.js",
+  format: "iife",
+  platform: "browser",
+});
+
+await esbuild.build({
+  ...sharedOptions,
+  entryPoints: ["src/styles/main.css"],
+  outfile: "dist/index.css",
+});
+
+console.log("[DocuLink] file-manager build complete");

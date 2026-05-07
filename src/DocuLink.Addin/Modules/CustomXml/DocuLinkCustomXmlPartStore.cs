@@ -23,11 +23,11 @@ namespace DocuLink.Addin.Modules.CustomXml
         {
             Office.CustomXMLPart part = FindDocuLinkPart();
             if (part == null)
-                return new DocuLinkStorage(DocuLinkXml.SchemaVersion, new PdfDocument[0], new LinkedRectangle[0]);
+                return new DocuLinkStorage(DocuLinkXml.SchemaVersion, new PdfFolder[0], new PdfDocument[0], new LinkedRectangle[0]);
 
             string xml = part.XML;
             if (string.IsNullOrWhiteSpace(xml))
-                return new DocuLinkStorage(DocuLinkXml.SchemaVersion, new PdfDocument[0], new LinkedRectangle[0]);
+                return new DocuLinkStorage(DocuLinkXml.SchemaVersion, new PdfFolder[0], new PdfDocument[0], new LinkedRectangle[0]);
 
             try
             {
@@ -56,6 +56,8 @@ namespace DocuLink.Addin.Modules.CustomXml
             parts.Add(xml, missing);
         }
 
+        // ── PDF operations ────────────────────────────────────────────────────
+
         public bool TryGetPdf(string id, out PdfDocument pdf)
         {
             if (string.IsNullOrWhiteSpace(id))
@@ -80,7 +82,7 @@ namespace DocuLink.Addin.Modules.CustomXml
             else
                 pdfs.Add(pdf);
 
-            Save(new DocuLinkStorage(DocuLinkXml.SchemaVersion, pdfs, storage.LinkedRectangles));
+            Save(new DocuLinkStorage(DocuLinkXml.SchemaVersion, storage.Folders, pdfs, storage.LinkedRectangles));
         }
 
         public bool RemovePdf(string id)
@@ -93,9 +95,52 @@ namespace DocuLink.Addin.Modules.CustomXml
             if (pdfs.Count == storage.Pdfs.Count)
                 return false;
 
-            Save(new DocuLinkStorage(DocuLinkXml.SchemaVersion, pdfs, storage.LinkedRectangles));
+            Save(new DocuLinkStorage(DocuLinkXml.SchemaVersion, storage.Folders, pdfs, storage.LinkedRectangles));
             return true;
         }
+
+        // ── Folder operations ─────────────────────────────────────────────────
+
+        public void UpsertFolder(PdfFolder folder)
+        {
+            if (folder == null) throw new ArgumentNullException(nameof(folder));
+            if (string.IsNullOrWhiteSpace(folder.Id))
+                throw new ArgumentException("Folder id must be non-empty.", nameof(folder));
+
+            DocuLinkStorage storage = Load();
+            List<PdfFolder> folders = storage.Folders.ToList();
+            int index = folders.FindIndex(f => string.Equals(f.Id, folder.Id, StringComparison.Ordinal));
+            if (index >= 0)
+                folders[index] = folder;
+            else
+                folders.Add(folder);
+
+            Save(new DocuLinkStorage(DocuLinkXml.SchemaVersion, folders, storage.Pdfs, storage.LinkedRectangles));
+        }
+
+        public bool RemoveFolder(string id)
+        {
+            if (string.IsNullOrWhiteSpace(id))
+                throw new ArgumentException("Folder id must be non-empty.", nameof(id));
+
+            DocuLinkStorage storage = Load();
+            List<PdfFolder> folders = storage.Folders.Where(f => !string.Equals(f.Id, id, StringComparison.Ordinal)).ToList();
+            if (folders.Count == storage.Folders.Count)
+                return false;
+
+            // Clear folderId on any PDFs that belonged to this folder.
+            List<PdfDocument> pdfs = storage.Pdfs.Select(p =>
+            {
+                if (!string.Equals(p.FolderId, id, StringComparison.Ordinal))
+                    return p;
+                return new PdfDocument(p.Id, p.Name, p.Base64, null, p.DateAdded, p.FileSizeBytes);
+            }).ToList();
+
+            Save(new DocuLinkStorage(DocuLinkXml.SchemaVersion, folders, pdfs, storage.LinkedRectangles));
+            return true;
+        }
+
+        // ── LinkedRectangle operations ────────────────────────────────────────
 
         public bool TryGetLinkedRectangle(string id, out LinkedRectangle linkedRectangle)
         {
@@ -121,7 +166,7 @@ namespace DocuLink.Addin.Modules.CustomXml
             else
                 linkedRectangles.Add(linkedRectangle);
 
-            Save(new DocuLinkStorage(DocuLinkXml.SchemaVersion, storage.Pdfs, linkedRectangles));
+            Save(new DocuLinkStorage(DocuLinkXml.SchemaVersion, storage.Folders, storage.Pdfs, linkedRectangles));
         }
 
         public bool RemoveLinkedRectangle(string id)
@@ -136,7 +181,7 @@ namespace DocuLink.Addin.Modules.CustomXml
             if (linkedRectangles.Count == storage.LinkedRectangles.Count)
                 return false;
 
-            Save(new DocuLinkStorage(DocuLinkXml.SchemaVersion, storage.Pdfs, linkedRectangles));
+            Save(new DocuLinkStorage(DocuLinkXml.SchemaVersion, storage.Folders, storage.Pdfs, linkedRectangles));
             return true;
         }
 

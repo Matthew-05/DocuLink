@@ -12,6 +12,10 @@
                   label="Add PDF"
                   size="large"
                   onAction="OnAddPdfDocuments" />
+          <button id="DocuLink.BtnManageFiles"
+                  label="Manage Files"
+                  size="large"
+                  onAction="OnManageFiles" />
         </group>
       </tab>
     </tabs>
