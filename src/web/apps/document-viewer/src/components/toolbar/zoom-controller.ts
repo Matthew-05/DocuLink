@@ -3,8 +3,11 @@ import type { ZoomLevel } from "../../types/index.js";
 const MIN_SCALE = 0.25;
 const MAX_SCALE = 4.0;
 const STEP = 0.25;
+const SCROLL_STEP = 0.1;
 
 export class ZoomController {
+  static readonly SCROLL_STEP = SCROLL_STEP;
+
   readonly element: HTMLElement;
 
   private _scale: ZoomLevel = 1.0;
@@ -19,7 +22,7 @@ export class ZoomController {
     decreaseBtn.className = "zoom-controller__btn";
     decreaseBtn.title = "Zoom out";
     decreaseBtn.textContent = "−";
-    decreaseBtn.addEventListener("click", () => this._adjust(-STEP));
+    decreaseBtn.addEventListener("click", () => this.adjustBy(-STEP));
 
     this._label = document.createElement("span");
     this._label.className = "zoom-controller__label";
@@ -28,7 +31,7 @@ export class ZoomController {
     increaseBtn.className = "zoom-controller__btn";
     increaseBtn.title = "Zoom in";
     increaseBtn.textContent = "+";
-    increaseBtn.addEventListener("click", () => this._adjust(+STEP));
+    increaseBtn.addEventListener("click", () => this.adjustBy(+STEP));
 
     this.element.append(decreaseBtn, this._label, increaseBtn);
     this._updateLabel();
@@ -43,7 +46,7 @@ export class ZoomController {
     this._updateLabel();
   }
 
-  private _adjust(delta: number): void {
+  adjustBy(delta: number): void {
     this.setScale(Math.round((this._scale + delta) * 100) / 100);
     for (const cb of this._callbacks) cb(this._scale);
   }

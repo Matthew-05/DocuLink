@@ -1,4 +1,5 @@
 import { createToolbar } from "../toolbar/index.js";
+import { ZoomController } from "../toolbar/zoom-controller.js";
 import { connectViewerToHostBridge } from "./viewer-bridge.js";
 import type { PdfViewer } from "./pdf-viewer.js";
 
@@ -6,6 +7,7 @@ import type { PdfViewer } from "./pdf-viewer.js";
  * Creates and wires the toolbar to the viewer, then connects the host bridge.
  * Returns the toolbar element for the caller to mount in the DOM.
  */
+
 export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLElement } {
   const { element: toolbarElement, zoom, page, selector } = createToolbar();
 
@@ -25,6 +27,16 @@ export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLEleme
   selector.onSelect((entry) => {
     void viewer.loadDocument(entry.url);
   });
+
+  viewer.element.addEventListener(
+    "wheel",
+    (e) => {
+      if (!e.ctrlKey) return;
+      e.preventDefault();
+      zoom.adjustBy(e.deltaY > 0 ? -ZoomController.SCROLL_STEP : ZoomController.SCROLL_STEP);
+    },
+    { passive: false }
+  );
 
   connectViewerToHostBridge(viewer, selector);
 

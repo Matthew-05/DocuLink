@@ -1,24 +1,57 @@
 import type * as pdfjsLib from "pdfjs-dist";
 import type { ZoomLevel } from "../../types/index.js";
 
+export interface PageBaseDimensions {
+  baseWidth: number;
+  baseHeight: number;
+}
+
 /**
- * Renders a single PDF page onto the provided canvas at the given scale.
+ * Renders a single PDF page into the given wrapper div.
+ *
+ * Creates a new canvas, renders into it while the old canvas remains visible,
+ * then atomically swaps in the new canvas via replaceWith — the wrapper never
+ * shows a blank state.
+ *
+ * Also updates the wrapper's inline width/height to match the rendered viewport
+ * and returns the intrinsic page dimensions at scale=1 so the caller can
+ * resize wrappers instantly on future zoom changes without re-rendering.
  */
 export async function renderPage(
   doc: pdfjsLib.PDFDocumentProxy,
   pageNumber: number,
-  canvas: HTMLCanvasElement,
+  wrapper: HTMLDivElement,
   scale: ZoomLevel
-): Promise<void> {
+): Promise<PageBaseDimensions> {
   const page = await doc.getPage(pageNumber);
   const viewport = page.getViewport({ scale });
 
+  const canvas = document.createElement("canvas");
+  canvas.className = "viewer__canvas";
   canvas.width = viewport.width;
   canvas.height = viewport.height;
 
   const ctx = canvas.getContext("2d");
-  if (!ctx) return;
+  if (!ctx) {
+    page.cleanup();
+    return { baseWidth: viewport.width / scale, baseHeight: viewport.height / scale };
+  }
 
   await page.render({ canvasContext: ctx, viewport }).promise;
   page.cleanup();
+
+  // Update wrapper layout dimensions to match the new viewport.
+  wrapper.style.width = `${viewport.width}px`;
+  wrapper.style.height = `${viewport.height}px`;
+
+  // Atomic swap: old canvas stays visible until this synchronous call.
+  // The new canvas only appears once fully rendered.
+  const old = wrapper.querySelector("canvas");
+  if (old) {
+    old.replaceWith(canvas);
+  } else {
+    wrapper.appendChild(canvas);
+  }
+
+  return { baseWidth: viewport.width / scale, baseHeight: viewport.height / scale };
 }
