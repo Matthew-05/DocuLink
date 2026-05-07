@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using DocuLink.Addin.Modules.CustomXml;
@@ -16,6 +17,12 @@ namespace DocuLink.Addin.Modules.WebView
     /// <summary>Hosts the document-viewer web UI inside a WebView2 control.</summary>
     public sealed class TaskPaneHost : UserControl
     {
+        // SetFocus (not SetForegroundWindow) is required: it directly reassigns which
+        // child HWND receives WM_KEYDOWN, sending WM_KILLFOCUS to the Chromium window
+        // inside WebView2 and WM_SETFOCUS to the Excel workbook grid window.
+        [DllImport("user32.dll")]
+        private static extern IntPtr SetFocus(IntPtr hWnd);
+
         private readonly WebView2 _webView = new WebView2();
         private ProgressScope _cacheProgressScope;
 
@@ -86,6 +93,7 @@ namespace DocuLink.Addin.Modules.WebView
                         break;
 
                     case "cache-build-started":
+                        _cacheProgressScope?.Dispose();
                         _cacheProgressScope = new ProgressScope("Building document index\u2026");
                         break;
 
@@ -117,6 +125,25 @@ namespace DocuLink.Addin.Modules.WebView
                 wb);
 
             SendLinkedRectanglesToWebView();
+
+            // WebView2's Chromium child window holds Win32 keyboard focus after the
+            // drag ends. COM calls (e.g. ActiveCell.Select) only update Excel's data
+            // model and do not move the Win32 focus HWND, so keyboard events keep
+            // going to WebView2. SetFocus on the workbook window (Application.ActiveWindow.Hwnd,
+            // the EXCEL7 class window that hosts the cell grid) sends WM_KILLFOCUS to
+            // Chromium and WM_SETFOCUS to the grid — the same path as clicking the
+            // formula bar. BeginInvoke defers this until after WebView2 finishes its
+            // own post-mouseup event processing, which would otherwise re-assert focus.
+            BeginInvoke(new Action(() =>
+            {
+                try
+                {
+                    var window = Globals.ThisAddIn.Application?.ActiveWindow;
+                    if (window != null)
+                        SetFocus(new IntPtr(window.Hwnd));
+                }
+                catch { }
+            }));
         }
 
         /// <summary>
