@@ -12,21 +12,9 @@ namespace DocuLink.Addin.Modules.WebView
     {
         private static readonly JavaScriptSerializer _serializer = new JavaScriptSerializer();
 
-        public static string GetMessageType(string json)
-        {
-            if (string.IsNullOrWhiteSpace(json))
-                return null;
-
-            try
-            {
-                var dict = _serializer.Deserialize<Dictionary<string, object>>(json);
-                if (dict != null && dict.TryGetValue("type", out object typeVal))
-                    return typeVal as string;
-            }
-            catch { }
-
-            return null;
-        }
+        /// <inheritdoc cref="WebMessageParser.GetMessageType"/>
+        public static string GetMessageType(string json) =>
+            WebMessageParser.GetMessageType(json);
 
         public static AddFilesRequest ParseAddFiles(string json)
         {

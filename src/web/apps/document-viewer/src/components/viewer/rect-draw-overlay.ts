@@ -1,7 +1,6 @@
 import type { PdfViewer } from "./pdf-viewer.js";
 import type { TextContentCache } from "../../services/text-content-cache.js";
 import { extractText } from "../../services/text-extractor.js";
-import { formatText } from "../../services/text-formatter.js";
 import type { LinkRectPayload, NormalizedRect } from "../../types/index.js";
 
 type RectCreatedCallback = (payload: LinkRectPayload) => void;
@@ -25,7 +24,7 @@ const MIN_DRAG_PX = 4;
  */
 export class RectDrawOverlay {
   private _dragState: DragState | null = null;
-  private _onRectCreated: RectCreatedCallback | null = null;
+  private readonly _onRectCreatedCallbacks: RectCreatedCallback[] = [];
 
   private readonly _boundMouseDown: (e: MouseEvent) => void;
   private readonly _boundMouseMove: (e: MouseEvent) => void;
@@ -43,7 +42,7 @@ export class RectDrawOverlay {
   }
 
   onRectCreated(cb: RectCreatedCallback): void {
-    this._onRectCreated = cb;
+    this._onRectCreatedCallbacks.push(cb);
   }
 
   private _onMouseDown(e: MouseEvent): void {
@@ -123,9 +122,9 @@ export class RectDrawOverlay {
 
     const pdfId   = this._viewer.getActivePdfId() ?? "";
     const entries = this._cache.get(pdfId, pageIndex);
-    const text    = formatText(extractText(entries, normalizedRect));
+    const text    = extractText(entries, normalizedRect);
 
-    this._onRectCreated?.({ pdfId, page: pageIndex, rect: normalizedRect, text });
+    for (const cb of this._onRectCreatedCallbacks) cb({ pdfId, page: pageIndex, rect: normalizedRect, text });
   }
 
   private _findPageWrapper(target: EventTarget | null): HTMLDivElement | null {

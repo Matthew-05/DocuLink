@@ -62,16 +62,19 @@ export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLEleme
     });
   });
 
+  let cacheGeneration = 0;
+
   viewer.onDocumentChanged(() => {
     const pdfId = viewer.getActivePdfId();
     const doc   = viewer.getDocument();
     if (!pdfId || !doc) return;
 
+    const gen = ++cacheGeneration;
     cache.clear();
     sendCacheBuildStarted();
     void cache.buildAll(pdfId, doc)
-      .then(() => sendCacheBuildComplete())
-      .catch(() => sendCacheBuildComplete());
+      .then(() => { if (gen === cacheGeneration) sendCacheBuildComplete(); })
+      .catch(() => { if (gen === cacheGeneration) sendCacheBuildComplete(); });
   });
 
   // ── Host bridge ───────────────────────────────────────────────────────────
