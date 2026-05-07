@@ -31,16 +31,15 @@ namespace DocuLink.Addin
         internal void ShowManageFilesWindow()
         {
             if (_fileManagerWindow == null || _fileManagerWindow.IsDisposed)
-            {
                 _fileManagerWindow = new FileManagerHost();
-                _fileManagerWindow.FormClosed += (s, e) => _fileManagerWindow = null;
-            }
 
             _fileManagerWindow.Show();
             _fileManagerWindow.BringToFront();
         }
 
-        private void EnsureTaskPaneCreated()
+        internal TaskPaneHost TaskPaneHost => _taskPaneHost;
+
+        internal void EnsureTaskPaneCreated()
         {
             if (_taskPane != null)
                 return;
@@ -51,8 +50,15 @@ namespace DocuLink.Addin
             _taskPane.Width = 420;
         }
 
+        internal void PreloadFileManagerWindow()
+        {
+            _fileManagerWindow = new FileManagerHost();
+            _ = _fileManagerWindow.Handle;
+        }
+
         private void ThisAddIn_Startup(object sender, System.EventArgs e)
         {
+            WebViewEagerLoader.Initialize(this);
         }
 
         private void ThisAddIn_Shutdown(object sender, System.EventArgs e)
