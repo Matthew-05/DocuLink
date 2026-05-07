@@ -1,5 +1,3 @@
-using System.Windows.Forms;
-
 namespace DocuLink.Addin.Modules.UI
 {
     /// <summary>
@@ -22,9 +20,6 @@ namespace DocuLink.Addin.Modules.UI
         {
             _dialog = new ProgressDialog(message);
             _dialog.Show();
-            // Pump the message loop once so the window actually paints before
-            // any blocking work begins on the UI thread.
-            Application.DoEvents();
         }
 
         public void Dispose()

@@ -69,9 +69,9 @@ export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLEleme
 
     cache.clear();
     sendCacheBuildStarted();
-    void cache.buildAll(pdfId, doc).then(() => {
-      sendCacheBuildComplete();
-    });
+    void cache.buildAll(pdfId, doc)
+      .then(() => sendCacheBuildComplete())
+      .catch(() => sendCacheBuildComplete());
   });
 
   // ── Host bridge ───────────────────────────────────────────────────────────
