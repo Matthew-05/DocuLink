@@ -1,0 +1,66 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "http://doculink.dev/schemas/webview-messages/1",
+  "title": "DocuLink WebView2 Message Protocol v1",
+  "description": "Defines all messages exchanged between the C# host (TaskPaneHost) and the document-viewer web app over the WebView2 postMessage channel.",
+
+  "definitions": {
+
+    "ViewerReadyMessage": {
+      "description": "Sent once by the web app after JavaScript has initialised. The host responds by posting a PdfsLoadedMessage.",
+      "type": "object",
+      "required": ["type"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "const": "viewer-ready" }
+      },
+      "examples": [
+        { "type": "viewer-ready" }
+      ]
+    },
+
+    "PdfPayload": {
+      "description": "A single PDF document embedded in the workbook.",
+      "type": "object",
+      "required": ["id", "name", "base64"],
+      "additionalProperties": false,
+      "properties": {
+        "id":     { "type": "string", "description": "GUID that uniquely identifies this PDF within the workbook." },
+        "name":   { "type": "string", "description": "Display name (typically the original filename)." },
+        "base64": { "type": "string", "description": "Base-64 encoded PDF bytes." }
+      }
+    },
+
+    "PdfsLoadedMessage": {
+      "description": "Sent by the C# host to push the current workbook's PDF list to the viewer. Re-sent after any add/remove operation.",
+      "type": "object",
+      "required": ["type", "pdfs"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "const": "pdfs-loaded" },
+        "pdfs": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/PdfPayload" }
+        }
+      },
+      "examples": [
+        {
+          "type": "pdfs-loaded",
+          "pdfs": [
+            {
+              "id":     "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+              "name":   "Invoice Q1 2026.pdf",
+              "base64": "JVBERi0xLjQKJeLjz9M="
+            }
+          ]
+        }
+      ]
+    }
+
+  },
+
+  "oneOf": [
+    { "$ref": "#/definitions/ViewerReadyMessage" },
+    { "$ref": "#/definitions/PdfsLoadedMessage" }
+  ]
+}

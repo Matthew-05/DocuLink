@@ -1,7 +1,6 @@
 using System;
 using System.IO;
 using System.Reflection;
-using System.Text;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using DocuLink.Addin.Modules.CustomXml;
@@ -72,8 +71,7 @@ namespace DocuLink.Addin.Modules.WebView
                 if (string.IsNullOrWhiteSpace(raw))
                     return;
 
-                // Minimal parse: look for "viewer-ready" type without pulling in a JSON library.
-                if (raw.Contains("\"viewer-ready\""))
+                if (HostMessageParser.GetMessageType(raw) == "viewer-ready")
                     SendPdfsToWebView();
             }
             catch (Exception ex)
@@ -98,7 +96,7 @@ namespace DocuLink.Addin.Modules.WebView
                 var store = new DocuLinkCustomXmlPartStore(workbook);
                 DocuLinkStorage storage = store.Load();
 
-                string json = BuildPdfsLoadedJson(storage.Pdfs);
+                string json = HostMessageSerializer.BuildPdfsLoaded(storage.Pdfs);
                 _webView.CoreWebView2.PostWebMessageAsString(json);
             }
             catch (Exception ex)
@@ -106,50 +104,6 @@ namespace DocuLink.Addin.Modules.WebView
                 // Non-fatal — the pane will just show an empty selector.
                 System.Diagnostics.Debug.WriteLine($"[DocuLink] SendPdfsToWebView failed: {ex.Message}");
             }
-        }
-
-        private static string BuildPdfsLoadedJson(System.Collections.Generic.IList<PdfDocument> pdfs)
-        {
-            var sb = new StringBuilder();
-            sb.Append("{\"type\":\"pdfs-loaded\",\"pdfs\":[");
-
-            for (int i = 0; i < pdfs.Count; i++)
-            {
-                PdfDocument pdf = pdfs[i];
-                if (i > 0) sb.Append(',');
-
-                sb.Append('{');
-                sb.Append("\"id\":"); AppendJsonString(sb, pdf.Id);
-                sb.Append(",\"name\":"); AppendJsonString(sb, pdf.Name ?? string.Empty);
-                sb.Append(",\"base64\":"); AppendJsonString(sb, pdf.Base64 ?? string.Empty);
-                sb.Append('}');
-            }
-
-            sb.Append("]}");
-            return sb.ToString();
-        }
-
-        private static void AppendJsonString(StringBuilder sb, string value)
-        {
-            sb.Append('"');
-            foreach (char c in value)
-            {
-                switch (c)
-                {
-                    case '"': sb.Append("\\\""); break;
-                    case '\\': sb.Append("\\\\"); break;
-                    case '\n': sb.Append("\\n"); break;
-                    case '\r': sb.Append("\\r"); break;
-                    case '\t': sb.Append("\\t"); break;
-                    default:
-                        if (c < 0x20)
-                            sb.Append($"\\u{(int)c:x4}");
-                        else
-                            sb.Append(c);
-                        break;
-                }
-            }
-            sb.Append('"');
         }
 
         private static string GetWebUiPath()
