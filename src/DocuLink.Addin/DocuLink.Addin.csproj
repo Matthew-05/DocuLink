@@ -248,6 +248,7 @@
     <Compile Include="Modules\WebView\FileManagerMessageSerializer.cs" />
     <Compile Include="Modules\WebView\HostMessageParser.cs" />
     <Compile Include="Modules\WebView\HostMessageSerializer.cs" />
+    <Compile Include="Modules\WebView\WebMessageParser.cs" />
     <Compile Include="Modules\WebView\TaskPaneHost.cs">
       <SubType>UserControl</SubType>
     </Compile>
