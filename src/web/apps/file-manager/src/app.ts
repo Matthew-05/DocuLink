@@ -1,8 +1,9 @@
 import type { FileEntry, FolderEntry } from "./types/index.js";
-import { initHostBridge, sendSelectedFolder } from "./host-bridge.js";
+import { initHostBridge, sendSelectedFolder, sendRemoveFile, sendMoveFile } from "./host-bridge.js";
 import { FolderPanel } from "./components/folder-panel/folder-panel.js";
 import { Dropzone } from "./components/dropzone/dropzone.js";
 import { FileTable } from "./components/file-table/file-table.js";
+import { TableToolbar } from "./components/table-toolbar/table-toolbar.js";
 
 export function mountApp(root: HTMLElement): void {
   root.className = "app";
@@ -17,8 +18,28 @@ export function mountApp(root: HTMLElement): void {
   root.appendChild(rightCol);
 
   let selectedFolderId: string | null = null;
+  let currentFolders: FolderEntry[] = [];
 
-  const fileTable = new FileTable(rightCol);
+  const toolbar = new TableToolbar(rightCol, {
+    onRemoveSelected() {
+      const ids = fileTable.getSelectedIds();
+      for (const id of ids) sendRemoveFile(id);
+    },
+    onMoveSelected(folderId: string | null) {
+      const ids = fileTable.getSelectedIds();
+      for (const id of ids) sendMoveFile(id, folderId);
+      fileTable.clearSelection();
+    },
+    onFilterChange(text: string) {
+      fileTable.setFilter(text);
+    },
+  });
+
+  const fileTable = new FileTable(rightCol, {
+    onSelectionChange(ids: string[]) {
+      toolbar.update(ids.length);
+    },
+  });
 
   const folderPanel = new FolderPanel(leftCol, {
     onSelectionChange(folderId: string | null) {
@@ -35,8 +56,11 @@ export function mountApp(root: HTMLElement): void {
 
   function onFilesLoaded(folders: FolderEntry[], files: FileEntry[]): void {
     currentFiles = files;
-    folderPanel.update(folders);
+    currentFolders = folders;
+    folderPanel.update(folders, files);
     fileTable.update(files, selectedFolderId);
+    fileTable.updateFolders(folders);
+    toolbar.updateFolders(currentFolders);
   }
 
   initHostBridge(onFilesLoaded);

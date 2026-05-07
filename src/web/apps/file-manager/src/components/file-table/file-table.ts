@@ -1,32 +1,48 @@
-import type { FileEntry } from "../../types/index.js";
-import { sendRenameFile, sendRemoveFile } from "../../host-bridge.js";
+import type { FileEntry, FolderEntry } from "../../types/index.js";
+import { sendRenameFile } from "../../host-bridge.js";
+
+export interface FileTableOptions {
+  onSelectionChange(selectedIds: string[]): void;
+}
 
 export class FileTable {
   private readonly _root: HTMLElement;
+  private readonly _thead: HTMLTableSectionElement;
   private readonly _tbody: HTMLTableSectionElement;
   private _files: FileEntry[] = [];
+  private _folders: FolderEntry[] = [];
   private _selectedFolderId: string | null = null;
+  private _selectedIds: Set<string> = new Set();
+  private _filterText = "";
+  private readonly _onSelectionChange: (ids: string[]) => void;
 
-  constructor(container: HTMLElement) {
+  constructor(container: HTMLElement, options: FileTableOptions) {
+    this._onSelectionChange = options.onSelectionChange;
+
     this._root = document.createElement("div");
     this._root.className = "file-table-wrap";
 
     const table = document.createElement("table");
     table.className = "file-table";
 
-    const thead = document.createElement("thead");
-    thead.innerHTML = `
+    this._thead = document.createElement("thead");
+    this._thead.innerHTML = `
       <tr>
+        <th class="col-check"><input type="checkbox" class="select-all-cb" title="Select all" /></th>
         <th class="col-name">File Name</th>
         <th class="col-status">Status</th>
         <th class="col-size">Size</th>
         <th class="col-date">Date Added</th>
+        <th class="col-folder">Folder</th>
         <th class="col-actions"></th>
       </tr>`;
 
+    const selectAllCb = this._thead.querySelector<HTMLInputElement>(".select-all-cb")!;
+    selectAllCb.addEventListener("change", () => this._onSelectAll(selectAllCb.checked));
+
     this._tbody = document.createElement("tbody");
 
-    table.appendChild(thead);
+    table.appendChild(this._thead);
     table.appendChild(this._tbody);
     this._root.appendChild(table);
     container.appendChild(this._root);
@@ -35,21 +51,88 @@ export class FileTable {
   update(files: FileEntry[], selectedFolderId: string | null): void {
     this._files = files;
     this._selectedFolderId = selectedFolderId;
+    // Drop selections that no longer exist
+    const fileIds = new Set(files.map((f) => f.id));
+    for (const id of this._selectedIds) {
+      if (!fileIds.has(id)) this._selectedIds.delete(id);
+    }
+    this._render();
+  }
+
+  setFilter(text: string): void {
+    this._filterText = text;
+    this._selectedIds.clear();
+    this._render();
+    this._onSelectionChange([]);
+  }
+
+  getSelectedIds(): string[] {
+    return Array.from(this._selectedIds);
+  }
+
+  clearSelection(): void {
+    this._selectedIds.clear();
+    this._render();
+    this._onSelectionChange([]);
+  }
+
+  updateFolders(folders: FolderEntry[]): void {
+    this._folders = folders;
     this._render();
   }
 
   private _visibleFiles(): FileEntry[] {
-    if (this._selectedFolderId === null) return this._files;
-    return this._files.filter((f) => (f.folderId ?? null) === this._selectedFolderId);
+    let files = this._selectedFolderId === null
+      ? this._files
+      : this._files.filter((f) => (f.folderId ?? null) === this._selectedFolderId);
+
+    if (this._filterText.trim() !== "") {
+      const lower = this._filterText.toLowerCase();
+      files = files.filter((f) => f.name.toLowerCase().includes(lower));
+    }
+
+    return files;
+  }
+
+  private _onSelectAll(checked: boolean): void {
+    const visible = this._visibleFiles();
+    if (checked) {
+      for (const f of visible) this._selectedIds.add(f.id);
+    } else {
+      for (const f of visible) this._selectedIds.delete(f.id);
+    }
+    this._render();
+    this._onSelectionChange(this.getSelectedIds());
+  }
+
+  private _onRowCheck(id: string, checked: boolean): void {
+    if (checked) {
+      this._selectedIds.add(id);
+    } else {
+      this._selectedIds.delete(id);
+    }
+    this._updateSelectAllCheckbox();
+    this._onSelectionChange(this.getSelectedIds());
+  }
+
+  private _updateSelectAllCheckbox(): void {
+    const selectAllCb = this._thead.querySelector<HTMLInputElement>(".select-all-cb");
+    if (!selectAllCb) return;
+    const visible = this._visibleFiles();
+    const checkedCount = visible.filter((f) => this._selectedIds.has(f.id)).length;
+    selectAllCb.checked = visible.length > 0 && checkedCount === visible.length;
+    selectAllCb.indeterminate = checkedCount > 0 && checkedCount < visible.length;
   }
 
   private _render(): void {
     this._tbody.innerHTML = "";
     const visible = this._visibleFiles();
 
+    this._updateSelectAllCheckbox();
+
     if (visible.length === 0) {
       const empty = document.createElement("tr");
-      empty.innerHTML = `<td colspan="5" class="file-table__empty">No files here yet. Drop PDFs to add them.</td>`;
+      empty.innerHTML = `<td colspan="7" class="file-table__empty">No files here yet. Drop PDFs to add them.</td>`;
       this._tbody.appendChild(empty);
       return;
     }
@@ -62,6 +145,36 @@ export class FileTable {
   private _buildRow(file: FileEntry): HTMLTableRowElement {
     const tr = document.createElement("tr");
     tr.dataset["id"] = file.id;
+    if (this._selectedIds.has(file.id)) tr.classList.add("is-selected");
+
+    // Row-level click → toggle selection (ignore clicks on interactive children)
+    tr.addEventListener("click", (e) => {
+      const target = e.target as HTMLElement;
+      if (
+        target.tagName === "BUTTON" ||
+        target.tagName === "INPUT" ||
+        target.closest("button") ||
+        target.closest("input")
+      ) return;
+      const nowChecked = !this._selectedIds.has(file.id);
+      cb.checked = nowChecked;
+      this._onRowCheck(file.id, nowChecked);
+      tr.classList.toggle("is-selected", nowChecked);
+    });
+
+    // Checkbox cell
+    const checkTd = document.createElement("td");
+    checkTd.className = "col-check";
+    const cb = document.createElement("input");
+    cb.type = "checkbox";
+    cb.className = "row-cb";
+    cb.checked = this._selectedIds.has(file.id);
+    cb.addEventListener("change", () => {
+      this._onRowCheck(file.id, cb.checked);
+      tr.classList.toggle("is-selected", cb.checked);
+    });
+    cb.addEventListener("click", (e) => e.stopPropagation());
+    checkTd.appendChild(cb);
 
     // Name cell — double-click to rename
     const nameTd = document.createElement("td");
@@ -70,7 +183,10 @@ export class FileTable {
     nameSpan.className = "file-name";
     nameSpan.textContent = file.name;
     nameSpan.title = "Double-click to rename";
-    nameSpan.addEventListener("dblclick", () => this._startRename(file, nameSpan, tr));
+    nameSpan.addEventListener("dblclick", (e) => {
+      e.stopPropagation();
+      this._startRename(file, nameSpan, tr);
+    });
     nameTd.appendChild(nameSpan);
 
     // Status cell
@@ -91,7 +207,15 @@ export class FileTable {
     dateTd.className = "col-date";
     dateTd.textContent = formatDate(file.dateAdded);
 
-    // Actions cell
+    // Folder cell
+    const folderTd = document.createElement("td");
+    folderTd.className = "col-folder";
+    if (file.folderId) {
+      const folder = this._folders.find((f) => f.id === file.folderId);
+      if (folder) folderTd.textContent = folder.name;
+    }
+
+    // Actions cell — rename only
     const actionsTd = document.createElement("td");
     actionsTd.className = "col-actions";
 
@@ -99,21 +223,19 @@ export class FileTable {
     renameBtn.className = "icon-btn icon-btn--sm";
     renameBtn.title = "Rename";
     renameBtn.textContent = "✎";
-    renameBtn.addEventListener("click", () => this._startRename(file, nameSpan, tr));
-
-    const removeBtn = document.createElement("button");
-    removeBtn.className = "icon-btn icon-btn--sm icon-btn--danger";
-    removeBtn.title = "Remove file";
-    removeBtn.textContent = "✕";
-    removeBtn.addEventListener("click", () => this._confirmRemove(file, actionsTd));
+    renameBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      this._startRename(file, nameSpan, tr);
+    });
 
     actionsTd.appendChild(renameBtn);
-    actionsTd.appendChild(removeBtn);
 
+    tr.appendChild(checkTd);
     tr.appendChild(nameTd);
     tr.appendChild(statusTd);
     tr.appendChild(sizeTd);
     tr.appendChild(dateTd);
+    tr.appendChild(folderTd);
     tr.appendChild(actionsTd);
 
     return tr;
@@ -144,36 +266,6 @@ export class FileTable {
       if (e.key === "Enter") { input.blur(); }
       if (e.key === "Escape") { input.replaceWith(nameSpan); }
     });
-  }
-
-  private _confirmRemove(file: FileEntry, actionsTd: HTMLTableCellElement): void {
-    if (actionsTd.querySelector(".inline-confirm")) return;
-
-    const original = actionsTd.innerHTML;
-    actionsTd.innerHTML = "";
-
-    const wrap = document.createElement("span");
-    wrap.className = "inline-confirm";
-
-    const label = document.createElement("span");
-    label.className = "inline-confirm__label";
-    label.textContent = "Remove?";
-
-    const yesBtn = document.createElement("button");
-    yesBtn.className = "icon-btn icon-btn--sm icon-btn--danger";
-    yesBtn.textContent = "Yes";
-
-    const noBtn = document.createElement("button");
-    noBtn.className = "icon-btn icon-btn--sm";
-    noBtn.textContent = "No";
-
-    wrap.appendChild(label);
-    wrap.appendChild(yesBtn);
-    wrap.appendChild(noBtn);
-    actionsTd.appendChild(wrap);
-
-    yesBtn.addEventListener("click", () => sendRemoveFile(file.id));
-    noBtn.addEventListener("click", () => { actionsTd.innerHTML = original; });
   }
 }
 
