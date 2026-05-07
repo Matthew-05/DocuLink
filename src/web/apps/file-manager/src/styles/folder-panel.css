@@ -61,6 +61,19 @@
   white-space: nowrap;
 }
 
+.folder-panel__item-count {
+  flex-shrink: 0;
+  font-size: 10.5px;
+  font-weight: 500;
+  color: var(--color-text-muted);
+  min-width: 18px;
+  text-align: right;
+}
+
+.folder-panel__item--active .folder-panel__item-count {
+  color: rgba(255, 255, 255, 0.65);
+}
+
 .folder-panel__item-actions {
   display: none;
   gap: 2px;
@@ -70,6 +83,10 @@
 .folder-panel__item:hover .folder-panel__item-actions,
 .folder-panel__item--active .folder-panel__item-actions {
   display: flex;
+}
+
+.folder-panel__item:hover .folder-panel__item-count {
+  display: none;
 }
 
 /* New-folder inline row */

@@ -1,4 +1,4 @@
-import type { FolderEntry } from "../../types/index.js";
+import type { FolderEntry, FileEntry } from "../../types/index.js";
 import {
   sendAddFolder,
   sendRenameFolder,
@@ -13,6 +13,7 @@ export class FolderPanel {
   private readonly _root: HTMLElement;
   private readonly _list: HTMLUListElement;
   private _folders: FolderEntry[] = [];
+  private _files: FileEntry[] = [];
   private _selectedId: string | null = null;
   private readonly _callbacks: FolderPanelCallbacks;
 
@@ -48,8 +49,9 @@ export class FolderPanel {
     this._renderItems();
   }
 
-  update(folders: FolderEntry[]): void {
+  update(folders: FolderEntry[], files: FileEntry[] = this._files): void {
     this._folders = folders;
+    this._files = files;
     if (this._selectedId !== null && !folders.find((f) => f.id === this._selectedId)) {
       this._selectedId = null;
       this._callbacks.onSelectionChange(null);
@@ -64,14 +66,15 @@ export class FolderPanel {
   private _renderItems(): void {
     this._list.innerHTML = "";
 
-    this._list.appendChild(this._createItem(null, "All Files"));
+    this._list.appendChild(this._createItem(null, "All Files", this._files.length));
 
     for (const folder of this._folders) {
-      this._list.appendChild(this._createItem(folder.id, folder.name));
+      const count = this._files.filter((f) => f.folderId === folder.id).length;
+      this._list.appendChild(this._createItem(folder.id, folder.name, count));
     }
   }
 
-  private _createItem(id: string | null, label: string): HTMLLIElement {
+  private _createItem(id: string | null, label: string, count: number): HTMLLIElement {
     const li = document.createElement("li");
     li.className =
       "folder-panel__item" +
@@ -82,6 +85,11 @@ export class FolderPanel {
     nameSpan.className = "folder-panel__item-name";
     nameSpan.textContent = label;
     li.appendChild(nameSpan);
+
+    const countBadge = document.createElement("span");
+    countBadge.className = "folder-panel__item-count";
+    countBadge.textContent = String(count);
+    li.appendChild(countBadge);
 
     li.addEventListener("click", () => {
       this._selectedId = id;

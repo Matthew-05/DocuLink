@@ -1,4 +1,4 @@
-/* File table — right-column list of PDFs with rename and remove actions */
+/* File table — right-column list of PDFs with rename action and row selection */
 
 .file-table-wrap {
   flex: 1;
@@ -13,31 +13,44 @@
   font-size: 12.5px;
 }
 
-/* Keep column widths stable while the name cell toggles between text and <input> */
+/* ── Column widths ────────────────────────────────────────────────────────── */
+
+.file-table thead th.col-check,
+.file-table tbody td.col-check {
+  width: 4%;
+}
+
 .file-table thead th.col-name,
 .file-table tbody td.col-name {
-  width: 36%;
+  width: 28%;
 }
 
 .file-table thead th.col-status,
 .file-table tbody td.col-status {
-  width: 12%;
+  width: 11%;
 }
 
 .file-table thead th.col-size,
 .file-table tbody td.col-size {
-  width: 14%;
+  width: 11%;
 }
 
 .file-table thead th.col-date,
 .file-table tbody td.col-date {
-  width: 22%;
+  width: 16%;
+}
+
+.file-table thead th.col-folder,
+.file-table tbody td.col-folder {
+  width: 16%;
 }
 
 .file-table thead th.col-actions,
 .file-table tbody td.col-actions {
-  width: 16%;
+  width: 14%;
 }
+
+/* ── Header ───────────────────────────────────────────────────────────────── */
 
 .file-table thead th {
   position: sticky;
@@ -54,6 +67,8 @@
   border-bottom: 1px solid var(--color-border);
 }
 
+/* ── Body rows ────────────────────────────────────────────────────────────── */
+
 .file-table tbody tr {
   border-bottom: 1px solid var(--color-border);
   transition: background 0.1s;
@@ -63,11 +78,39 @@
   background: var(--color-surface);
 }
 
+.file-table tbody tr.is-selected {
+  background: rgba(var(--color-accent-rgb, 80, 130, 220), 0.08);
+}
+
+.file-table tbody tr.is-selected:hover {
+  background: rgba(var(--color-accent-rgb, 80, 130, 220), 0.13);
+}
+
 .file-table tbody td {
   padding: 8px 10px;
   vertical-align: middle;
   white-space: nowrap;
 }
+
+/* ── Checkboxes ───────────────────────────────────────────────────────────── */
+
+.col-check {
+  text-align: center;
+  padding-left: 8px !important;
+  padding-right: 4px !important;
+}
+
+.select-all-cb,
+.row-cb {
+  cursor: pointer;
+  accent-color: var(--color-accent, #5082dc);
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  display: block;
+}
+
+/* ── Other columns ────────────────────────────────────────────────────────── */
 
 .col-name {
   max-width: none;
@@ -80,11 +123,19 @@
   font-size: 11.5px;
 }
 
+.col-folder {
+  overflow: hidden;
+  color: var(--color-text-muted);
+  font-size: 11.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .col-actions {
   text-align: right;
 }
 
-/* Inline file-name editing — match line box so rows/columns do not jump */
+/* ── Inline file-name editing ─────────────────────────────────────────────── */
 
 .file-name {
   cursor: text;
@@ -94,7 +145,6 @@
   line-height: 1.35;
   min-height: calc(1.35 * 1em);
   box-sizing: border-box;
-  /* Reserve the same box as the input (inset ring, no layout-affecting border) */
   padding: 0 2px;
   border: 1px solid transparent;
   border-radius: var(--radius);
@@ -116,9 +166,10 @@
   border: 1px solid transparent;
   border-radius: var(--radius);
   outline: none;
-  /* Visual focus ring without changing layout (vs 1px border swap) */
   box-shadow: inset 0 0 0 1px var(--color-accent);
 }
+
+/* ── Empty state ──────────────────────────────────────────────────────────── */
 
 .file-table__empty {
   text-align: center;
@@ -127,7 +178,7 @@
   font-size: 12px;
 }
 
-/* Status badge */
+/* ── Status badge ─────────────────────────────────────────────────────────── */
 
 .status-badge {
   display: inline-block;
@@ -142,19 +193,4 @@
 .status-badge--ready {
   background: rgba(62, 207, 110, 0.15);
   color: var(--color-success);
-}
-
-/* Inline remove confirmation */
-
-.inline-confirm {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  white-space: nowrap;
-}
-
-.inline-confirm__label {
-  font-size: 11px;
-  color: var(--color-danger);
-  font-weight: 500;
 }
