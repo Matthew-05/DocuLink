@@ -29,7 +29,8 @@ namespace DocuLink.Addin.Modules.Services
 
             // Start from the top-left cell of the selection and walk right
             // until an empty cell is found (max MaxSearchColumns to prevent runaway).
-            Excel.Range cell = (Excel.Range)selection.Cells[1, 1];
+            Excel.Range startCell = (Excel.Range)selection.Cells[1, 1];
+            Excel.Range cell = startCell;
 
             for (int col = 0; col < MaxSearchColumns; col++)
             {
@@ -42,6 +43,12 @@ namespace DocuLink.Addin.Modules.Services
 
             cell.Value2 = text;
             CellFormatter.ApplyLinkStyle(cell);
+
+            if (cell.Row != startCell.Row || cell.Column != startCell.Column)
+            {
+                ((Excel.Worksheet)cell.Worksheet).Activate();
+                cell.Select();
+            }
 
             string sheetName = ((Excel.Worksheet)cell.Worksheet).Name;
             string address   = cell.get_Address(true, true);
