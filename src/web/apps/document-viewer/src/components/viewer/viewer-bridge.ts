@@ -1,4 +1,5 @@
 import { initHostBridge } from "../../host-bridge.js";
+import type { LinkedRectEntry } from "../../types/index.js";
 import type { PdfSelector } from "../toolbar/pdf-selector.js";
 import type { PdfViewer } from "./pdf-viewer.js";
 
@@ -11,15 +12,16 @@ import type { PdfViewer } from "./pdf-viewer.js";
  */
 export function connectViewerToHostBridge(
   viewer: PdfViewer,
-  selector: PdfSelector
+  selector: PdfSelector,
+  onLinkedRectangles?: (rects: LinkedRectEntry[]) => void,
 ): void {
   initHostBridge((entries) => {
     selector.setEntries(entries);
 
-    if (entries.length > 0) {
-      const first = entries[0];
+    const first = entries[0];
+    if (first) {
       selector.setActiveId(first.id);
-      void viewer.loadDocument(first.url);
+      void viewer.loadDocument(first.url, first.id);
     }
-  });
+  }, onLinkedRectangles);
 }

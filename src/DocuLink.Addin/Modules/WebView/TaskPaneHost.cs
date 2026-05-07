@@ -5,6 +5,8 @@ using System.Threading.Tasks;
 using System.Windows.Forms;
 using DocuLink.Addin.Modules.CustomXml;
 using DocuLink.Addin.Modules.CustomXml.Models;
+using DocuLink.Addin.Modules.Services;
+using DocuLink.Addin.Modules.UI;
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.WinForms;
 using Excel = Microsoft.Office.Interop.Excel;
@@ -15,6 +17,7 @@ namespace DocuLink.Addin.Modules.WebView
     public sealed class TaskPaneHost : UserControl
     {
         private readonly WebView2 _webView = new WebView2();
+        private ProgressScope _cacheProgressScope;
 
         public TaskPaneHost()
         {
@@ -71,12 +74,73 @@ namespace DocuLink.Addin.Modules.WebView
                 if (string.IsNullOrWhiteSpace(raw))
                     return;
 
-                if (HostMessageParser.GetMessageType(raw) == "viewer-ready")
-                    SendPdfsToWebView();
+                switch (HostMessageParser.GetMessageType(raw))
+                {
+                    case "viewer-ready":
+                        SendPdfsToWebView();
+                        SendLinkedRectanglesToWebView();
+                        break;
+
+                    case "link-rectangle-created":
+                        HandleLinkRectangleCreated(raw);
+                        break;
+
+                    case "cache-build-started":
+                        _cacheProgressScope = new ProgressScope("Building document index\u2026");
+                        break;
+
+                    case "cache-build-complete":
+                        _cacheProgressScope?.Dispose();
+                        _cacheProgressScope = null;
+                        break;
+                }
             }
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"[DocuLink] OnWebMessageReceived failed: {ex.Message}");
+            }
+        }
+
+        private void HandleLinkRectangleCreated(string json)
+        {
+            var payload = HostMessageParser.ParseLinkRectangleCreated(json);
+            if (payload == null) return;
+
+            Excel.Workbook wb = Globals.ThisAddIn.Application?.ActiveWorkbook;
+            if (wb == null) return;
+
+            new CreateLinkService().CreateLink(
+                payload.PdfId,
+                payload.Page,
+                payload.X, payload.Y, payload.Width, payload.Height,
+                payload.Text,
+                wb);
+
+            SendLinkedRectanglesToWebView();
+        }
+
+        /// <summary>
+        /// Reads all persisted linked rectangles from the active workbook and
+        /// pushes them to the web UI via a <c>linked-rectangles-loaded</c> message.
+        /// </summary>
+        public void SendLinkedRectanglesToWebView()
+        {
+            try
+            {
+                Excel.Application app = Globals.ThisAddIn.Application;
+                Excel.Workbook workbook = app?.ActiveWorkbook;
+                if (workbook == null)
+                    return;
+
+                var store = new DocuLinkCustomXmlPartStore(workbook);
+                DocuLinkStorage storage = store.Load();
+
+                string json = HostMessageSerializer.BuildLinkedRectanglesLoaded(storage.LinkedRectangles);
+                _webView.CoreWebView2.PostWebMessageAsString(json);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[DocuLink] SendLinkedRectanglesToWebView failed: {ex.Message}");
             }
         }
 
