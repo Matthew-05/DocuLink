@@ -113,6 +113,7 @@
     <Reference Include="System.Core" />
     <Reference Include="System.Xml.Linq" />
     <Reference Include="System.Data.DataSetExtensions" />
+    <Reference Include="System.Web.Extensions" />
     <Reference Include="Microsoft.CSharp" />
   </ItemGroup>
   <ItemGroup>
@@ -234,6 +235,8 @@
     <Compile Include="Modules\CustomXml\Models\RectangleCoordinateSpace.cs" />
     <Compile Include="Modules\CustomXml\Serialization\DocuLinkStorageSerializer.cs" />
     <Compile Include="Modules\Services\AddPdfDocumentService.cs" />
+    <Compile Include="Modules\WebView\HostMessageParser.cs" />
+    <Compile Include="Modules\WebView\HostMessageSerializer.cs" />
     <Compile Include="Modules\WebView\TaskPaneHost.cs">
       <SubType>UserControl</SubType>
     </Compile>
@@ -255,7 +258,6 @@
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <!-- Include additional build rules for an Office application add-in. -->
   <Import Project="$(VSToolsPath)\OfficeTools\Microsoft.VisualStudio.Tools.Office.targets" Condition="'$(VSToolsPath)' != ''" />
-
   <!-- ── Web asset build ── -->
   <PropertyGroup>
     <WebRootDir>$(MSBuildProjectDirectory)\..\web</WebRootDir>
@@ -266,12 +268,9 @@
     <WebSourceFiles Include="$(WebRootDir)\apps\document-viewer\src\**\*.*" />
     <WebSourceFiles Include="$(WebRootDir)\packages\**\src\**\*.*" />
   </ItemGroup>
-  <Target Name="BuildWebAssets" BeforeTargets="Build"
-          Inputs="@(WebSourceFiles)"
-          Outputs="$(ViewerDistDir)\index.js;$(ViewerDistDir)\index.css">
+  <Target Name="BuildWebAssets" BeforeTargets="Build" Inputs="@(WebSourceFiles)" Outputs="$(ViewerDistDir)\index.js;$(ViewerDistDir)\index.css">
     <Message Text="[DocuLink] Installing web dependencies…" Importance="high" />
-    <Exec Command="cmd /c npm install" WorkingDirectory="$(WebRootDir)"
-          Condition="!Exists('$(WebRootDir)\node_modules')" />
+    <Exec Command="cmd /c npm install" WorkingDirectory="$(WebRootDir)" Condition="!Exists('$(WebRootDir)\node_modules')" />
     <Message Text="[DocuLink] Building web assets…" Importance="high" />
     <Exec Command="cmd /c npm run build" WorkingDirectory="$(WebRootDir)" />
   </Target>
@@ -280,8 +279,7 @@
     <ItemGroup>
       <WebUiFiles Include="$(ViewerDistDir)\**\*.*" />
     </ItemGroup>
-    <Copy SourceFiles="@(WebUiFiles)"
-          DestinationFiles="@(WebUiFiles->'$(OutputPath)webui\%(RecursiveDir)%(Filename)%(Extension)')" />
+    <Copy SourceFiles="@(WebUiFiles)" DestinationFiles="@(WebUiFiles->'$(OutputPath)webui\%(RecursiveDir)%(Filename)%(Extension)')" />
   </Target>
   <!-- This section defines VSTO properties that describe the host-changeable project properties. -->
   <ProjectExtensions>
