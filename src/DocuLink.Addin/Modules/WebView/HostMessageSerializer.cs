@@ -61,6 +61,24 @@ namespace DocuLink.Addin.Modules.WebView
             return sb.ToString();
         }
 
+        /// <summary>Returns the JSON payload for a <c>clear-rectangle-highlight</c> message.</summary>
+        public static string BuildClearRectangleHighlight() =>
+            "{\"type\":\"clear-rectangle-highlight\"}";
+
+        /// <summary>
+        /// Returns the JSON payload for a <c>navigate-to-rectangle</c> message.
+        /// </summary>
+        public static string BuildNavigateToRectangle(string id, string pdfId, int page)
+        {
+            var sb = new StringBuilder();
+            sb.Append("{\"type\":\"navigate-to-rectangle\"");
+            sb.Append(",\"id\":"); AppendString(sb, id ?? string.Empty);
+            sb.Append(",\"pdfId\":"); AppendString(sb, pdfId ?? string.Empty);
+            sb.Append(",\"page\":"); sb.Append(page);
+            sb.Append('}');
+            return sb.ToString();
+        }
+
         private static void AppendDouble(StringBuilder sb, double value)
         {
             sb.Append(value.ToString("G", System.Globalization.CultureInfo.InvariantCulture));

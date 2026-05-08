@@ -3,9 +3,11 @@ import { ZoomController } from "../toolbar/zoom-controller.js";
 import { connectViewerToHostBridge } from "./viewer-bridge.js";
 import { RectDrawOverlay } from "./rect-draw-overlay.js";
 import { RectRenderer } from "./rect-renderer.js";
+import { createRectNavigator } from "./rect-navigator.js";
 import { TextContentCache } from "../../services/text-content-cache.js";
 import {
   sendLinkRectangleCreated,
+  sendLinkRectangleClicked,
   sendCacheBuildStarted,
   sendCacheBuildComplete,
 } from "../../host-bridge.js";
@@ -62,6 +64,8 @@ export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLEleme
     });
   });
 
+  renderer.onRectClicked((id) => sendLinkRectangleClicked(id));
+
   let cacheGeneration = 0;
 
   viewer.onDocumentChanged(() => {
@@ -79,9 +83,15 @@ export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLEleme
 
   // ── Host bridge ───────────────────────────────────────────────────────────
 
-  connectViewerToHostBridge(viewer, selector, (rects) => {
-    renderer.setRectangles(rects);
-  });
+  const navigate = createRectNavigator(viewer, selector, renderer);
+
+  connectViewerToHostBridge(
+    viewer,
+    selector,
+    (rects) => { renderer.setRectangles(rects); },
+    navigate,
+    () => { renderer.clearHighlight(); },
+  );
 
   return { toolbarElement };
 }

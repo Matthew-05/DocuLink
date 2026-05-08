@@ -311,6 +311,54 @@
           ]
         }
       ]
+    },
+
+    "LinkRectangleClickedMessage": {
+      "description": "Sent by the document-viewer when the user clicks a persisted link rectangle overlay. The host responds by activating the linked worksheet and selecting the linked cell.",
+      "type": "object",
+      "required": ["type", "id"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "const": "link-rectangle-clicked" },
+        "id":   { "type": "string", "description": "GUID of the LinkedRectangle that was clicked." }
+      },
+      "examples": [
+        { "type": "link-rectangle-clicked", "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890" }
+      ]
+    },
+
+    "NavigateToRectangleMessage": {
+      "description": "Sent by the C# host when the user selects a linked cell in Excel. The viewer should switch to the specified PDF (if needed), jump instantly to the page, and highlight the rectangle.",
+      "type": "object",
+      "required": ["type", "id", "pdfId", "page"],
+      "additionalProperties": false,
+      "properties": {
+        "type":  { "const": "navigate-to-rectangle" },
+        "id":    { "type": "string", "description": "GUID of the LinkedRectangle to highlight." },
+        "pdfId": { "type": "string", "description": "GUID of the PDF containing the rectangle." },
+        "page":  { "type": "integer", "minimum": 0, "description": "0-based page index of the rectangle." }
+      },
+      "examples": [
+        {
+          "type":  "navigate-to-rectangle",
+          "id":    "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+          "pdfId": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+          "page":  0
+        }
+      ]
+    },
+
+    "ClearRectangleHighlightMessage": {
+      "description": "Sent by the C# host when the user selects a cell that is not linked to any rectangle. The viewer should remove any active rectangle highlight.",
+      "type": "object",
+      "required": ["type"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "const": "clear-rectangle-highlight" }
+      },
+      "examples": [
+        { "type": "clear-rectangle-highlight" }
+      ]
     }
 
   },
@@ -331,6 +379,9 @@
     { "$ref": "#/definitions/LinkRectangleCreatedMessage" },
     { "$ref": "#/definitions/CacheBuildStartedMessage" },
     { "$ref": "#/definitions/CacheBuildCompleteMessage" },
-    { "$ref": "#/definitions/LinkedRectanglesLoadedMessage" }
+    { "$ref": "#/definitions/LinkedRectanglesLoadedMessage" },
+    { "$ref": "#/definitions/LinkRectangleClickedMessage" },
+    { "$ref": "#/definitions/NavigateToRectangleMessage" },
+    { "$ref": "#/definitions/ClearRectangleHighlightMessage" }
   ]
 }

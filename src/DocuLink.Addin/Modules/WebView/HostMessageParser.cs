@@ -16,11 +16,33 @@ namespace DocuLink.Addin.Modules.WebView
         public static string GetMessageType(string json) =>
             WebMessageParser.GetMessageType(json);
 
-        /// <summary>
-        /// Parses a <c>link-rectangle-created</c> message into a
-        /// <see cref="LinkRectangleCreatedPayload"/>. Returns <c>null</c> on failure.
-        /// </summary>
-        public static LinkRectangleCreatedPayload ParseLinkRectangleCreated(string json)
+    /// <summary>
+    /// Parses a <c>link-rectangle-clicked</c> message and returns the
+    /// rectangle id, or <c>null</c> on failure.
+    /// </summary>
+    public static string ParseLinkRectangleClicked(string json)
+    {
+        if (string.IsNullOrWhiteSpace(json))
+            return null;
+
+        try
+        {
+            var obj = _serializer.Deserialize<Dictionary<string, object>>(json);
+            if (obj == null) return null;
+
+            return obj.TryGetValue("id", out object idVal) ? idVal as string : null;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Parses a <c>link-rectangle-created</c> message into a
+    /// <see cref="LinkRectangleCreatedPayload"/>. Returns <c>null</c> on failure.
+    /// </summary>
+    public static LinkRectangleCreatedPayload ParseLinkRectangleCreated(string json)
         {
             if (string.IsNullOrWhiteSpace(json))
                 return null;

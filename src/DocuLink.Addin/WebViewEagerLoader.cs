@@ -8,9 +8,12 @@ namespace DocuLink.Addin
     {
         internal static void Initialize(ThisAddIn addIn)
         {
-            // Task pane: create invisibly and force HWND so InitAsync starts now
+            // Task pane: create invisibly for the initial workbook and force HWND so InitAsync starts now.
+            // EnsureTaskPaneCreated is a no-op when no workbook is open yet, so guard against null.
             addIn.EnsureTaskPaneCreated();
-            _ = addIn.TaskPaneHost.Handle;
+            var host = addIn.TaskPaneHost;
+            if (host != null)
+                _ = host.Handle;
 
             // File manager: create and force HWND so InitAsync starts now
             addIn.PreloadFileManagerWindow();

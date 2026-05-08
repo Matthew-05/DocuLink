@@ -94,6 +94,10 @@ namespace DocuLink.Addin.Modules.WebView
                         HandleLinkRectangleCreated(raw);
                         break;
 
+                    case "link-rectangle-clicked":
+                        HandleLinkRectangleClicked(raw);
+                        break;
+
                     case "cache-build-started":
                         _cacheProgressScope?.Dispose();
                         _cacheProgressScope = new ProgressScope("Building document index\u2026");
@@ -119,14 +123,19 @@ namespace DocuLink.Addin.Modules.WebView
             Excel.Workbook wb = Globals.ThisAddIn.Application?.ActiveWorkbook;
             if (wb == null) return;
 
-            new CreateLinkService().CreateLink(
+            var linkedRect = new CreateLinkService().CreateLink(
                 payload.PdfId,
                 payload.Page,
                 payload.X, payload.Y, payload.Width, payload.Height,
                 payload.Text,
                 wb);
 
+            // Push updated rectangles first so the div exists when navigate arrives.
             SendLinkedRectanglesToWebView();
+
+            // Highlight the newly created rectangle.
+            if (linkedRect != null)
+                SendNavigateToRectangle(linkedRect.Id, linkedRect.PdfId, linkedRect.Rectangle.PageIndex);
 
             // WebView2's Chromium child window holds Win32 keyboard focus after the
             // drag ends. COM calls (e.g. ActiveCell.Select) only update Excel's data
@@ -146,6 +155,63 @@ namespace DocuLink.Addin.Modules.WebView
                 }
                 catch { }
             }));
+        }
+
+        private void HandleLinkRectangleClicked(string json)
+        {
+            string rectId = HostMessageParser.ParseLinkRectangleClicked(json);
+            if (string.IsNullOrWhiteSpace(rectId)) return;
+
+            Excel.Workbook wb = Globals.ThisAddIn.Application?.ActiveWorkbook;
+            if (wb == null) return;
+
+            // Suppress the SheetSelectionChange handler so the programmatic
+            // cell selection we're about to make doesn't bounce a navigate-to-
+            // rectangle message back to the viewer.
+            Globals.ThisAddIn.SuppressNextSelectionNav = true;
+
+            new LinkNavigationService().NavigateToLinkedCell(rectId, wb);
+        }
+
+        /// <summary>
+        /// Posts a <c>clear-rectangle-highlight</c> message to the viewer to remove
+        /// any active rectangle highlight. No-ops if the WebView2 control is not yet ready.
+        /// </summary>
+        public void SendClearRectangleHighlight()
+        {
+            if (!_webViewReady) return;
+
+            try
+            {
+                _webView.CoreWebView2.PostWebMessageAsString(
+                    HostMessageSerializer.BuildClearRectangleHighlight());
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine(
+                    $"[DocuLink] SendClearRectangleHighlight failed: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Posts a <c>navigate-to-rectangle</c> message to the viewer so it can
+        /// jump to and highlight the rectangle associated with a selected cell.
+        /// No-ops if the WebView2 control is not yet ready.
+        /// </summary>
+        public void SendNavigateToRectangle(string id, string pdfId, int page)
+        {
+            if (!_webViewReady) return;
+
+            try
+            {
+                string json = HostMessageSerializer.BuildNavigateToRectangle(id, pdfId, page);
+                _webView.CoreWebView2.PostWebMessageAsString(json);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine(
+                    $"[DocuLink] SendNavigateToRectangle failed: {ex.Message}");
+            }
         }
 
         /// <summary>

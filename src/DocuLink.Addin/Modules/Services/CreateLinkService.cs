@@ -14,7 +14,7 @@ namespace DocuLink.Addin.Modules.Services
     {
         private const int MaxSearchColumns = 100;
 
-        public void CreateLink(
+        public LinkedRectangle CreateLink(
             string pdfId,
             int page,
             double x, double y, double width, double height,
@@ -25,7 +25,7 @@ namespace DocuLink.Addin.Modules.Services
 
             Excel.Application app = Globals.ThisAddIn.Application;
             var selection = app?.Selection as Excel.Range;
-            if (selection == null) return;
+            if (selection == null) return null;
 
             // Start from the top-left cell of the selection and walk right
             // until an empty cell is found (max MaxSearchColumns to prevent runaway).
@@ -53,11 +53,12 @@ namespace DocuLink.Addin.Modules.Services
             string sheetName = ((Excel.Worksheet)cell.Worksheet).Name;
             string address   = cell.get_Address(true, true);
 
-            var linkedCell   = new LinkedCell(sheetName, address);
-            var rect         = new PdfRectangle(page, x, y, width, height, RectangleCoordinateSpace.Normalized);
-            var linkedRect   = new LinkedRectangle(Guid.NewGuid().ToString("D"), pdfId, linkedCell, rect);
+            var linkedCell  = new LinkedCell(sheetName, address);
+            var rect        = new PdfRectangle(page, x, y, width, height, RectangleCoordinateSpace.Normalized);
+            var linkedRect  = new LinkedRectangle(Guid.NewGuid().ToString("D"), pdfId, linkedCell, rect);
 
             new DocuLinkCustomXmlPartStore(workbook).UpsertLinkedRectangle(linkedRect);
+            return linkedRect;
         }
     }
 }

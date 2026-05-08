@@ -1,0 +1,24 @@
+---
+description: Register new DocuLink.Addin C# files in DocuLink.Addin.csproj (explicit Compile list)
+globs: src/DocuLink.Addin/**/*.cs
+alwaysApply: false
+---
+
+# VSTO Add-in — register every new `.cs` file
+
+`src/DocuLink.Addin/DocuLink.Addin.csproj` uses **explicit** `<Compile Include="..."/>` items. New files under `src/DocuLink.Addin/` are **not** picked up automatically (unlike SDK-style projects).
+
+## When you add or move a `.cs` file
+
+1. Open `DocuLink.Addin.csproj`.
+2. Add a sibling-style entry under the existing `<Compile Include="Modules\..."/>` blocks, e.g.  
+   `<Compile Include="Modules\Services\YourNewService.cs" />`
+3. If the file is a form/control, match the pattern used for `TaskPaneHost.cs` (`SubType`, etc.).
+
+## Symptom if you skip this
+
+`The type or namespace name 'X' could not be found` even though the file exists — the type was never compiled into the assembly.
+
+## Quick checklist
+
+- [ ] New or moved `.cs` under `DocuLink.Addin` has a matching `<Compile Include=...>` in `DocuLink.Addin.csproj`.
