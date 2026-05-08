@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Web.Script.Serialization;
 
 namespace DocuLink.Addin.Modules.WebView
 {
@@ -10,8 +9,6 @@ namespace DocuLink.Addin.Modules.WebView
     /// </summary>
     internal static class FileManagerMessageParser
     {
-        private static readonly JavaScriptSerializer _serializer = new JavaScriptSerializer();
-
         /// <inheritdoc cref="WebMessageParser.GetMessageType"/>
         public static string GetMessageType(string json) =>
             WebMessageParser.GetMessageType(json);
@@ -99,7 +96,7 @@ namespace DocuLink.Addin.Modules.WebView
             if (string.IsNullOrWhiteSpace(json))
                 throw new ArgumentException("JSON must be non-empty.", nameof(json));
 
-            var dict = _serializer.Deserialize<Dictionary<string, object>>(json);
+            var dict = WebMessageParser.Serializer.Deserialize<Dictionary<string, object>>(json);
             if (dict == null)
                 throw new FormatException("Could not parse JSON object.");
             return dict;

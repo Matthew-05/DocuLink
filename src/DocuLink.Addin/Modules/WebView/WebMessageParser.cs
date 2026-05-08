@@ -8,7 +8,19 @@ namespace DocuLink.Addin.Modules.WebView
     /// </summary>
     internal static class WebMessageParser
     {
-        private static readonly JavaScriptSerializer _serializer = new JavaScriptSerializer();
+        /// <summary>
+        /// Serializer for inbound WebView messages. Uses <see cref="int.MaxValue"/> for
+        /// <see cref="JavaScriptSerializer.MaxJsonLength"/> because the default (2097152) rejects
+        /// <c>add-files</c> payloads carrying base64-encoded PDFs.
+        /// </summary>
+        internal static readonly JavaScriptSerializer Serializer = CreateSerializer();
+
+        private static JavaScriptSerializer CreateSerializer()
+        {
+            var j = new JavaScriptSerializer();
+            j.MaxJsonLength = int.MaxValue;
+            return j;
+        }
 
         /// <summary>
         /// Returns the value of the <c>type</c> property in the JSON object, or
@@ -21,7 +33,7 @@ namespace DocuLink.Addin.Modules.WebView
 
             try
             {
-                var obj = _serializer.Deserialize<Dictionary<string, object>>(json);
+                var obj = Serializer.Deserialize<Dictionary<string, object>>(json);
                 if (obj != null && obj.TryGetValue("type", out object typeValue))
                     return typeValue as string;
             }
