@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Web.Script.Serialization;
 
 namespace DocuLink.Addin.Modules.WebView
 {
@@ -10,8 +9,6 @@ namespace DocuLink.Addin.Modules.WebView
     /// </summary>
     internal static class HostMessageParser
     {
-        private static readonly JavaScriptSerializer _serializer = new JavaScriptSerializer();
-
         /// <inheritdoc cref="WebMessageParser.GetMessageType"/>
         public static string GetMessageType(string json) =>
             WebMessageParser.GetMessageType(json);
@@ -27,7 +24,7 @@ namespace DocuLink.Addin.Modules.WebView
 
         try
         {
-            var obj = _serializer.Deserialize<Dictionary<string, object>>(json);
+            var obj = WebMessageParser.Serializer.Deserialize<Dictionary<string, object>>(json);
             if (obj == null) return null;
 
             return obj.TryGetValue("id", out object idVal) ? idVal as string : null;
@@ -49,7 +46,7 @@ namespace DocuLink.Addin.Modules.WebView
 
             try
             {
-                var obj = _serializer.Deserialize<Dictionary<string, object>>(json);
+                var obj = WebMessageParser.Serializer.Deserialize<Dictionary<string, object>>(json);
                 if (obj == null) return null;
 
                 string pdfId = obj.TryGetValue("pdfId", out object pidVal) ? pidVal as string : null;
