@@ -53,11 +53,15 @@ namespace DocuLink.Addin.Modules.Services
             string sheetName = ((Excel.Worksheet)cell.Worksheet).Name;
             string address   = cell.get_Address(true, true);
 
-            var linkedCell  = new LinkedCell(sheetName, address);
-            var rect        = new PdfRectangle(page, x, y, width, height, RectangleCoordinateSpace.Normalized);
-            var linkedRect  = new LinkedRectangle(Guid.NewGuid().ToString("D"), pdfId, linkedCell, rect);
+            var store = new DocuLinkCustomXmlPartStore(workbook);
+            int trackIndex = LinkCellTracker.NextTrackIndex(store.Load());
 
-            new DocuLinkCustomXmlPartStore(workbook).UpsertLinkedRectangle(linkedRect);
+            var linkedCell = new LinkedCell(sheetName, address, trackIndex);
+            var rect       = new PdfRectangle(page, x, y, width, height, RectangleCoordinateSpace.Normalized);
+            var linkedRect = new LinkedRectangle(Guid.NewGuid().ToString("D"), pdfId, linkedCell, rect);
+
+            store.UpsertLinkedRectangle(linkedRect);
+            LinkCellTracker.BindCell(workbook, cell, trackIndex);
             return linkedRect;
         }
     }

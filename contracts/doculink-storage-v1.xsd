@@ -64,8 +64,9 @@
   </xs:complexType>
 
   <xs:complexType name="CellType">
-    <xs:attribute name="sheet"   type="xs:string" use="required" />
-    <xs:attribute name="address" type="xs:string" use="required" />
+    <xs:attribute name="sheet"      type="xs:string"      use="required" />
+    <xs:attribute name="address"    type="xs:string"      use="required" />
+    <xs:attribute name="trackIndex" type="xs:positiveInteger" use="required" />
   </xs:complexType>
 
   <xs:complexType name="RectType">

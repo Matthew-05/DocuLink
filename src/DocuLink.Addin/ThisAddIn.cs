@@ -4,6 +4,8 @@ using System.Runtime.InteropServices;
 using Excel = Microsoft.Office.Interop.Excel;
 using Office = Microsoft.Office.Core;
 using DocuLink.Addin.Ribbon;
+using DocuLink.Addin.Modules.CustomXml;
+using DocuLink.Addin.Modules.CustomXml.Models;
 using DocuLink.Addin.Modules.Services;
 using DocuLink.Addin.Modules.WebView;
 
@@ -136,6 +138,7 @@ namespace DocuLink.Addin
             WebViewEagerLoader.Initialize(this);
             Application.SheetSelectionChange += Application_SheetSelectionChange;
             Application.WorkbookBeforeClose += Application_WorkbookBeforeClose;
+            Application.WorkbookBeforeSave += Application_WorkbookBeforeSave;
             Application.WorkbookActivate += Application_WorkbookActivate;
             Application.WorkbookOpen += Application_WorkbookOpen;
             ((Excel.AppEvents_Event)Application).NewWorkbook += Application_NewWorkbook;
@@ -145,6 +148,7 @@ namespace DocuLink.Addin
         {
             Application.SheetSelectionChange -= Application_SheetSelectionChange;
             Application.WorkbookBeforeClose -= Application_WorkbookBeforeClose;
+            Application.WorkbookBeforeSave -= Application_WorkbookBeforeSave;
             Application.WorkbookActivate -= Application_WorkbookActivate;
             Application.WorkbookOpen -= Application_WorkbookOpen;
             ((Excel.AppEvents_Event)Application).NewWorkbook -= Application_NewWorkbook;
@@ -209,6 +213,19 @@ namespace DocuLink.Addin
             }
         }
 
+        private void Application_WorkbookBeforeSave(Excel.Workbook wb, bool saveAsUi, ref bool cancel)
+        {
+            try
+            {
+                LinkCellTracker.SyncAllPositions(wb);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine(
+                    $"[DocuLink] Application_WorkbookBeforeSave sync failed: {ex.Message}");
+            }
+        }
+
         private void Application_SheetSelectionChange(object sh, Excel.Range target)
         {
             if (SuppressNextSelectionNav)
@@ -222,17 +239,28 @@ namespace DocuLink.Addin
 
             try
             {
+                Excel.Range firstCell = (Excel.Range)target.Cells[1, 1];
+                int trackIndex = LinkCellTracker.FindTrackIndexForCell(firstCell);
+
+                if (trackIndex <= 0)
+                {
+                    entry.Host.SendClearRectangleHighlight();
+                    return;
+                }
+
                 Excel.Workbook wb = Application?.ActiveWorkbook;
                 if (wb == null) return;
 
-                Excel.Worksheet ws = sh as Excel.Worksheet;
-                string sheetName = ws?.Name;
-                if (sheetName == null) return;
-
-                Excel.Range firstCell = (Excel.Range)target.Cells[1, 1];
-                string address = firstCell.get_Address(true, true);
-
-                var rect = new LinkNavigationService().FindRectangleForCell(sheetName, address, wb);
+                DocuLinkStorage storage = new DocuLinkCustomXmlPartStore(wb).Load();
+                LinkedRectangle rect = null;
+                foreach (LinkedRectangle r in storage.LinkedRectangles)
+                {
+                    if (r.LinkedCell.TrackIndex == trackIndex)
+                    {
+                        rect = r;
+                        break;
+                    }
+                }
 
                 if (rect == null)
                 {
@@ -240,10 +268,7 @@ namespace DocuLink.Addin
                     return;
                 }
 
-                entry.Host.SendNavigateToRectangle(
-                    rect.Id,
-                    rect.PdfId,
-                    rect.Rectangle.PageIndex);
+                entry.Host.SendNavigateToRectangle(rect.Id, rect.PdfId, rect.Rectangle.PageIndex);
             }
             catch (Exception ex)
             {
