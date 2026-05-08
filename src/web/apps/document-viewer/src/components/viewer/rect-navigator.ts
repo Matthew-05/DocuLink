@@ -39,7 +39,22 @@ async function _navigate(
   const pageWrapper = viewer.element.querySelector<HTMLElement>(
     `[data-page="${page + 1}"]`,
   );
-  pageWrapper?.scrollIntoView({ behavior: "instant" as ScrollBehavior });
 
+  // Highlight first so the [data-rect-id] element is in the DOM before the visibility check.
   renderer.highlightRectangle(id);
+
+  if (pageWrapper) {
+    const rectEl      = viewer.element.querySelector<HTMLElement>(`[data-rect-id="${CSS.escape(id)}"]`);
+    const viewerRect  = viewer.element.getBoundingClientRect();
+    const targetRect  = rectEl?.getBoundingClientRect();
+    const fullyVisible = targetRect
+      && targetRect.top    >= viewerRect.top
+      && targetRect.bottom <= viewerRect.bottom
+      && targetRect.left   >= viewerRect.left
+      && targetRect.right  <= viewerRect.right;
+
+    if (!fullyVisible) {
+      pageWrapper.scrollIntoView({ behavior: "instant" as ScrollBehavior });
+    }
+  }
 }
