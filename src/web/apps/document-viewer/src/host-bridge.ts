@@ -23,6 +23,13 @@ interface LinkedRectanglesLoadedMessage {
   rectangles: LinkedRectPayload[];
 }
 
+interface NavigateToRectangleMessage {
+  type: "navigate-to-rectangle";
+  id: string;
+  pdfId: string;
+  page: number;
+}
+
 /** Revoke previously created object URLs to avoid memory leaks. */
 let _activeObjectUrls: string[] = [];
 
@@ -49,6 +56,8 @@ function handleMessage(
   raw: unknown,
   onEntries: (entries: PdfEntry[]) => void,
   onLinkedRectangles?: (rects: LinkedRectEntry[]) => void,
+  onNavigateToRectangle?: (id: string, pdfId: string, page: number) => void,
+  onClearRectangleHighlight?: () => void,
 ): void {
   try {
     const parsed: unknown =
@@ -88,6 +97,18 @@ function handleMessage(
       onLinkedRectangles(rects);
       return;
     }
+
+    if (type === "navigate-to-rectangle") {
+      if (!onNavigateToRectangle) return;
+      const navMsg = parsed as NavigateToRectangleMessage;
+      onNavigateToRectangle(navMsg.id, navMsg.pdfId, navMsg.page);
+      return;
+    }
+
+    if (type === "clear-rectangle-highlight") {
+      onClearRectangleHighlight?.();
+      return;
+    }
   } catch {
     // Malformed JSON or unexpected shape — silently ignore.
   }
@@ -117,6 +138,8 @@ function postToHost(message: object): void {
 export function initHostBridge(
   onEntries: (entries: PdfEntry[]) => void,
   onLinkedRectangles?: (rects: LinkedRectEntry[]) => void,
+  onNavigateToRectangle?: (id: string, pdfId: string, page: number) => void,
+  onClearRectangleHighlight?: () => void,
 ): void {
   const webview = (
     window as unknown as { chrome?: { webview?: WebView2Bridge } }
@@ -130,10 +153,14 @@ export function initHostBridge(
 
   webview.addEventListener("message", (event: Event) => {
     const data = (event as MessageEvent<unknown>).data;
-    handleMessage(data, onEntries, onLinkedRectangles);
+    handleMessage(data, onEntries, onLinkedRectangles, onNavigateToRectangle, onClearRectangleHighlight);
   });
 
   postToHost({ type: "viewer-ready" });
+}
+
+export function sendLinkRectangleClicked(id: string): void {
+  postToHost({ type: "link-rectangle-clicked", id });
 }
 
 export function sendLinkRectangleCreated(payload: LinkRectPayload): void {

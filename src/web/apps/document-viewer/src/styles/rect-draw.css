@@ -14,6 +14,12 @@
   position: absolute;
   border: 1.5px solid #2563eb;
   background: rgba(37, 99, 235, 0.12);
-  pointer-events: none;
+  pointer-events: auto;
+  cursor: pointer;
   box-sizing: border-box;
+}
+
+.rect-draw__link--highlighted {
+  border-color: #ea580c;
+  background: rgba(234, 88, 12, 0.2);
 }

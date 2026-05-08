@@ -68,6 +68,10 @@ export class PdfSelector {
     this._renderList(this._searchInput.value);
   }
 
+  getEntry(id: string): PdfEntry | undefined {
+    return this._entries.find((e) => e.id === id);
+  }
+
   setActiveId(id: string): void {
     this._activeId = id;
     const entry = this._entries.find((e) => e.id === id);

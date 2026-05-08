@@ -239,8 +239,11 @@
     <Compile Include="Modules\Services\AddPdfDocumentService.cs" />
     <Compile Include="Modules\Services\CellFormatter.cs" />
     <Compile Include="Modules\Services\CreateLinkService.cs" />
+    <Compile Include="Modules\Services\LinkNavigationService.cs" />
     <Compile Include="Modules\Services\ManageFilesService.cs" />
-    <Compile Include="Modules\UI\ProgressDialog.cs" />
+    <Compile Include="Modules\UI\ProgressDialog.cs">
+      <SubType>Form</SubType>
+    </Compile>
     <Compile Include="Modules\UI\ProgressScope.cs" />
     <Compile Include="Modules\WebView\FileManagerHost.cs">
       <SubType>Form</SubType>
@@ -297,10 +300,8 @@
       <!-- file-manager dist → webui/file-manager/ -->
       <FileManagerUiFiles Include="$(FileManagerDistDir)\**\*.*" />
     </ItemGroup>
-    <Copy SourceFiles="@(ViewerUiFiles)"
-          DestinationFiles="@(ViewerUiFiles->'$(OutputPath)webui\%(RecursiveDir)%(Filename)%(Extension)')" />
-    <Copy SourceFiles="@(FileManagerUiFiles)"
-          DestinationFiles="@(FileManagerUiFiles->'$(OutputPath)webui\file-manager\%(RecursiveDir)%(Filename)%(Extension)')" />
+    <Copy SourceFiles="@(ViewerUiFiles)" DestinationFiles="@(ViewerUiFiles->'$(OutputPath)webui\%(RecursiveDir)%(Filename)%(Extension)')" />
+    <Copy SourceFiles="@(FileManagerUiFiles)" DestinationFiles="@(FileManagerUiFiles->'$(OutputPath)webui\file-manager\%(RecursiveDir)%(Filename)%(Extension)')" />
   </Target>
   <!-- This section defines VSTO properties that describe the host-changeable project properties. -->
   <ProjectExtensions>

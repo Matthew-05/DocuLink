@@ -14,14 +14,21 @@ export function connectViewerToHostBridge(
   viewer: PdfViewer,
   selector: PdfSelector,
   onLinkedRectangles?: (rects: LinkedRectEntry[]) => void,
+  onNavigateToRectangle?: (id: string, pdfId: string, page: number) => void,
+  onClearRectangleHighlight?: () => void,
 ): void {
-  initHostBridge((entries) => {
-    selector.setEntries(entries);
+  initHostBridge(
+    (entries) => {
+      selector.setEntries(entries);
 
-    const first = entries[0];
-    if (first) {
-      selector.setActiveId(first.id);
-      void viewer.loadDocument(first.url, first.id);
-    }
-  }, onLinkedRectangles);
+      const first = entries[0];
+      if (first) {
+        selector.setActiveId(first.id);
+        void viewer.loadDocument(first.url, first.id);
+      }
+    },
+    onLinkedRectangles,
+    onNavigateToRectangle,
+    onClearRectangleHighlight,
+  );
 }
