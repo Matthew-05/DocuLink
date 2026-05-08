@@ -15,6 +15,7 @@ namespace DocuLink.Addin.Modules.CustomXml.Serialization
         private const string Base64Attribute = "Base64";
         private const string SheetAttribute = "sheet";
         private const string AddressAttribute = "address";
+        private const string TrackIndexAttribute = "trackIndex";
         private const string PageAttribute = "page";
         private const string XAttribute = "x";
         private const string YAttribute = "y";
@@ -210,12 +211,18 @@ namespace DocuLink.Addin.Modules.CustomXml.Serialization
 
             XAttribute sheetAttribute = cellElement.Attribute(SheetAttribute);
             XAttribute addressAttribute = cellElement.Attribute(AddressAttribute);
+            XAttribute trackIndexAttribute = cellElement.Attribute(TrackIndexAttribute);
             if (sheetAttribute == null || string.IsNullOrWhiteSpace(sheetAttribute.Value))
                 throw new InvalidOperationException(
                     "DocuLink storage LinkedRectangle #" + index + " Cell is missing required attribute 'sheet'.");
             if (addressAttribute == null || string.IsNullOrWhiteSpace(addressAttribute.Value))
                 throw new InvalidOperationException(
                     "DocuLink storage LinkedRectangle #" + index + " Cell is missing required attribute 'address'.");
+            if (trackIndexAttribute == null
+                || !int.TryParse(trackIndexAttribute.Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int trackIndexValue)
+                || trackIndexValue <= 0)
+                throw new InvalidOperationException(
+                    "DocuLink storage LinkedRectangle #" + index + " Cell is missing a valid positive 'trackIndex' attribute.");
 
             XElement rectElement = element.Element(DocuLinkXml.Ns + DocuLinkXml.RectElementName);
             if (rectElement == null)
@@ -238,7 +245,7 @@ namespace DocuLink.Addin.Modules.CustomXml.Serialization
             double h = ReadRequiredDouble(rectElement, HeightAttribute, index);
 
             var rect = new PdfRectangle((int)pageValue, x, y, w, h, space);
-            var cell = new LinkedCell(sheetAttribute.Value, addressAttribute.Value);
+            var cell = new LinkedCell(sheetAttribute.Value, addressAttribute.Value, trackIndexValue);
 
             return new LinkedRectangle(idAttribute.Value.Trim(), pdfIdAttribute.Value.Trim(), cell, rect);
         }
@@ -291,7 +298,8 @@ namespace DocuLink.Addin.Modules.CustomXml.Serialization
                 new XElement(
                     DocuLinkXml.Ns + DocuLinkXml.CellElementName,
                     new XAttribute(SheetAttribute, linkedRect.LinkedCell.SheetName ?? string.Empty),
-                    new XAttribute(AddressAttribute, linkedRect.LinkedCell.Address ?? string.Empty)),
+                    new XAttribute(AddressAttribute, linkedRect.LinkedCell.Address ?? string.Empty),
+                    new XAttribute(TrackIndexAttribute, linkedRect.LinkedCell.TrackIndex.ToString(CultureInfo.InvariantCulture))),
                 SerializeRect(linkedRect.Rectangle, linkedRect.Id));
         }
 
