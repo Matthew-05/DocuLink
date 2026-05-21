@@ -359,6 +359,47 @@
       "examples": [
         { "type": "clear-rectangle-highlight" }
       ]
+    },
+
+    "OcrPdfsMessage": {
+      "description": "Sent by the file-manager web app when the user clicks 'OCR Selected'. The host runs OCR on each PDF and replies with one or more OcrStatusMessages.",
+      "type": "object",
+      "required": ["type", "pdfIds"],
+      "additionalProperties": false,
+      "properties": {
+        "type":   { "const": "ocr-pdfs" },
+        "pdfIds": {
+          "type": "array",
+          "items": { "type": "string" },
+          "minItems": 1,
+          "description": "GUIDs of the PDFs to OCR."
+        }
+      },
+      "examples": [
+        { "type": "ocr-pdfs", "pdfIds": ["3fa85f64-5717-4562-b3fc-2c963f66afa6"] }
+      ]
+    },
+
+    "OcrStatusMessage": {
+      "description": "Sent by the C# host to the file-manager to report per-PDF OCR progress. One message is sent for each status transition: queued → processing → complete | error.",
+      "type": "object",
+      "required": ["type", "pdfId", "status"],
+      "additionalProperties": false,
+      "properties": {
+        "type":    { "const": "ocr-status" },
+        "pdfId":   { "type": "string", "description": "GUID of the PDF being processed." },
+        "status":  {
+          "type": "string",
+          "enum": ["queued", "processing", "complete", "error"],
+          "description": "Current OCR lifecycle state for this PDF."
+        },
+        "message": { "type": "string", "description": "Optional human-readable detail, typically populated on error." }
+      },
+      "examples": [
+        { "type": "ocr-status", "pdfId": "3fa85f64-5717-4562-b3fc-2c963f66afa6", "status": "processing" },
+        { "type": "ocr-status", "pdfId": "3fa85f64-5717-4562-b3fc-2c963f66afa6", "status": "complete" },
+        { "type": "ocr-status", "pdfId": "3fa85f64-5717-4562-b3fc-2c963f66afa6", "status": "error", "message": "Tesseract not found" }
+      ]
     }
 
   },
@@ -382,6 +423,8 @@
     { "$ref": "#/definitions/LinkedRectanglesLoadedMessage" },
     { "$ref": "#/definitions/LinkRectangleClickedMessage" },
     { "$ref": "#/definitions/NavigateToRectangleMessage" },
-    { "$ref": "#/definitions/ClearRectangleHighlightMessage" }
+    { "$ref": "#/definitions/ClearRectangleHighlightMessage" },
+    { "$ref": "#/definitions/OcrPdfsMessage" },
+    { "$ref": "#/definitions/OcrStatusMessage" }
   ]
 }

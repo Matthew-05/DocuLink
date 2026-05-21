@@ -27,6 +27,7 @@ namespace DocuLink.Addin.Modules.WebView
     {
         private readonly WebView2 _webView = new WebView2();
         private readonly ManageFilesService _service = new ManageFilesService();
+        private OcrService _ocrService;
 
         /// <summary>The folder GUID currently selected in the web UI (<c>null</c> for All Files).</summary>
         private string _selectedFolderId;
@@ -40,6 +41,9 @@ namespace DocuLink.Addin.Modules.WebView
         public FileManagerHost()
         {
             Text = "DocuLink – Manage Files";
+            // OcrService needs a Control reference for UI-thread marshalling;
+            // created here after the Form's handle is available.
+            _ocrService = new OcrService(this);
             Width = 900;
             Height = 620;
             MinimumSize = new System.Drawing.Size(700, 480);
@@ -294,11 +298,44 @@ namespace DocuLink.Addin.Modules.WebView
                     case "remove-folder":
                         HandleRemoveFolder(FileManagerMessageParser.ParseRemoveFolder(raw));
                         break;
+
+                    case "ocr-pdfs":
+                        _ = HandleOcrPdfsAsync(FileManagerMessageParser.ParseOcrPdfs(raw));
+                        break;
                 }
             }
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"[DocuLink] FileManagerHost.OnWebMessageReceived failed: {ex.Message}");
+            }
+        }
+
+        private async System.Threading.Tasks.Task HandleOcrPdfsAsync(OcrPdfsRequest req)
+        {
+            if (req?.PdfIds == null || req.PdfIds.Count == 0) return;
+
+            Excel.Workbook wb = GetActiveWorkbook();
+            if (wb == null) return;
+
+            bool anyComplete = false;
+
+            await _ocrService.RunOcrAsync(
+                req.PdfIds,
+                wb,
+                onStatusUpdate: (pdfId, status, message) =>
+                {
+                    // Already on the UI thread (OcrService marshals via Invoke).
+                    string json = FileManagerMessageSerializer.BuildOcrStatus(pdfId, status, message);
+                    _webView.CoreWebView2?.PostWebMessageAsString(json);
+
+                    if (status == "complete")
+                        anyComplete = true;
+                });
+
+            if (anyComplete)
+            {
+                SendFilesToWebView();
+                Globals.ThisAddIn.RefreshTaskPanePdfs();
             }
         }
 

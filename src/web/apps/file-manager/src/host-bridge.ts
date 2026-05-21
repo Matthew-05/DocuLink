@@ -8,7 +8,14 @@ interface FilesLoadedMessage {
   files: FileEntry[];
 }
 
-type HostMessage = FilesLoadedMessage;
+interface OcrStatusMessage {
+  type: "ocr-status";
+  pdfId: string;
+  status: "queued" | "processing" | "complete" | "error";
+  message?: string;
+}
+
+type HostMessage = FilesLoadedMessage | OcrStatusMessage;
 
 // ── Outbound (web → host) ─────────────────────────────────────────────────────
 
@@ -36,7 +43,8 @@ function send(msg: object): void {
 // ── Public API ────────────────────────────────────────────────────────────────
 
 export function initHostBridge(
-  onFilesLoaded: (folders: FolderEntry[], files: FileEntry[]) => void
+  onFilesLoaded: (folders: FolderEntry[], files: FileEntry[]) => void,
+  onOcrStatus?: (pdfId: string, status: OcrStatusMessage["status"], message: string | undefined) => void
 ): void {
   const webview = getWebView();
   if (!webview) return;
@@ -47,17 +55,17 @@ export function initHostBridge(
     try {
       const parsed: unknown =
         typeof raw === "string" ? (JSON.parse(raw) as unknown) : raw;
-      if (
-        typeof parsed !== "object" ||
-        parsed === null ||
-        (parsed as { type?: unknown }).type !== "files-loaded"
-      )
-        return;
-      msg = parsed as FilesLoadedMessage;
+      if (typeof parsed !== "object" || parsed === null) return;
+      msg = parsed as HostMessage;
     } catch {
       return;
     }
-    onFilesLoaded(msg.folders, msg.files);
+
+    if (msg.type === "files-loaded") {
+      onFilesLoaded(msg.folders, msg.files);
+    } else if (msg.type === "ocr-status" && onOcrStatus) {
+      onOcrStatus(msg.pdfId, msg.status, msg.message);
+    }
   });
 
   send({ type: "manager-ready" });
@@ -91,6 +99,10 @@ export function sendRenameFolder(id: string, newName: string): void {
 
 export function sendRemoveFolder(id: string): void {
   send({ type: "remove-folder", id });
+}
+
+export function sendOcrPdfs(pdfIds: string[]): void {
+  send({ type: "ocr-pdfs", pdfIds });
 }
 
 /** Notifies host of the actively selected folder (for OS drag-drop import). Omit folderId → All Files. */

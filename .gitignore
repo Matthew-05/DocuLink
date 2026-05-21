@@ -99,6 +99,16 @@ wheels/
 *.egg
 MANIFEST
 
+# PyInstaller worker build output (~150 MB — run src/python/build-worker.ps1 to generate)
+src/python/dist/
+src/python/build/
+
+# Tesseract OCR binaries (~30 MB — run src/python/download-tesseract.ps1 to fetch)
+src/python/tesseract/
+
+# Ghostscript binaries (~150 MB — run src/python/download-ghostscript.ps1 to fetch)
+src/python/ghostscript/
+
 # Virtual environments
 .venv/
 venv/

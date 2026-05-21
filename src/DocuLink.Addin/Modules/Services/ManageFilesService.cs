@@ -47,7 +47,10 @@ namespace DocuLink.Addin.Modules.Services
             if (pdf == null)
                 throw new InvalidOperationException("PDF not found: " + id);
 
-            var updated = new PdfDocument(pdf.Id, newName.Trim(), pdf.Base64, pdf.FolderId, pdf.DateAdded, pdf.FileSizeBytes);
+            var updated = new PdfDocument(pdf.Id, newName.Trim(), pdf.Base64, pdf.FolderId, pdf.DateAdded, pdf.FileSizeBytes)
+            {
+                OcrStatus = pdf.OcrStatus
+            };
             store.UpsertPdf(updated);
         }
 
@@ -87,7 +90,34 @@ namespace DocuLink.Addin.Modules.Services
                 throw new InvalidOperationException("PDF not found: " + id);
 
             string normalised = string.IsNullOrWhiteSpace(folderId) ? null : folderId.Trim();
-            var updated = new PdfDocument(pdf.Id, pdf.Name, pdf.Base64, normalised, pdf.DateAdded, pdf.FileSizeBytes);
+            var updated = new PdfDocument(pdf.Id, pdf.Name, pdf.Base64, normalised, pdf.DateAdded, pdf.FileSizeBytes)
+            {
+                OcrStatus = pdf.OcrStatus
+            };
+            store.UpsertPdf(updated);
+        }
+
+        /// <summary>
+        /// Replaces a PDF's bytes with the OCR-processed version and marks its status as "complete".
+        /// Called by <see cref="OcrService"/> after a successful OCR run.
+        /// </summary>
+        public void UpdatePdfAfterOcr(Excel.Workbook workbook, string id, string newBase64)
+        {
+            if (workbook == null) throw new ArgumentNullException(nameof(workbook));
+            if (string.IsNullOrWhiteSpace(id)) throw new ArgumentException("id must be non-empty.", nameof(id));
+            if (newBase64 == null) throw new ArgumentNullException(nameof(newBase64));
+
+            var store = new DocuLinkCustomXmlPartStore(workbook);
+            DocuLinkStorage storage = store.Load();
+
+            PdfDocument pdf = storage.Pdfs.FirstOrDefault(p => string.Equals(p.Id, id, StringComparison.Ordinal));
+            if (pdf == null)
+                throw new InvalidOperationException("PDF not found: " + id);
+
+            var updated = new PdfDocument(pdf.Id, pdf.Name, newBase64, pdf.FolderId, pdf.DateAdded, pdf.FileSizeBytes)
+            {
+                OcrStatus = "complete"
+            };
             store.UpsertPdf(updated);
         }
 

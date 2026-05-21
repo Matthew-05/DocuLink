@@ -157,13 +157,20 @@ namespace DocuLink.Addin.Modules.CustomXml.Serialization
             if (!string.IsNullOrWhiteSpace(fileSizeStr))
                 long.TryParse(fileSizeStr, NumberStyles.Integer, CultureInfo.InvariantCulture, out fileSizeBytes);
 
+            string ocrStatus = pdfElement.Attribute(DocuLinkXml.OcrStatusAttribute)?.Value;
+            if (string.IsNullOrWhiteSpace(ocrStatus))
+                ocrStatus = "ready";
+
             return new PdfDocument(
                 idAttribute.Value.Trim(),
                 name,
                 base64Attribute.Value ?? string.Empty,
                 folderId,
                 dateAdded,
-                fileSizeBytes);
+                fileSizeBytes)
+            {
+                OcrStatus = ocrStatus
+            };
         }
 
         private static XElement SerializePdf(PdfDocument pdf, int index)
@@ -188,6 +195,9 @@ namespace DocuLink.Addin.Modules.CustomXml.Serialization
             if (pdf.FileSizeBytes > 0)
                 element.Add(new XAttribute(DocuLinkXml.FileSizeBytesAttribute,
                     pdf.FileSizeBytes.ToString(CultureInfo.InvariantCulture)));
+
+            if (!string.IsNullOrWhiteSpace(pdf.OcrStatus) && pdf.OcrStatus != "ready")
+                element.Add(new XAttribute(DocuLinkXml.OcrStatusAttribute, pdf.OcrStatus));
 
             return element;
         }

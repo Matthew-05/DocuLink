@@ -29,5 +29,12 @@ namespace DocuLink.Addin.Modules.CustomXml.Models
 
         /// <summary>Original file size in bytes.</summary>
         public long FileSizeBytes { get; set; }
+
+        /// <summary>
+        /// OCR lifecycle status for this PDF.
+        /// Valid values: "ready", "queued", "processing", "complete", "error".
+        /// Defaults to "ready" for PDFs that have never been through OCR.
+        /// </summary>
+        public string OcrStatus { get; set; } = "ready";
     }
 }

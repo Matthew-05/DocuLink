@@ -1,4 +1,4 @@
-﻿<Project ToolsVersion="18.0" DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+<Project ToolsVersion="18.0" DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <Import Project="$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props" Condition="Exists('$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props')" />
   <!--
     This section defines project-level properties.
@@ -242,6 +242,7 @@
     <Compile Include="Modules\Services\LinkCellTracker.cs" />
     <Compile Include="Modules\Services\LinkNavigationService.cs" />
     <Compile Include="Modules\Services\ManageFilesService.cs" />
+    <Compile Include="Modules\Services\OcrService.cs" />
     <Compile Include="Modules\UI\ProgressDialog.cs">
       <SubType>Form</SubType>
     </Compile>
@@ -303,6 +304,19 @@
     </ItemGroup>
     <Copy SourceFiles="@(ViewerUiFiles)" DestinationFiles="@(ViewerUiFiles->'$(OutputPath)webui\%(RecursiveDir)%(Filename)%(Extension)')" />
     <Copy SourceFiles="@(FileManagerUiFiles)" DestinationFiles="@(FileManagerUiFiles->'$(OutputPath)webui\file-manager\%(RecursiveDir)%(Filename)%(Extension)')" />
+  </Target>
+  <!-- ── Python OCR worker copy ── -->
+  <PropertyGroup>
+    <PythonWorkerDistDir>$(MSBuildProjectDirectory)\..\python\dist\worker</PythonWorkerDistDir>
+    <PythonWorkerOutputDir>$(OutputPath)python\worker\</PythonWorkerOutputDir>
+  </PropertyGroup>
+  <Target Name="CopyPythonWorkerToOutput" AfterTargets="CopyWebUiToOutput">
+    <Warning Condition="!Exists('$(PythonWorkerDistDir)')" Text="[DocuLink] Python OCR worker not built — $(PythonWorkerDistDir) not found. Run src/python/build-worker.ps1 to build it. OCR will not work until the worker is present." />
+    <ItemGroup Condition="Exists('$(PythonWorkerDistDir)')">
+      <PythonWorkerFiles Include="$(PythonWorkerDistDir)\**\*.*" />
+    </ItemGroup>
+    <Message Condition="Exists('$(PythonWorkerDistDir)')" Text="[DocuLink] Copying Python OCR worker to output…" Importance="high" />
+    <Copy Condition="Exists('$(PythonWorkerDistDir)')" SourceFiles="@(PythonWorkerFiles)" DestinationFiles="@(PythonWorkerFiles->'$(PythonWorkerOutputDir)%(RecursiveDir)%(Filename)%(Extension)')" />
   </Target>
   <!-- This section defines VSTO properties that describe the host-changeable project properties. -->
   <ProjectExtensions>
