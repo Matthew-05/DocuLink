@@ -3,6 +3,7 @@ import type { FolderEntry } from "../../types/index.js";
 export interface TableToolbarOptions {
   onRemoveSelected(): void;
   onMoveSelected(folderId: string | null): void;
+  onOcrSelected(): void;
   onFilterChange(text: string): void;
 }
 
@@ -11,6 +12,7 @@ export class TableToolbar {
   private readonly _filterInput: HTMLInputElement;
   private readonly _moveBtn: HTMLButtonElement;
   private readonly _moveDropdown: HTMLElement;
+  private readonly _ocrBtn: HTMLButtonElement;
   private readonly _removeBtn: HTMLButtonElement;
   private readonly _onMoveSelected: (folderId: string | null) => void;
   private _folders: FolderEntry[] = [];
@@ -55,6 +57,14 @@ export class TableToolbar {
     moveWrap.appendChild(this._moveBtn);
     moveWrap.appendChild(this._moveDropdown);
 
+    // OCR button
+    this._ocrBtn = document.createElement("button");
+    this._ocrBtn.className = "btn-toolbar-move";
+    this._ocrBtn.disabled = true;
+    this._ocrBtn.textContent = "OCR Selected (0)";
+    this._ocrBtn.title = "Add a searchable text layer to the selected PDFs using OCR";
+    this._ocrBtn.addEventListener("click", () => options.onOcrSelected());
+
     // Remove button (rightmost)
     this._removeBtn = document.createElement("button");
     this._removeBtn.className = "btn-toolbar-danger";
@@ -63,6 +73,7 @@ export class TableToolbar {
     this._removeBtn.addEventListener("click", () => options.onRemoveSelected());
 
     rightGroup.appendChild(moveWrap);
+    rightGroup.appendChild(this._ocrBtn);
     rightGroup.appendChild(this._removeBtn);
 
     this._root.appendChild(this._filterInput);
@@ -75,6 +86,8 @@ export class TableToolbar {
 
   update(selectedCount: number): void {
     this._moveBtn.disabled = selectedCount === 0;
+    this._ocrBtn.disabled = selectedCount === 0;
+    this._ocrBtn.textContent = `OCR Selected (${selectedCount})`;
     this._removeBtn.disabled = selectedCount === 0;
     this._removeBtn.textContent = `Remove Selected (${selectedCount})`;
     if (selectedCount === 0) this._closeDropdown();

@@ -46,13 +46,33 @@ namespace DocuLink.Addin.Modules.WebView
                 {
                     sb.Append(",\"folderId\":"); AppendString(sb, p.FolderId);
                 }
-                sb.Append(",\"status\":\"ready\"");
+                sb.Append(",\"status\":"); AppendString(sb, !string.IsNullOrWhiteSpace(p.OcrStatus) ? p.OcrStatus : "ready");
                 sb.Append(",\"fileSizeBytes\":"); sb.Append(p.FileSizeBytes.ToString(CultureInfo.InvariantCulture));
                 sb.Append(",\"dateAdded\":"); AppendString(sb, dateAdded);
                 sb.Append('}');
             }
 
             sb.Append("]}");
+            return sb.ToString();
+        }
+
+        /// <summary>
+        /// Builds a host→web <c>ocr-status</c> message for a single PDF.
+        /// message is optional — pass null to omit it.
+        /// </summary>
+        public static string BuildOcrStatus(string pdfId, string status, string message = null)
+        {
+            var sb = new StringBuilder();
+            sb.Append("{\"type\":\"ocr-status\",\"pdfId\":");
+            AppendString(sb, pdfId ?? string.Empty);
+            sb.Append(",\"status\":");
+            AppendString(sb, status ?? string.Empty);
+            if (!string.IsNullOrEmpty(message))
+            {
+                sb.Append(",\"message\":");
+                AppendString(sb, message);
+            }
+            sb.Append('}');
             return sb.ToString();
         }
 

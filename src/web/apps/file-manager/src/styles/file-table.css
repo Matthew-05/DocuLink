@@ -194,3 +194,23 @@
   background: rgba(62, 207, 110, 0.15);
   color: var(--color-success);
 }
+
+.status-badge--complete {
+  background: rgba(62, 207, 110, 0.15);
+  color: var(--color-success);
+}
+
+.status-badge--queued {
+  background: rgba(130, 130, 200, 0.15);
+  color: #7878cc;
+}
+
+.status-badge--processing {
+  background: rgba(220, 160, 40, 0.15);
+  color: #b07a00;
+}
+
+.status-badge--error {
+  background: rgba(224, 85, 85, 0.15);
+  color: var(--color-danger);
+}

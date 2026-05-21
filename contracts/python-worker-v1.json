@@ -1,0 +1,77 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "http://doculink.dev/schemas/python-worker/1",
+  "title": "DocuLink Python Worker Protocol v1",
+  "description": "Defines the newline-delimited JSON messages exchanged between the C# host and the Python OCR worker over stdin/stdout.",
+
+  "definitions": {
+
+    "OcrJob": {
+      "description": "Sent by the C# host to the worker via stdin. One JSON object per line.",
+      "type": "object",
+      "required": ["job_id", "command", "pdf_base64"],
+      "additionalProperties": false,
+      "properties": {
+        "job_id":     { "type": "string", "description": "Opaque identifier echoed back in all responses for this job." },
+        "command":    { "const": "ocr",   "description": "Operation to perform." },
+        "pdf_base64": { "type": "string", "description": "Base-64 encoded input PDF bytes." }
+      },
+      "examples": [
+        { "job_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6", "command": "ocr", "pdf_base64": "JVBERi0xLjQ=" }
+      ]
+    },
+
+    "OcrProgressMessage": {
+      "description": "Emitted by the worker to stdout during processing. Zero or more per job.",
+      "type": "object",
+      "required": ["job_id", "status", "message"],
+      "additionalProperties": false,
+      "properties": {
+        "job_id":  { "type": "string" },
+        "status":  { "const": "progress" },
+        "message": { "type": "string", "description": "Human-readable progress description." }
+      },
+      "examples": [
+        { "job_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6", "status": "progress", "message": "Processing page 1 of 5" }
+      ]
+    },
+
+    "OcrSuccessMessage": {
+      "description": "Emitted by the worker to stdout when OCR completes successfully. Exactly one per job.",
+      "type": "object",
+      "required": ["job_id", "status", "pdf_base64"],
+      "additionalProperties": false,
+      "properties": {
+        "job_id":     { "type": "string" },
+        "status":     { "const": "success" },
+        "pdf_base64": { "type": "string", "description": "Base-64 encoded output PDF bytes with text layer added." }
+      },
+      "examples": [
+        { "job_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6", "status": "success", "pdf_base64": "JVBERi0xLjU=" }
+      ]
+    },
+
+    "OcrErrorMessage": {
+      "description": "Emitted by the worker to stdout when OCR fails. Exactly one per job.",
+      "type": "object",
+      "required": ["job_id", "status", "error"],
+      "additionalProperties": false,
+      "properties": {
+        "job_id": { "type": "string" },
+        "status": { "const": "error" },
+        "error":  { "type": "string", "description": "Human-readable error description." }
+      },
+      "examples": [
+        { "job_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6", "status": "error", "error": "Tesseract not found" }
+      ]
+    }
+
+  },
+
+  "oneOf": [
+    { "$ref": "#/definitions/OcrJob" },
+    { "$ref": "#/definitions/OcrProgressMessage" },
+    { "$ref": "#/definitions/OcrSuccessMessage" },
+    { "$ref": "#/definitions/OcrErrorMessage" }
+  ]
+}

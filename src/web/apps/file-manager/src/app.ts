@@ -1,5 +1,5 @@
 import type { FileEntry, FolderEntry } from "./types/index.js";
-import { initHostBridge, sendSelectedFolder, sendRemoveFile, sendMoveFile } from "./host-bridge.js";
+import { initHostBridge, sendSelectedFolder, sendRemoveFile, sendMoveFile, sendOcrPdfs } from "./host-bridge.js";
 import { FolderPanel } from "./components/folder-panel/folder-panel.js";
 import { Dropzone } from "./components/dropzone/dropzone.js";
 import { FileTable } from "./components/file-table/file-table.js";
@@ -29,6 +29,10 @@ export function mountApp(root: HTMLElement): void {
       const ids = fileTable.getSelectedIds();
       for (const id of ids) sendMoveFile(id, folderId);
       fileTable.clearSelection();
+    },
+    onOcrSelected() {
+      const ids = fileTable.getSelectedIds();
+      if (ids.length > 0) sendOcrPdfs(ids);
     },
     onFilterChange(text: string) {
       fileTable.setFilter(text);
@@ -63,6 +67,21 @@ export function mountApp(root: HTMLElement): void {
     toolbar.updateFolders(currentFolders);
   }
 
-  initHostBridge(onFilesLoaded);
+  function onOcrStatus(
+    pdfId: string,
+    status: "queued" | "processing" | "complete" | "error",
+    message: string | undefined
+  ): void {
+    if (status === "error") {
+      console.error(`[DocuLink] OCR error for pdf ${pdfId}:`, message ?? "(no details)");
+    }
+    const entry = currentFiles.find((f) => f.id === pdfId);
+    if (entry) {
+      entry.status = status;
+      fileTable.update(currentFiles, selectedFolderId);
+    }
+  }
+
+  initHostBridge(onFilesLoaded, onOcrStatus);
   sendSelectedFolder(null);
 }
