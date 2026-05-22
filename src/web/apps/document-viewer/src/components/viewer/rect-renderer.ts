@@ -15,6 +15,7 @@ const HIGHLIGHT_CLASS = "rect-draw__link--highlighted";
 export class RectRenderer {
   private _rects: LinkedRectEntry[] = [];
   private readonly _onRectClickedCallbacks: Array<(id: string) => void> = [];
+  private readonly _onRectContextMenuCallbacks: Array<(id: string, x: number, y: number) => void> = [];
   private _highlightedId: string | null = null;
 
   constructor(private readonly _viewer: PdfViewer) {
@@ -24,6 +25,11 @@ export class RectRenderer {
   /** Registers a callback invoked when the user clicks a link rectangle overlay. */
   onRectClicked(cb: (id: string) => void): void {
     this._onRectClickedCallbacks.push(cb);
+  }
+
+  /** Registers a callback invoked when the user right-clicks a link rectangle overlay. */
+  onRectContextMenu(cb: (id: string, x: number, y: number) => void): void {
+    this._onRectContextMenuCallbacks.push(cb);
   }
 
   /**
@@ -40,6 +46,11 @@ export class RectRenderer {
   clearHighlight(): void {
     this._highlightedId = null;
     this._applyHighlight();
+  }
+
+  /** Returns whether the given rectangle id is in the renderer's stored set. */
+  hasRectangle(id: string): boolean {
+    return this._rects.some((r) => r.id === id);
   }
 
   private _applyHighlight(): void {
@@ -60,6 +71,9 @@ export class RectRenderer {
   /** Replaces all stored rectangles and re-renders. */
   setRectangles(rects: LinkedRectEntry[]): void {
     this._rects = rects;
+    if (this._highlightedId !== null && !rects.some((r) => r.id === this._highlightedId)) {
+      this._highlightedId = null;
+    }
     this._renderAll();
   }
 
@@ -71,6 +85,28 @@ export class RectRenderer {
   addRectangle(rect: LinkedRectEntry): void {
     this._rects = [...this._rects, rect];
     this._renderAll();
+  }
+
+  /**
+   * Removes one or more rectangles by id. Updates internal state and removes
+   * matching overlay divs from the DOM when present (active PDF only).
+   */
+  removeRectangles(ids: string[]): void {
+    if (ids.length === 0) return;
+
+    const idSet = new Set(ids);
+    this._rects = this._rects.filter((r) => !idSet.has(r.id));
+
+    for (const id of ids) {
+      const el = this._viewer.element.querySelector<HTMLElement>(
+        `[data-rect-id="${CSS.escape(id)}"]`,
+      );
+      el?.remove();
+    }
+
+    if (this._highlightedId !== null && idSet.has(this._highlightedId)) {
+      this._highlightedId = null;
+    }
   }
 
   private _renderAll(): void {
@@ -110,6 +146,13 @@ export class RectRenderer {
         e.stopPropagation();
         this.highlightRectangle(entry.id);
         for (const cb of this._onRectClickedCallbacks) cb(entry.id);
+      });
+      div.addEventListener("contextmenu", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        for (const cb of this._onRectContextMenuCallbacks) {
+          cb(entry.id, e.clientX, e.clientY);
+        }
       });
       wrapper.appendChild(div);
     }

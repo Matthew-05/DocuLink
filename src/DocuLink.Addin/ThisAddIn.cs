@@ -56,7 +56,33 @@ namespace DocuLink.Addin
 
         internal bool SuppressNextSelectionNav { get; set; }
 
+        private int _suppressSelectionNavDepth;
 
+        /// <summary>
+        /// When &gt; 0, <see cref="Application_SheetSelectionChange"/> skips viewer
+        /// navigation. Used during bulk link deletion so unbind/repaint events do
+        /// not post redundant navigate-to-rectangle messages.
+        /// </summary>
+        internal bool IsSelectionNavSuppressed => _suppressSelectionNavDepth > 0;
+
+        internal SelectionNavSuppressScope EnterSelectionNavSuppress() =>
+            new SelectionNavSuppressScope(this);
+
+        internal sealed class SelectionNavSuppressScope : IDisposable
+        {
+            private readonly ThisAddIn _addIn;
+
+            internal SelectionNavSuppressScope(ThisAddIn addIn)
+            {
+                _addIn = addIn;
+                _addIn._suppressSelectionNavDepth++;
+            }
+
+            public void Dispose()
+            {
+                _addIn._suppressSelectionNavDepth--;
+            }
+        }
 
         internal bool IsViewerPoppedOut =>
 
@@ -618,6 +644,10 @@ namespace DocuLink.Addin
                 return;
 
             }
+
+            if (IsSelectionNavSuppressed)
+
+                return;
 
 
 
