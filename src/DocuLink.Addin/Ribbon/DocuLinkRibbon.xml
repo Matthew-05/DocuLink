@@ -5,17 +5,17 @@
       <tab id="DocuLink.Tab" label="DocuLink">
         <group id="DocuLink.Group.General" label="General">
           <menu id="DocuLink.MenuViewer"
-                label="Open Viewer"
+                label="Viewer"
                 size="large"
                 imageMso="WebPagePreview">
             <button id="DocuLink.BtnTaskPane"
-                    label="In Task Pane"
+                    label="Open in Task Pane"
                     onAction="OnShowTaskPane" />
             <button id="DocuLink.BtnViewerWindow"
-                    label="In Separate Window"
+                    label="Open in Separate Window"
                     onAction="OnShowViewerWindow" />
             <toggleButton id="DocuLink.ToggleAutoOpenViewer"
-                          label="Open on cell click"
+                          label="Automatically Open Viewer"
                           getPressed="GetAutoOpenViewerOnCellClick"
                           onAction="OnToggleAutoOpenViewerOnCellClick" />
           </menu>
