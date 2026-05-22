@@ -3,6 +3,7 @@ import { ZoomController } from "../toolbar/zoom-controller.js";
 import { connectViewerToHostBridge } from "./viewer-bridge.js";
 import { RectDrawOverlay } from "./rect-draw-overlay.js";
 import { RectRenderer } from "./rect-renderer.js";
+import { CharBboxOverlay } from "./char-bbox-overlay.js";
 import { createRectNavigator } from "./rect-navigator.js";
 import { TextContentCache } from "../../services/text-content-cache.js";
 import {
@@ -12,6 +13,12 @@ import {
   sendCacheBuildComplete,
 } from "../../host-bridge.js";
 import type { PdfViewer } from "./pdf-viewer.js";
+
+interface DocuLinkDebugApi {
+  toggleCharBboxes: () => boolean;
+  showCharBboxes: () => void;
+  hideCharBboxes: () => void;
+}
 
 /**
  * Creates and wires the toolbar, rect-draw overlay, and text-content cache
@@ -50,9 +57,10 @@ export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLEleme
 
   // ── Text cache & rect-draw overlay ────────────────────────────────────────
 
-  const cache    = new TextContentCache();
-  const renderer = new RectRenderer(viewer);
-  const overlay  = new RectDrawOverlay(viewer, cache);
+  const cache         = new TextContentCache();
+  const renderer      = new RectRenderer(viewer);
+  const overlay       = new RectDrawOverlay(viewer, cache);
+  const charBboxDebug = new CharBboxOverlay(viewer, cache);
 
   overlay.onRectCreated((payload) => {
     sendLinkRectangleCreated(payload);
@@ -77,9 +85,21 @@ export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLEleme
     cache.clear();
     sendCacheBuildStarted();
     void cache.buildAll(pdfId, doc)
-      .then(() => { if (gen === cacheGeneration) sendCacheBuildComplete(); })
+      .then(() => {
+        if (gen !== cacheGeneration) return;
+        charBboxDebug.refresh();
+        sendCacheBuildComplete();
+      })
       .catch(() => { if (gen === cacheGeneration) sendCacheBuildComplete(); });
   });
+
+  // ── Console debug API ─────────────────────────────────────────────────────
+
+  (window as Window & { __docuLink?: DocuLinkDebugApi }).__docuLink = {
+    toggleCharBboxes: () => charBboxDebug.toggle(),
+    showCharBboxes:   () => charBboxDebug.show(),
+    hideCharBboxes:   () => charBboxDebug.hide(),
+  };
 
   // ── Host bridge ───────────────────────────────────────────────────────────
 

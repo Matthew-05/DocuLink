@@ -1,0 +1,13 @@
+.char-bbox-debug {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.char-bbox-debug__cell {
+  position: absolute;
+  box-sizing: border-box;
+  border: 1px solid;
+  pointer-events: auto;
+}
