@@ -13,11 +13,14 @@ namespace DocuLink.Addin.Modules.UI
     /// </summary>
     internal sealed class ProgressScope : System.IDisposable
     {
-        private readonly ProgressDialog _dialog;
+        private ProgressDialog _dialog;
         private bool _disposed;
 
         public ProgressScope(string message)
         {
+            // TODO: re-enable loading popup
+            return;
+
             _dialog = new ProgressDialog(message);
             _dialog.Show();
         }
@@ -26,6 +29,7 @@ namespace DocuLink.Addin.Modules.UI
         {
             if (_disposed) return;
             _disposed = true;
+            if (_dialog == null) return;
             _dialog.ForceClose();
         }
     }
