@@ -24,6 +24,11 @@ namespace DocuLink.Addin.Ribbon
             Globals.ThisAddIn.ShowTaskPane();
         }
 
+        public void OnShowViewerWindow(IRibbonControl control)
+        {
+            Globals.ThisAddIn.ShowViewerWindow();
+        }
+
         public void OnManageFiles(IRibbonControl control)
         {
             Globals.ThisAddIn.ShowManageFilesWindow();

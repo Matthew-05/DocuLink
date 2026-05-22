@@ -4,10 +4,17 @@
     <tabs>
       <tab id="DocuLink.Tab" label="DocuLink">
         <group id="DocuLink.Group.General" label="General">
-          <button id="DocuLink.BtnTaskPane"
-                  label="Open Task Pane"
-                  size="large"
-                  onAction="OnShowTaskPane" />
+          <menu id="DocuLink.MenuViewer"
+                label="Open Viewer"
+                size="large"
+                imageMso="WebPagePreview">
+            <button id="DocuLink.BtnTaskPane"
+                    label="In Task Pane"
+                    onAction="OnShowTaskPane" />
+            <button id="DocuLink.BtnViewerWindow"
+                    label="In Separate Window"
+                    onAction="OnShowViewerWindow" />
+          </menu>
           <button id="DocuLink.BtnAddPdf"
                   label="Add PDF"
                   size="large"

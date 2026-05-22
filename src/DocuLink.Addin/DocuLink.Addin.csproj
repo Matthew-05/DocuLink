@@ -247,9 +247,11 @@
       <SubType>Form</SubType>
     </Compile>
     <Compile Include="Modules\UI\ProgressScope.cs" />
+    <Compile Include="Modules\WebView\DocumentViewerController.cs" />
     <Compile Include="Modules\WebView\FileManagerHost.cs">
       <SubType>Form</SubType>
     </Compile>
+    <Compile Include="Modules\WebView\IDocumentViewerHost.cs" />
     <Compile Include="Modules\WebView\FileManagerMessageParser.cs" />
     <Compile Include="Modules\WebView\FileManagerMessageSerializer.cs" />
     <Compile Include="Modules\WebView\HostMessageParser.cs" />
@@ -257,6 +259,9 @@
     <Compile Include="Modules\WebView\WebMessageParser.cs" />
     <Compile Include="Modules\WebView\TaskPaneHost.cs">
       <SubType>UserControl</SubType>
+    </Compile>
+    <Compile Include="Modules\WebView\ViewerWindowHost.cs">
+      <SubType>Form</SubType>
     </Compile>
     <Compile Include="Ribbon\DocuLinkRibbon.cs" />
     <EmbeddedResource Include="Ribbon\DocuLinkRibbon.xml" />

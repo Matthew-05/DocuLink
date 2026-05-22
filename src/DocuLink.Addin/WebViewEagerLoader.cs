@@ -17,6 +17,9 @@ namespace DocuLink.Addin
 
             // File manager: create and force HWND so InitAsync starts now
             addIn.PreloadFileManagerWindow();
+
+            // Document viewer pop-out window: same warm-load pattern
+            addIn.PreloadViewerWindow();
         }
     }
 }
