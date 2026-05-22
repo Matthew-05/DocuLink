@@ -63,6 +63,12 @@ export class FolderPanel {
     return this._selectedId;
   }
 
+  /** Resets folder selection and cancels any inline edit UI. */
+  reset(): void {
+    this._selectedId = null;
+    this._renderItems();
+  }
+
   private _renderItems(): void {
     this._list.innerHTML = "";
 

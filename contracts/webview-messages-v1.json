@@ -382,6 +382,19 @@
       ]
     },
 
+    "ResetUiMessage": {
+      "description": "Sent by the C# host when the file-manager window is hidden. The web app should reset transient UI state so the next show starts fresh.",
+      "type": "object",
+      "required": ["type"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "const": "reset-ui" }
+      },
+      "examples": [
+        { "type": "reset-ui" }
+      ]
+    },
+
     "OcrPdfsMessage": {
       "description": "Sent by the file-manager web app when the user clicks 'OCR Selected'. The host runs OCR on each PDF and replies with one or more OcrStatusMessages.",
       "type": "object",
@@ -446,6 +459,7 @@
     { "$ref": "#/definitions/LinkRectangleClickedMessage" },
     { "$ref": "#/definitions/NavigateToRectangleMessage" },
     { "$ref": "#/definitions/ClearRectangleHighlightMessage" },
+    { "$ref": "#/definitions/ResetUiMessage" },
     { "$ref": "#/definitions/OcrPdfsMessage" },
     { "$ref": "#/definitions/OcrStatusMessage" }
   ]

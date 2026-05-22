@@ -4,6 +4,7 @@ import { FolderPanel } from "./components/folder-panel/folder-panel.js";
 import { Dropzone } from "./components/dropzone/dropzone.js";
 import { FileTable } from "./components/file-table/file-table.js";
 import { TableToolbar } from "./components/table-toolbar/table-toolbar.js";
+import { wireFileManagerUiReset } from "./reset-ui.js";
 
 export function mountApp(root: HTMLElement): void {
   root.className = "file-manager";
@@ -83,5 +84,15 @@ export function mountApp(root: HTMLElement): void {
   }
 
   initHostBridge(onFilesLoaded, onOcrStatus);
+
+  wireFileManagerUiReset({
+    folderPanel,
+    fileTable,
+    toolbar,
+    dropzone,
+    setSelectedFolderId: (folderId) => { selectedFolderId = folderId; },
+    getCurrentFiles: () => currentFiles,
+  });
+
   sendSelectedFolder(null);
 }
