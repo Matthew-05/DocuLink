@@ -488,10 +488,27 @@ namespace DocuLink.Addin.Modules.WebView
             if (e.CloseReason == CloseReason.UserClosing)
             {
                 e.Cancel = true;
+                SendResetUiToWebView();
                 Hide();
                 return;
             }
             base.OnFormClosing(e);
+        }
+
+        private void SendResetUiToWebView()
+        {
+            if (!_webViewReady) return;
+
+            try
+            {
+                _webView.CoreWebView2?.PostWebMessageAsString(
+                    HostMessageSerializer.BuildResetUi());
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine(
+                    $"[DocuLink] SendResetUiToWebView failed: {ex.Message}");
+            }
         }
 
         private static string GetWebUiPath()

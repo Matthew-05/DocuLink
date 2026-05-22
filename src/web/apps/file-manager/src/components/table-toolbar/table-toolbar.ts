@@ -93,6 +93,13 @@ export class TableToolbar {
     if (selectedCount === 0) this._closeDropdown();
   }
 
+  /** Clears the filter field, closes the move menu, and disables bulk actions. */
+  reset(): void {
+    this._filterInput.value = "";
+    this._closeDropdown();
+    this.update(0);
+  }
+
   updateFolders(folders: FolderEntry[]): void {
     this._folders = folders;
     this._renderDropdownItems();

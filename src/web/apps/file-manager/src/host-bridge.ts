@@ -15,7 +15,11 @@ interface OcrStatusMessage {
   message?: string;
 }
 
-type HostMessage = FilesLoadedMessage | OcrStatusMessage;
+interface ResetUiMessage {
+  type: "reset-ui";
+}
+
+type HostMessage = FilesLoadedMessage | OcrStatusMessage | ResetUiMessage;
 
 // ── Outbound (web → host) ─────────────────────────────────────────────────────
 
@@ -40,7 +44,13 @@ function send(msg: object): void {
   getWebView()?.postMessage(JSON.stringify(msg));
 }
 
+let _onResetUi: (() => void) | null = null;
+
 // ── Public API ────────────────────────────────────────────────────────────────
+
+export function registerUiResetHandler(handler: () => void): void {
+  _onResetUi = handler;
+}
 
 export function initHostBridge(
   onFilesLoaded: (folders: FolderEntry[], files: FileEntry[]) => void,
@@ -65,6 +75,8 @@ export function initHostBridge(
       onFilesLoaded(msg.folders, msg.files);
     } else if (msg.type === "ocr-status" && onOcrStatus) {
       onOcrStatus(msg.pdfId, msg.status, msg.message);
+    } else if (msg.type === "reset-ui") {
+      _onResetUi?.();
     }
   });
 

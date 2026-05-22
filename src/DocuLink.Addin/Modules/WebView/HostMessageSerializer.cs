@@ -77,6 +77,10 @@ namespace DocuLink.Addin.Modules.WebView
         public static string BuildClearRectangleHighlight() =>
             "{\"type\":\"clear-rectangle-highlight\"}";
 
+        /// <summary>Returns the JSON payload for a <c>reset-ui</c> message.</summary>
+        public static string BuildResetUi() =>
+            "{\"type\":\"reset-ui\"}";
+
         /// <summary>
         /// Returns the JSON payload for a <c>navigate-to-rectangle</c> message.
         /// </summary>

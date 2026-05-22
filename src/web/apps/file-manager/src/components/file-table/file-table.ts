@@ -76,6 +76,12 @@ export class FileTable {
     this._onSelectionChange([]);
   }
 
+  /** Clears row selection and the filter text. */
+  reset(): void {
+    this._filterText = "";
+    this.clearSelection();
+  }
+
   updateFolders(folders: FolderEntry[]): void {
     this._folders = folders;
     this._render();
