@@ -6,6 +6,13 @@
   height: 100vh;
   gap: 0;
   overflow: hidden;
+  user-select: none;
+  cursor: default;
+}
+
+#app input[type="text"] {
+  user-select: text;
+  cursor: text;
 }
 
 .file-manager__sidebar {

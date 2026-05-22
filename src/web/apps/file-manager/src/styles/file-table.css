@@ -138,7 +138,6 @@
 /* ── Inline file-name editing ─────────────────────────────────────────────── */
 
 .file-name {
-  cursor: text;
   display: block;
   overflow: hidden;
   text-overflow: ellipsis;
