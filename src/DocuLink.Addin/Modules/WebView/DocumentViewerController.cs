@@ -29,6 +29,9 @@ namespace DocuLink.Addin.Modules.WebView
         private readonly WebView2 _webView = new WebView2();
         private ProgressScope _cacheProgressScope;
         private bool _webViewReady;
+        private string _pendingNavigateId;
+        private string _pendingNavigatePdfId;
+        private int? _pendingNavigatePage;
 
         internal DocumentViewerController(Control invokeTarget, string loadFailureSurfaceName)
         {
@@ -93,6 +96,7 @@ namespace DocuLink.Addin.Modules.WebView
                         _webViewReady = true;
                         SendPdfsToWebView();
                         SendLinkedRectanglesToWebView();
+                        FlushPendingNavigateToRectangle();
                         break;
 
                     case "link-rectangle-created":
@@ -183,8 +187,35 @@ namespace DocuLink.Addin.Modules.WebView
 
         internal void SendNavigateToRectangle(string id, string pdfId, int page)
         {
-            if (!_webViewReady) return;
+            if (!_webViewReady)
+            {
+                _pendingNavigateId = id;
+                _pendingNavigatePdfId = pdfId;
+                _pendingNavigatePage = page;
+                return;
+            }
 
+            PostNavigateToRectangle(id, pdfId, page);
+        }
+
+        private void FlushPendingNavigateToRectangle()
+        {
+            if (_pendingNavigatePage == null)
+                return;
+
+            string id = _pendingNavigateId;
+            string pdfId = _pendingNavigatePdfId;
+            int page = _pendingNavigatePage.Value;
+
+            _pendingNavigateId = null;
+            _pendingNavigatePdfId = null;
+            _pendingNavigatePage = null;
+
+            PostNavigateToRectangle(id, pdfId, page);
+        }
+
+        private void PostNavigateToRectangle(string id, string pdfId, int page)
+        {
             try
             {
                 string json = HostMessageSerializer.BuildNavigateToRectangle(id, pdfId, page);

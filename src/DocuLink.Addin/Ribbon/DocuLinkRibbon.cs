@@ -7,6 +7,7 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Windows.Forms;
 using DocuLink.Addin.Modules.Services;
+using DocuLink.Addin.Properties;
 using Microsoft.Office.Core;
 
 namespace DocuLink.Addin.Ribbon
@@ -14,6 +15,7 @@ namespace DocuLink.Addin.Ribbon
     [ComVisible(true)]
     public class DocuLinkRibbon : IRibbonExtensibility
     {
+        private IRibbonUI _ribbonUi;
         public string GetCustomUI(string ribbonID)
         {
             return LoadRibbonXmlFromResources();
@@ -27,6 +29,18 @@ namespace DocuLink.Addin.Ribbon
         public void OnShowViewerWindow(IRibbonControl control)
         {
             Globals.ThisAddIn.ShowViewerWindow();
+        }
+
+        public bool GetAutoOpenViewerOnCellClick(IRibbonControl control)
+        {
+            return Settings.Default.AutoOpenViewerOnCellClick;
+        }
+
+        public void OnToggleAutoOpenViewerOnCellClick(IRibbonControl control, bool pressed)
+        {
+            Settings.Default.AutoOpenViewerOnCellClick = pressed;
+            Settings.Default.Save();
+            _ribbonUi?.InvalidateControl(control.Id);
         }
 
         public void OnManageFiles(IRibbonControl control)
@@ -112,6 +126,7 @@ namespace DocuLink.Addin.Ribbon
         /// <summary>Called when the Ribbon extensibility loads; retained for optional IRibbonUI caching.</summary>
         public void Ribbon_Load(IRibbonUI ribbonUi)
         {
+            _ribbonUi = ribbonUi;
         }
     }
 }
