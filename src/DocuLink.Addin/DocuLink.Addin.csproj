@@ -246,6 +246,9 @@
     <Compile Include="Modules\UI\ProgressDialog.cs">
       <SubType>Form</SubType>
     </Compile>
+    <Compile Include="Modules\UI\LinkTextPromptDialog.cs">
+      <SubType>Form</SubType>
+    </Compile>
     <Compile Include="Modules\UI\ProgressScope.cs" />
     <Compile Include="Modules\WebView\DocumentViewerController.cs" />
     <Compile Include="Modules\WebView\FileManagerHost.cs">

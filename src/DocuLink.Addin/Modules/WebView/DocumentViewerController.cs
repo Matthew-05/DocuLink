@@ -132,11 +132,22 @@ namespace DocuLink.Addin.Modules.WebView
             Excel.Workbook wb = Globals.ThisAddIn.Application?.ActiveWorkbook;
             if (wb == null) return;
 
+            string text = payload.Text;
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                IWin32Window owner = _invokeTarget.FindForm() ?? _invokeTarget;
+                if (!LinkTextPromptDialog.TryPrompt(owner, out text))
+                {
+                    SendLinkedRectanglesToWebView();
+                    return;
+                }
+            }
+
             var linkedRect = new CreateLinkService().CreateLink(
                 payload.PdfId,
                 payload.Page,
                 payload.X, payload.Y, payload.Width, payload.Height,
-                payload.Text,
+                text,
                 wb);
 
             SendLinkedRectanglesToWebView();
