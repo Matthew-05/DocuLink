@@ -57,6 +57,27 @@
       ]
     },
 
+    "PdfUpdatedMessage": {
+      "description": "Sent by the C# host when a single PDF's bytes change (e.g. after OCR). The viewer should update its entry list and reload the document if it is currently displayed.",
+      "type": "object",
+      "required": ["type", "pdf"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "const": "pdf-updated" },
+        "pdf": { "$ref": "#/definitions/PdfPayload" }
+      },
+      "examples": [
+        {
+          "type": "pdf-updated",
+          "pdf": {
+            "id":     "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+            "name":   "Invoice Q1 2026.pdf",
+            "base64": "JVBERi0xLjQKJeLjz9M="
+          }
+        }
+      ]
+    },
+
     "ManagerReadyMessage": {
       "description": "Sent once by the file-manager web app after JavaScript has initialised. The host responds by posting a FilesLoadedMessage.",
       "type": "object",
@@ -407,6 +428,7 @@
   "oneOf": [
     { "$ref": "#/definitions/ViewerReadyMessage" },
     { "$ref": "#/definitions/PdfsLoadedMessage" },
+    { "$ref": "#/definitions/PdfUpdatedMessage" },
     { "$ref": "#/definitions/ManagerReadyMessage" },
     { "$ref": "#/definitions/FilesLoadedMessage" },
     { "$ref": "#/definitions/AddFilesMessage" },

@@ -11,6 +11,11 @@ interface PdfsLoadedMessage {
   pdfs: PdfPayload[];
 }
 
+interface PdfUpdatedMessage {
+  type: "pdf-updated";
+  pdf: PdfPayload;
+}
+
 interface LinkedRectPayload {
   id: string;
   pdfId: string;
@@ -30,14 +35,21 @@ interface NavigateToRectangleMessage {
   page: number;
 }
 
-/** Revoke previously created object URLs to avoid memory leaks. */
-let _activeObjectUrls: string[] = [];
+/** Tracks object URLs by PDF id so single-document updates can revoke safely. */
+const _urlsByPdfId = new Map<string, string>();
 
-function revokeActiveUrls(): void {
-  for (const url of _activeObjectUrls) {
+function revokeAllUrls(): void {
+  for (const url of _urlsByPdfId.values()) {
     URL.revokeObjectURL(url);
   }
-  _activeObjectUrls = [];
+  _urlsByPdfId.clear();
+}
+
+function revokePdfUrl(pdfId: string): void {
+  const existing = _urlsByPdfId.get(pdfId);
+  if (!existing) return;
+  URL.revokeObjectURL(existing);
+  _urlsByPdfId.delete(pdfId);
 }
 
 function base64ToObjectUrl(base64: string): string {
@@ -47,9 +59,18 @@ function base64ToObjectUrl(base64: string): string {
     bytes[i] = binary.charCodeAt(i);
   }
   const blob = new Blob([bytes], { type: "application/pdf" });
-  const url = URL.createObjectURL(blob);
-  _activeObjectUrls.push(url);
-  return url;
+  return URL.createObjectURL(blob);
+}
+
+function toPdfEntry(pdf: PdfPayload): PdfEntry {
+  revokePdfUrl(pdf.id);
+  const url = base64ToObjectUrl(pdf.base64);
+  _urlsByPdfId.set(pdf.id, url);
+  return {
+    id:   pdf.id,
+    name: pdf.name || pdf.id,
+    url,
+  };
 }
 
 function handleMessage(
@@ -58,6 +79,7 @@ function handleMessage(
   onLinkedRectangles?: (rects: LinkedRectEntry[]) => void,
   onNavigateToRectangle?: (id: string, pdfId: string, page: number) => void,
   onClearRectangleHighlight?: () => void,
+  onPdfUpdated?: (entry: PdfEntry) => void,
 ): void {
   try {
     const parsed: unknown =
@@ -75,13 +97,16 @@ function handleMessage(
     if (type === "pdfs-loaded") {
       const msg = parsed as PdfsLoadedMessage;
 
-      revokeActiveUrls();
-      const entries: PdfEntry[] = msg.pdfs.map((pdf) => ({
-        id:  pdf.id,
-        name: pdf.name || pdf.id,
-        url:  base64ToObjectUrl(pdf.base64),
-      }));
+      revokeAllUrls();
+      const entries: PdfEntry[] = msg.pdfs.map((pdf) => toPdfEntry(pdf));
       onEntries(entries);
+      return;
+    }
+
+    if (type === "pdf-updated") {
+      if (!onPdfUpdated) return;
+      const msg = parsed as PdfUpdatedMessage;
+      onPdfUpdated(toPdfEntry(msg.pdf));
       return;
     }
 
@@ -140,6 +165,7 @@ export function initHostBridge(
   onLinkedRectangles?: (rects: LinkedRectEntry[]) => void,
   onNavigateToRectangle?: (id: string, pdfId: string, page: number) => void,
   onClearRectangleHighlight?: () => void,
+  onPdfUpdated?: (entry: PdfEntry) => void,
 ): void {
   const webview = (
     window as unknown as { chrome?: { webview?: WebView2Bridge } }
@@ -153,7 +179,7 @@ export function initHostBridge(
 
   webview.addEventListener("message", (event: Event) => {
     const data = (event as MessageEvent<unknown>).data;
-    handleMessage(data, onEntries, onLinkedRectangles, onNavigateToRectangle, onClearRectangleHighlight);
+    handleMessage(data, onEntries, onLinkedRectangles, onNavigateToRectangle, onClearRectangleHighlight, onPdfUpdated);
   });
 
   postToHost({ type: "viewer-ready" });

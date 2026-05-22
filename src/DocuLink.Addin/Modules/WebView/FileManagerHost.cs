@@ -329,7 +329,10 @@ namespace DocuLink.Addin.Modules.WebView
                     _webView.CoreWebView2?.PostWebMessageAsString(json);
 
                     if (status == "complete")
+                    {
                         anyComplete = true;
+                        Globals.ThisAddIn.RefreshTaskPanePdf(pdfId);
+                    }
                 });
 
             if (anyComplete)

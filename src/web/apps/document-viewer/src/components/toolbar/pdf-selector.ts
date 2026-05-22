@@ -68,6 +68,17 @@ export class PdfSelector {
     this._renderList(this._searchInput.value);
   }
 
+  /** Replaces or appends a single entry after a targeted host update (e.g. OCR). */
+  upsertEntry(entry: PdfEntry): void {
+    const index = this._entries.findIndex((candidate) => candidate.id === entry.id);
+    if (index >= 0) {
+      this._entries[index] = entry;
+    } else {
+      this._entries.push(entry);
+    }
+    this._renderList(this._searchInput.value);
+  }
+
   getEntry(id: string): PdfEntry | undefined {
     return this._entries.find((e) => e.id === id);
   }

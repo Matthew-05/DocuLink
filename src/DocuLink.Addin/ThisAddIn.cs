@@ -43,6 +43,15 @@ namespace DocuLink.Addin
             FindEntryForActiveWorkbook()?.Host.RefreshDataIfReady();
         }
 
+        /// <summary>
+        /// Pushes updated bytes for a single PDF to the task pane viewer.
+        /// Used after OCR so an already-loaded document is refreshed immediately.
+        /// </summary>
+        internal void RefreshTaskPanePdf(string pdfId)
+        {
+            FindEntryForActiveWorkbook()?.Host.SendPdfUpdated(pdfId);
+        }
+
         internal void ShowManageFilesWindow()
         {
             if (_fileManagerWindow == null || _fileManagerWindow.IsDisposed)
