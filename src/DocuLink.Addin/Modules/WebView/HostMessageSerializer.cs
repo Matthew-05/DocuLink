@@ -77,6 +77,24 @@ namespace DocuLink.Addin.Modules.WebView
         public static string BuildClearRectangleHighlight() =>
             "{\"type\":\"clear-rectangle-highlight\"}";
 
+        /// <summary>
+        /// Returns the JSON payload for a <c>link-rectangles-removed</c> message.
+        /// </summary>
+        public static string BuildLinkRectanglesRemoved(IList<string> ids)
+        {
+            var sb = new StringBuilder();
+            sb.Append("{\"type\":\"link-rectangles-removed\",\"ids\":[");
+
+            for (int i = 0; i < ids.Count; i++)
+            {
+                if (i > 0) sb.Append(',');
+                AppendString(sb, ids[i] ?? string.Empty);
+            }
+
+            sb.Append("]}");
+            return sb.ToString();
+        }
+
         /// <summary>Returns the JSON payload for a <c>reset-ui</c> message.</summary>
         public static string BuildResetUi() =>
             "{\"type\":\"reset-ui\"}";

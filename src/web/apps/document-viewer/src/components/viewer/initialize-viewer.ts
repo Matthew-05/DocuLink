@@ -3,12 +3,14 @@ import { ZoomController } from "../toolbar/zoom-controller.js";
 import { connectViewerToHostBridge } from "./viewer-bridge.js";
 import { RectDrawOverlay } from "./rect-draw-overlay.js";
 import { RectRenderer } from "./rect-renderer.js";
+import { RectContextMenu } from "./rect-context-menu.js";
 import { CharBboxOverlay } from "./char-bbox-overlay.js";
 import { createRectNavigator } from "./rect-navigator.js";
 import { TextContentCache } from "../../services/text-content-cache.js";
 import {
   sendLinkRectangleCreated,
   sendLinkRectangleClicked,
+  sendLinkRectangleDeleted,
   sendCacheBuildStarted,
   sendCacheBuildComplete,
 } from "../../host-bridge.js";
@@ -59,8 +61,11 @@ export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLEleme
 
   const cache         = new TextContentCache();
   const renderer      = new RectRenderer(viewer);
+  const contextMenu   = new RectContextMenu();
   const overlay       = new RectDrawOverlay(viewer, cache);
   const charBboxDebug = new CharBboxOverlay(viewer, cache);
+
+  contextMenu.attachScrollTarget(viewer.element);
 
   overlay.onRectCreated((payload) => {
     sendLinkRectangleCreated(payload);
@@ -73,6 +78,14 @@ export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLEleme
   });
 
   renderer.onRectClicked((id) => sendLinkRectangleClicked(id));
+
+  renderer.onRectContextMenu((id, x, y) => {
+    contextMenu.show(x, y, id);
+  });
+
+  contextMenu.onDelete((id) => {
+    sendLinkRectangleDeleted(id);
+  });
 
   let cacheGeneration = 0;
 
@@ -108,9 +121,16 @@ export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLEleme
   connectViewerToHostBridge(
     viewer,
     selector,
-    (rects) => { renderer.setRectangles(rects); },
+    (rects) => {
+      contextMenu.hide();
+      renderer.setRectangles(rects);
+    },
     navigate,
     () => { renderer.clearHighlight(); },
+    (ids) => {
+      contextMenu.hide();
+      renderer.removeRectangles(ids);
+    },
   );
 
   return { toolbarElement };

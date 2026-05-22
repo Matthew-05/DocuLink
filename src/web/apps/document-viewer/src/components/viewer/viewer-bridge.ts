@@ -25,6 +25,7 @@ export function connectViewerToHostBridge(
   onLinkedRectangles?: (rects: LinkedRectEntry[]) => void,
   onNavigateToRectangle?: (id: string, pdfId: string, page: number) => void,
   onClearRectangleHighlight?: () => void,
+  onLinkRectanglesRemoved?: (ids: string[]) => void,
 ): void {
   const reloadEntry = (entry: PdfEntry): void => {
     selector.setActiveId(entry.id);
@@ -50,5 +51,6 @@ export function connectViewerToHostBridge(
         reloadEntry(entry);
       }
     },
+    onLinkRectanglesRemoved,
   );
 }

@@ -7,7 +7,9 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Windows.Forms;
 using DocuLink.Addin.Modules.Services;
+using DocuLink.Addin.Modules.UI;
 using DocuLink.Addin.Properties;
+using Excel = Microsoft.Office.Interop.Excel;
 using Microsoft.Office.Core;
 
 namespace DocuLink.Addin.Ribbon
@@ -46,6 +48,63 @@ namespace DocuLink.Addin.Ribbon
         public void OnManageFiles(IRibbonControl control)
         {
             Globals.ThisAddIn.ShowManageFilesWindow();
+        }
+
+        public void OnDeleteLinksInSelection(IRibbonControl control)
+        {
+            var app = Globals.ThisAddIn.Application;
+            if (app?.ActiveWorkbook == null)
+            {
+                MessageBox.Show(
+                    text: "Open a workbook before deleting links.",
+                    caption: "DocuLink",
+                    buttons: MessageBoxButtons.OK,
+                    icon: MessageBoxIcon.Information);
+                return;
+            }
+
+            var selection = app.Selection as Excel.Range;
+            if (selection == null)
+            {
+                MessageBox.Show(
+                    text: "Select one or more cells first.",
+                    caption: "DocuLink",
+                    buttons: MessageBoxButtons.OK,
+                    icon: MessageBoxIcon.Information);
+                return;
+            }
+
+            IList<string> deletedIds;
+            using (Globals.ThisAddIn.EnterSelectionNavSuppress())
+            {
+                bool prevEnableEvents = app.EnableEvents;
+                try
+                {
+                    app.EnableEvents = false;
+
+                    using (new ProgressScope("Deleting links\u2026"))
+                    {
+                        deletedIds = new DeleteLinkService().DeleteLinksInSelection(
+                            selection, app.ActiveWorkbook);
+                    }
+
+                    if (deletedIds.Count > 0)
+                        Globals.ThisAddIn.GetActiveViewerHost()?.SendLinkRectanglesRemoved(deletedIds);
+                }
+                finally
+                {
+                    app.EnableEvents = prevEnableEvents;
+                }
+            }
+
+            if (deletedIds.Count == 0)
+            {
+                MessageBox.Show(
+                    text: "No linked cells in the selected range.",
+                    caption: "DocuLink",
+                    buttons: MessageBoxButtons.OK,
+                    icon: MessageBoxIcon.Information);
+            }
         }
 
         public void OnAddPdfDocuments(IRibbonControl control)

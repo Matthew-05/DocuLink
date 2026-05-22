@@ -35,6 +35,11 @@ interface NavigateToRectangleMessage {
   page: number;
 }
 
+interface LinkRectanglesRemovedMessage {
+  type: "link-rectangles-removed";
+  ids: string[];
+}
+
 /** Tracks object URLs by PDF id so single-document updates can revoke safely. */
 const _urlsByPdfId = new Map<string, string>();
 
@@ -80,6 +85,7 @@ function handleMessage(
   onNavigateToRectangle?: (id: string, pdfId: string, page: number) => void,
   onClearRectangleHighlight?: () => void,
   onPdfUpdated?: (entry: PdfEntry) => void,
+  onLinkRectanglesRemoved?: (ids: string[]) => void,
 ): void {
   try {
     const parsed: unknown =
@@ -134,6 +140,13 @@ function handleMessage(
       onClearRectangleHighlight?.();
       return;
     }
+
+    if (type === "link-rectangles-removed") {
+      if (!onLinkRectanglesRemoved) return;
+      const removedMsg = parsed as LinkRectanglesRemovedMessage;
+      onLinkRectanglesRemoved(removedMsg.ids);
+      return;
+    }
   } catch {
     // Malformed JSON or unexpected shape — silently ignore.
   }
@@ -166,6 +179,7 @@ export function initHostBridge(
   onNavigateToRectangle?: (id: string, pdfId: string, page: number) => void,
   onClearRectangleHighlight?: () => void,
   onPdfUpdated?: (entry: PdfEntry) => void,
+  onLinkRectanglesRemoved?: (ids: string[]) => void,
 ): void {
   const webview = (
     window as unknown as { chrome?: { webview?: WebView2Bridge } }
@@ -179,7 +193,15 @@ export function initHostBridge(
 
   webview.addEventListener("message", (event: Event) => {
     const data = (event as MessageEvent<unknown>).data;
-    handleMessage(data, onEntries, onLinkedRectangles, onNavigateToRectangle, onClearRectangleHighlight, onPdfUpdated);
+    handleMessage(
+      data,
+      onEntries,
+      onLinkedRectangles,
+      onNavigateToRectangle,
+      onClearRectangleHighlight,
+      onPdfUpdated,
+      onLinkRectanglesRemoved,
+    );
   });
 
   postToHost({ type: "viewer-ready" });
@@ -187,6 +209,10 @@ export function initHostBridge(
 
 export function sendLinkRectangleClicked(id: string): void {
   postToHost({ type: "link-rectangle-clicked", id });
+}
+
+export function sendLinkRectangleDeleted(id: string): void {
+  postToHost({ type: "link-rectangle-deleted", id });
 }
 
 export function sendLinkRectangleCreated(payload: LinkRectPayload): void {

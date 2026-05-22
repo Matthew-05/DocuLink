@@ -23,6 +23,11 @@
                   label="Add PDF"
                   size="large"
                   onAction="OnAddPdfDocuments" />
+          <button id="DocuLink.BtnDeleteLinks"
+                  label="Delete Links"
+                  size="large"
+                  imageMso="ClearFormats"
+                  onAction="OnDeleteLinksInSelection" />
           <button id="DocuLink.BtnManageFiles"
                   label="Manage Files"
                   size="large"

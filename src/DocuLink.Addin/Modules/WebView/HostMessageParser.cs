@@ -19,6 +19,20 @@ namespace DocuLink.Addin.Modules.WebView
     /// </summary>
     public static string ParseLinkRectangleClicked(string json)
     {
+        return ParseRectangleIdMessage(json);
+    }
+
+    /// <summary>
+    /// Parses a <c>link-rectangle-deleted</c> message and returns the
+    /// rectangle id, or <c>null</c> on failure.
+    /// </summary>
+    public static string ParseLinkRectangleDeleted(string json)
+    {
+        return ParseRectangleIdMessage(json);
+    }
+
+    private static string ParseRectangleIdMessage(string json)
+    {
         if (string.IsNullOrWhiteSpace(json))
             return null;
 

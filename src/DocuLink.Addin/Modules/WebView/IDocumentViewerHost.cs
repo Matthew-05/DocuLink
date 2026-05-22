@@ -10,5 +10,7 @@ namespace DocuLink.Addin.Modules.WebView
         void SendNavigateToRectangle(string id, string pdfId, int page);
 
         void SendClearRectangleHighlight();
+
+        void SendLinkRectanglesRemoved(System.Collections.Generic.IList<string> ids);
     }
 }

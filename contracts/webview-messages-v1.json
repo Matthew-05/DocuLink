@@ -348,6 +348,42 @@
       ]
     },
 
+    "LinkRectangleDeletedMessage": {
+      "description": "Sent by the document-viewer when the user deletes a persisted link rectangle (e.g. via context menu). The host removes the link from storage, clears the linked cell background, and notifies the viewer to remove the overlay.",
+      "type": "object",
+      "required": ["type", "id"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "const": "link-rectangle-deleted" },
+        "id":   { "type": "string", "description": "GUID of the LinkedRectangle to delete." }
+      },
+      "examples": [
+        { "type": "link-rectangle-deleted", "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890" }
+      ]
+    },
+
+    "LinkRectanglesRemovedMessage": {
+      "description": "Sent by the C# host after one or more link rectangles are deleted. The viewer should remove the matching overlay divs from the DOM (if present on the active PDF) without reloading all rectangles.",
+      "type": "object",
+      "required": ["type", "ids"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "const": "link-rectangles-removed" },
+        "ids": {
+          "type": "array",
+          "items": { "type": "string" },
+          "minItems": 1,
+          "description": "GUIDs of the LinkedRectangles that were removed."
+        }
+      },
+      "examples": [
+        {
+          "type": "link-rectangles-removed",
+          "ids": ["a1b2c3d4-e5f6-7890-abcd-ef1234567890"]
+        }
+      ]
+    },
+
     "NavigateToRectangleMessage": {
       "description": "Sent by the C# host when the user selects a linked cell in Excel. The viewer should switch to the specified PDF (if needed), jump instantly to the page, and highlight the rectangle.",
       "type": "object",
@@ -457,6 +493,8 @@
     { "$ref": "#/definitions/CacheBuildCompleteMessage" },
     { "$ref": "#/definitions/LinkedRectanglesLoadedMessage" },
     { "$ref": "#/definitions/LinkRectangleClickedMessage" },
+    { "$ref": "#/definitions/LinkRectangleDeletedMessage" },
+    { "$ref": "#/definitions/LinkRectanglesRemovedMessage" },
     { "$ref": "#/definitions/NavigateToRectangleMessage" },
     { "$ref": "#/definitions/ClearRectangleHighlightMessage" },
     { "$ref": "#/definitions/ResetUiMessage" },

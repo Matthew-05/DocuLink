@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Reflection;
@@ -107,6 +108,10 @@ namespace DocuLink.Addin.Modules.WebView
                         HandleLinkRectangleClicked(raw);
                         break;
 
+                    case "link-rectangle-deleted":
+                        HandleLinkRectangleDeleted(raw);
+                        break;
+
                     case "cache-build-started":
                         _cacheProgressScope?.Dispose();
                         _cacheProgressScope = new ProgressScope("Building document index\u2026");
@@ -178,6 +183,40 @@ namespace DocuLink.Addin.Modules.WebView
             Globals.ThisAddIn.SuppressNextSelectionNav = true;
 
             new LinkNavigationService().NavigateToLinkedCell(rectId, wb);
+        }
+
+        private void HandleLinkRectangleDeleted(string json)
+        {
+            string rectId = HostMessageParser.ParseLinkRectangleDeleted(json);
+            if (string.IsNullOrWhiteSpace(rectId)) return;
+
+            Excel.Workbook wb = Globals.ThisAddIn.Application?.ActiveWorkbook;
+            if (wb == null) return;
+
+            using (Globals.ThisAddIn.EnterSelectionNavSuppress())
+            {
+                if (!new DeleteLinkService().DeleteLink(rectId, wb))
+                    return;
+
+                SendLinkRectanglesRemoved(new[] { rectId });
+            }
+        }
+
+        internal void SendLinkRectanglesRemoved(IList<string> ids)
+        {
+            if (!_webViewReady || ids == null || ids.Count == 0)
+                return;
+
+            try
+            {
+                _webView.CoreWebView2.PostWebMessageAsString(
+                    HostMessageSerializer.BuildLinkRectanglesRemoved(ids));
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine(
+                    $"[DocuLink] SendLinkRectanglesRemoved failed: {ex.Message}");
+            }
         }
 
         internal void SendClearRectangleHighlight()

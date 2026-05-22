@@ -53,5 +53,18 @@ export async function renderPage(
     wrapper.appendChild(canvas);
   }
 
+  ensureOverlayLayer(wrapper);
+
   return { baseWidth: viewport.width / scale, baseHeight: viewport.height / scale };
+}
+
+/** Ensures a dedicated overlay layer exists above the canvas. */
+export function ensureOverlayLayer(wrapper: HTMLDivElement): HTMLDivElement {
+  let layer = wrapper.querySelector<HTMLDivElement>(".viewer__overlays");
+  if (!layer) {
+    layer = document.createElement("div");
+    layer.className = "viewer__overlays";
+    wrapper.appendChild(layer);
+  }
+  return layer;
 }

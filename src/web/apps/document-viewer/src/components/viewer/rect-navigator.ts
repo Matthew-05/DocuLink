@@ -28,6 +28,9 @@ async function _navigate(
   pdfId: string,
   page: number,
 ): Promise<void> {
+  // Ignore stale navigate messages (e.g. queued before a ribbon bulk delete).
+  if (!renderer.hasRectangle(id)) return;
+
   if (viewer.getActivePdfId() !== pdfId) {
     const entry = selector.getEntry(pdfId);
     if (!entry) return;
@@ -35,26 +38,28 @@ async function _navigate(
     await viewer.loadDocument(entry.url, pdfId);
   }
 
-  // page is 0-based; scrollToPage and [data-page] are 1-based.
+  if (!renderer.hasRectangle(id)) return;
+
+  const rectEl = viewer.element.querySelector<HTMLElement>(
+    `[data-rect-id="${CSS.escape(id)}"]`,
+  );
+  if (!rectEl) return;
+
+  renderer.highlightRectangle(id);
+
   const pageWrapper = viewer.element.querySelector<HTMLElement>(
     `[data-page="${page + 1}"]`,
   );
+  if (!pageWrapper) return;
 
-  // Highlight first so the [data-rect-id] element is in the DOM before the visibility check.
-  renderer.highlightRectangle(id);
+  const viewerRect  = viewer.element.getBoundingClientRect();
+  const targetRect  = rectEl.getBoundingClientRect();
+  const fullyVisible = targetRect.top    >= viewerRect.top
+    && targetRect.bottom <= viewerRect.bottom
+    && targetRect.left   >= viewerRect.left
+    && targetRect.right  <= viewerRect.right;
 
-  if (pageWrapper) {
-    const rectEl      = viewer.element.querySelector<HTMLElement>(`[data-rect-id="${CSS.escape(id)}"]`);
-    const viewerRect  = viewer.element.getBoundingClientRect();
-    const targetRect  = rectEl?.getBoundingClientRect();
-    const fullyVisible = targetRect
-      && targetRect.top    >= viewerRect.top
-      && targetRect.bottom <= viewerRect.bottom
-      && targetRect.left   >= viewerRect.left
-      && targetRect.right  <= viewerRect.right;
-
-    if (!fullyVisible) {
-      pageWrapper.scrollIntoView({ behavior: "instant" as ScrollBehavior });
-    }
+  if (!fullyVisible) {
+    pageWrapper.scrollIntoView({ behavior: "instant" as ScrollBehavior });
   }
 }
