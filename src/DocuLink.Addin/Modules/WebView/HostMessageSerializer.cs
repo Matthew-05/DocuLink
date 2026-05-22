@@ -32,6 +32,18 @@ namespace DocuLink.Addin.Modules.WebView
             return sb.ToString();
         }
 
+        /// <summary>Returns the JSON payload for a <c>pdf-updated</c> message.</summary>
+        public static string BuildPdfUpdated(PdfDocument pdf)
+        {
+            var sb = new StringBuilder();
+            sb.Append("{\"type\":\"pdf-updated\",\"pdf\":{");
+            sb.Append("\"id\":"); AppendString(sb, pdf.Id);
+            sb.Append(",\"name\":"); AppendString(sb, pdf.Name ?? string.Empty);
+            sb.Append(",\"base64\":"); AppendString(sb, pdf.Base64 ?? string.Empty);
+            sb.Append("}}");
+            return sb.ToString();
+        }
+
         /// <summary>
         /// Returns the JSON payload for a <c>linked-rectangles-loaded</c> message.
         /// </summary>

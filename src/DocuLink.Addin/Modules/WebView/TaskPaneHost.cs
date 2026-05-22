@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Linq;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Threading.Tasks;
@@ -275,6 +276,39 @@ namespace DocuLink.Addin.Modules.WebView
             {
                 // Non-fatal — the pane will just show an empty selector.
                 System.Diagnostics.Debug.WriteLine($"[DocuLink] SendPdfsToWebView failed: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Pushes updated bytes for a single PDF to the web UI. Used after OCR so
+        /// an already-loaded document is refreshed without re-sending the full list.
+        /// </summary>
+        public void SendPdfUpdated(string pdfId)
+        {
+            if (!_webViewReady || string.IsNullOrWhiteSpace(pdfId))
+                return;
+
+            try
+            {
+                Excel.Application app = Globals.ThisAddIn.Application;
+                Excel.Workbook workbook = app?.ActiveWorkbook;
+                if (workbook == null)
+                    return;
+
+                var store = new DocuLinkCustomXmlPartStore(workbook);
+                DocuLinkStorage storage = store.Load();
+
+                PdfDocument pdf = storage.Pdfs.FirstOrDefault(
+                    p => string.Equals(p.Id, pdfId, StringComparison.Ordinal));
+                if (pdf == null)
+                    return;
+
+                string json = HostMessageSerializer.BuildPdfUpdated(pdf);
+                _webView.CoreWebView2.PostWebMessageAsString(json);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[DocuLink] SendPdfUpdated failed: {ex.Message}");
             }
         }
 

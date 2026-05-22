@@ -20,6 +20,7 @@ export class PdfViewer {
   private _pageEntries: PageEntry[] = [];
   private _renderingQueue: Promise<void> = Promise.resolve();
   private _zoomDebounce: ReturnType<typeof setTimeout> | null = null;
+  private _loadGeneration = 0;
 
   private readonly _onLoadedCallbacks: Array<(totalPages: number) => void> = [];
   private readonly _onDocumentChangedCallbacks: Array<() => void> = [];
@@ -62,18 +63,26 @@ export class PdfViewer {
   }
 
   async loadDocument(url: string, pdfId?: string): Promise<void> {
+    const generation = ++this._loadGeneration;
     this._cancelZoomDebounce();
     this._activePdfId = pdfId ?? null;
     this._pageEntries = [];
     this.element.replaceChildren();
 
-    this._doc = await loadPdfDocument(url, this._doc);
+    const doc = await loadPdfDocument(url, this._doc);
+    if (generation !== this._loadGeneration) {
+      doc.destroy();
+      return;
+    }
+
+    this._doc = doc;
 
     for (const cb of this._onLoadedCallbacks) {
       cb(this._doc.numPages);
     }
 
     await this._renderAll();
+    if (generation !== this._loadGeneration) return;
 
     for (const cb of this._onDocumentChangedCallbacks) {
       cb();
