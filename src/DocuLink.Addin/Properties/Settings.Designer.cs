@@ -22,5 +22,17 @@ namespace DocuLink.Addin.Properties {
                 return defaultInstance;
             }
         }
+        
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("True")]
+        public bool AutoOpenViewerOnCellClick {
+            get {
+                return ((bool)(this["AutoOpenViewerOnCellClick"]));
+            }
+            set {
+                this["AutoOpenViewerOnCellClick"] = value;
+            }
+        }
     }
 }

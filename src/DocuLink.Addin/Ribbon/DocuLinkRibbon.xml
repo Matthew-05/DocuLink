@@ -14,6 +14,10 @@
             <button id="DocuLink.BtnViewerWindow"
                     label="In Separate Window"
                     onAction="OnShowViewerWindow" />
+            <toggleButton id="DocuLink.ToggleAutoOpenViewer"
+                          label="Open on cell click"
+                          getPressed="GetAutoOpenViewerOnCellClick"
+                          onAction="OnToggleAutoOpenViewerOnCellClick" />
           </menu>
           <button id="DocuLink.BtnAddPdf"
                   label="Add PDF"

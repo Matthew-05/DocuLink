@@ -18,6 +18,8 @@ using DocuLink.Addin.Modules.Services;
 
 using DocuLink.Addin.Modules.WebView;
 
+using DocuLink.Addin.Properties;
+
 
 
 namespace DocuLink.Addin
@@ -59,6 +61,20 @@ namespace DocuLink.Addin
         internal bool IsViewerPoppedOut =>
 
             _viewerWindow != null && !_viewerWindow.IsDisposed && _viewerWindow.Visible;
+
+
+
+        internal bool IsTaskPaneViewerVisible()
+
+        {
+
+            if (IsViewerPoppedOut) return false;
+
+            var entry = FindEntryForActiveWorkbook();
+
+            return entry != null && entry.Pane.Visible;
+
+        }
 
 
 
@@ -605,12 +621,6 @@ namespace DocuLink.Addin
 
 
 
-            var viewer = GetActiveViewerHost();
-
-            if (viewer == null) return;
-
-
-
             try
 
             {
@@ -625,7 +635,7 @@ namespace DocuLink.Addin
 
                 {
 
-                    viewer.SendClearRectangleHighlight();
+                    GetActiveViewerHost()?.SendClearRectangleHighlight();
 
                     return;
 
@@ -665,11 +675,31 @@ namespace DocuLink.Addin
 
                 {
 
-                    viewer.SendClearRectangleHighlight();
+                    GetActiveViewerHost()?.SendClearRectangleHighlight();
 
                     return;
 
                 }
+
+
+
+                if (Settings.Default.AutoOpenViewerOnCellClick
+
+                    && !IsViewerPoppedOut
+
+                    && !IsTaskPaneViewerVisible())
+
+                {
+
+                    ShowTaskPane();
+
+                }
+
+
+
+                var viewer = GetActiveViewerHost();
+
+                if (viewer == null) return;
 
 
 
