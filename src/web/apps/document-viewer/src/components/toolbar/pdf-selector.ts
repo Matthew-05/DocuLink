@@ -11,6 +11,7 @@ export class PdfSelector {
   private _list: HTMLUListElement;
   private _searchInput: HTMLInputElement;
   private readonly _callbacks: Array<(entry: PdfEntry) => void> = [];
+  private readonly _onOpenCallbacks: Array<() => void> = [];
 
   constructor() {
     this.element = document.createElement("div");
@@ -63,6 +64,14 @@ export class PdfSelector {
     this._callbacks.push(cb);
   }
 
+  onOpen(cb: () => void): void {
+    this._onOpenCallbacks.push(cb);
+  }
+
+  close(): void {
+    this._close();
+  }
+
   setEntries(entries: PdfEntry[]): void {
     this._entries = entries;
     this._renderList(this._searchInput.value);
@@ -104,6 +113,7 @@ export class PdfSelector {
     this._searchInput.value = "";
     this._renderList("");
     this._searchInput.focus();
+    for (const cb of this._onOpenCallbacks) cb();
   }
 
   private _close(): void {
