@@ -1,4 +1,5 @@
 import { initHostBridge } from "../../host-bridge.js";
+import type { TextContentCache } from "../../services/text-content-cache.js";
 import type { PdfEntry, LinkedRectEntry } from "../../types/index.js";
 import type { PdfSelector } from "../toolbar/pdf-selector.js";
 import type { PdfViewer } from "./pdf-viewer.js";
@@ -12,6 +13,14 @@ function pickEntryToLoad(entries: PdfEntry[], activeId: string | null): PdfEntry
   return entries[0];
 }
 
+async function indexAllPdfs(
+  cache: TextContentCache,
+  entries: PdfEntry[],
+): Promise<void> {
+  cache.clear();
+  await Promise.all(entries.map((entry) => cache.buildForUrl(entry.id, entry.url)));
+}
+
 /**
  * Wires the WebView2 host bridge to the viewer and selector.
  *
@@ -22,11 +31,25 @@ function pickEntryToLoad(entries: PdfEntry[], activeId: string | null): PdfEntry
 export function connectViewerToHostBridge(
   viewer: PdfViewer,
   selector: PdfSelector,
+  cache: TextContentCache,
+  onIndexingStateChange: (indexing: boolean) => void,
   onLinkedRectangles?: (rects: LinkedRectEntry[]) => void,
   onNavigateToRectangle?: (id: string, pdfId: string, page: number) => void,
   onClearRectangleHighlight?: () => void,
   onLinkRectanglesRemoved?: (ids: string[]) => void,
 ): void {
+  let indexingCount = 0;
+
+  const startIndexing = (): void => {
+    indexingCount++;
+    if (indexingCount === 1) onIndexingStateChange(true);
+  };
+
+  const endIndexing = (): void => {
+    indexingCount = Math.max(0, indexingCount - 1);
+    if (indexingCount === 0) onIndexingStateChange(false);
+  };
+
   const reloadEntry = (entry: PdfEntry): void => {
     selector.setActiveId(entry.id);
     void viewer.loadDocument(entry.url, entry.id);
@@ -35,6 +58,10 @@ export function connectViewerToHostBridge(
   initHostBridge(
     (entries) => {
       selector.setEntries(entries);
+
+      startIndexing();
+      void indexAllPdfs(cache, entries)
+        .finally(endIndexing);
 
       const target = pickEntryToLoad(entries, viewer.getActivePdfId());
       if (target) {
@@ -46,6 +73,12 @@ export function connectViewerToHostBridge(
     onClearRectangleHighlight,
     (entry) => {
       selector.upsertEntry(entry);
+
+      startIndexing();
+      void (async () => {
+        cache.clearPdf(entry.id);
+        await cache.buildForUrl(entry.id, entry.url);
+      })().finally(endIndexing);
 
       if (viewer.getActivePdfId() === entry.id) {
         reloadEntry(entry);

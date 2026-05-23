@@ -83,6 +83,10 @@ export class PdfSelector {
     return this._entries.find((e) => e.id === id);
   }
 
+  getEntries(): PdfEntry[] {
+    return this._entries;
+  }
+
   setActiveId(id: string): void {
     this._activeId = id;
     const entry = this._entries.find((e) => e.id === id);
