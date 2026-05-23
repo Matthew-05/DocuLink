@@ -1,5 +1,5 @@
 import type { FileEntry, FolderEntry } from "./types/index.js";
-import { initHostBridge, sendSelectedFolder, sendRemoveFile, sendMoveFile, sendOcrPdfs } from "./host-bridge.js";
+import { initHostBridge, sendSelectedFolder, sendRemoveFile, sendMoveFile, sendOcrPdfs, sendEnhancePdfs } from "./host-bridge.js";
 import { FolderPanel } from "./components/folder-panel/folder-panel.js";
 import { Dropzone } from "./components/dropzone/dropzone.js";
 import { FileTable } from "./components/file-table/file-table.js";
@@ -34,6 +34,10 @@ export function mountApp(root: HTMLElement): void {
     onOcrSelected() {
       const ids = fileTable.getSelectedIds();
       if (ids.length > 0) sendOcrPdfs(ids);
+    },
+    onEnhanceSelected() {
+      const ids = fileTable.getSelectedIds();
+      if (ids.length > 0) sendEnhancePdfs(ids);
     },
     onFilterChange(text: string) {
       fileTable.setFilter(text);
@@ -70,7 +74,7 @@ export function mountApp(root: HTMLElement): void {
 
   function onOcrStatus(
     pdfId: string,
-    status: "queued" | "processing" | "complete" | "error",
+    status: "queued" | "processing" | "ocr" | "error",
     message: string | undefined
   ): void {
     if (status === "error") {

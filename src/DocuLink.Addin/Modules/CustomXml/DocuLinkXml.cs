@@ -37,5 +37,7 @@ namespace DocuLink.Addin.Modules.CustomXml
         public const string FileSizeBytesAttribute = "fileSizeBytes";
 
         public const string OcrStatusAttribute = "ocrStatus";
+
+        public const string GeometryBase64Attribute = "geometryBase64";
     }
 }

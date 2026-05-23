@@ -1,18 +1,26 @@
 import type { CharacterEntry } from "./text-content-cache.js";
 import type { NormalizedRect } from "../types/index.js";
 
+function rectsIntersect(aLeft: number, aTop: number, aRight: number, aBottom: number, rect: NormalizedRect): boolean {
+  const rectRight  = rect.x + rect.width;
+  const rectBottom = rect.y + rect.height;
+  return aRight >= rect.x && aLeft <= rectRight && aBottom >= rect.y && aTop <= rectBottom;
+}
+
+function readingOrder(a: CharacterEntry, b: CharacterEntry): number {
+  if (a.normTop !== b.normTop) return a.normTop - b.normTop;
+  return a.normLeft - b.normLeft;
+}
+
 /**
- * Extracts and joins the text whose characters fall within `rect`.
+ * Extracts and joins the text whose character boxes intersect `rect`.
  *
- * Inclusion criterion: a character is included when its centre point lies
- * inside the selection rectangle. This is selection-direction-agnostic and
- * consistent regardless of whether the PDF uses native text or OCR output.
+ * Inclusion criterion: a character is included when its bounding box intersects
+ * the selection rectangle, enabling partial-word selection.
  *
- * Joining: characters from the same TextItem are concatenated directly.
- * A space is inserted between adjacent items when the gap between the
- * right edge of the previous item and the left edge of the next exceeds
- * one estimated character-width, preventing words from being smashed
- * together or producing redundant spaces.
+ * Stored geometry includes literal space characters from the PDF text layer.
+ * The pdf.js fallback infers spaces between TextItems when the horizontal gap
+ * exceeds one estimated character-width.
  */
 export function extractText(
   entries: CharacterEntry[] | null,
@@ -20,27 +28,24 @@ export function extractText(
 ): string {
   if (!entries || entries.length === 0) return "";
 
-  const rectRight  = rect.x + rect.width;
-  const rectBottom = rect.y + rect.height;
-
   const included: CharacterEntry[] = [];
 
   for (const entry of entries) {
-    const cx = (entry.normLeft + entry.normRight) / 2;
-    const cy = (entry.normTop  + entry.normBottom) / 2;
-
-    if (cx >= rect.x && cx <= rectRight && cy >= rect.y && cy <= rectBottom) {
+    if (rectsIntersect(entry.normLeft, entry.normTop, entry.normRight, entry.normBottom, rect)) {
       included.push(entry);
     }
   }
 
   if (included.length === 0) return "";
 
+  const spacesPrecomputed = entries[0]?.spacesPrecomputed === true;
+  const ordered = spacesPrecomputed ? [...included].sort(readingOrder) : included;
+
   let result = "";
   let prev: CharacterEntry | null = null;
 
-  for (const entry of included) {
-    if (prev !== null && entry.itemIndex !== prev.itemIndex) {
+  for (const entry of ordered) {
+    if (!spacesPrecomputed && prev !== null && entry.itemIndex !== prev.itemIndex) {
       const prevCharWidth = prev.normRight - prev.normLeft;
       const gap = entry.normLeft - prev.normRight;
       if (gap > prevCharWidth) {

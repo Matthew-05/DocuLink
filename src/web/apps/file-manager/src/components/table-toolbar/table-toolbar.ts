@@ -4,6 +4,7 @@ export interface TableToolbarOptions {
   onRemoveSelected(): void;
   onMoveSelected(folderId: string | null): void;
   onOcrSelected(): void;
+  onEnhanceSelected(): void;
   onFilterChange(text: string): void;
 }
 
@@ -13,6 +14,7 @@ export class TableToolbar {
   private readonly _moveBtn: HTMLButtonElement;
   private readonly _moveDropdown: HTMLElement;
   private readonly _ocrBtn: HTMLButtonElement;
+  private readonly _enhanceBtn: HTMLButtonElement;
   private readonly _removeBtn: HTMLButtonElement;
   private readonly _onMoveSelected: (folderId: string | null) => void;
   private _folders: FolderEntry[] = [];
@@ -65,6 +67,13 @@ export class TableToolbar {
     this._ocrBtn.title = "Add a searchable text layer to the selected PDFs using OCR";
     this._ocrBtn.addEventListener("click", () => options.onOcrSelected());
 
+    this._enhanceBtn = document.createElement("button");
+    this._enhanceBtn.className = "btn-toolbar-move";
+    this._enhanceBtn.disabled = true;
+    this._enhanceBtn.textContent = "Enhance Selected (0)";
+    this._enhanceBtn.title = "Extract character geometry for better text selection (native text PDFs)";
+    this._enhanceBtn.addEventListener("click", () => options.onEnhanceSelected());
+
     // Remove button (rightmost)
     this._removeBtn = document.createElement("button");
     this._removeBtn.className = "btn-toolbar-danger";
@@ -74,6 +83,7 @@ export class TableToolbar {
 
     rightGroup.appendChild(moveWrap);
     rightGroup.appendChild(this._ocrBtn);
+    rightGroup.appendChild(this._enhanceBtn);
     rightGroup.appendChild(this._removeBtn);
 
     this._root.appendChild(this._filterInput);
@@ -88,6 +98,8 @@ export class TableToolbar {
     this._moveBtn.disabled = selectedCount === 0;
     this._ocrBtn.disabled = selectedCount === 0;
     this._ocrBtn.textContent = `OCR Selected (${selectedCount})`;
+    this._enhanceBtn.disabled = selectedCount === 0;
+    this._enhanceBtn.textContent = `Enhance Selected (${selectedCount})`;
     this._removeBtn.disabled = selectedCount === 0;
     this._removeBtn.textContent = `Remove Selected (${selectedCount})`;
     if (selectedCount === 0) this._closeDropdown();

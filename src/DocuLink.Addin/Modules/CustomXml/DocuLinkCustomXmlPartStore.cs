@@ -133,7 +133,11 @@ namespace DocuLink.Addin.Modules.CustomXml
             {
                 if (!string.Equals(p.FolderId, id, StringComparison.Ordinal))
                     return p;
-                return new PdfDocument(p.Id, p.Name, p.Base64, null, p.DateAdded, p.FileSizeBytes);
+                return new PdfDocument(p.Id, p.Name, p.Base64, null, p.DateAdded, p.FileSizeBytes)
+                {
+                    OcrStatus = p.OcrStatus,
+                    GeometryBase64 = p.GeometryBase64,
+                };
             }).ToList();
 
             Save(new DocuLinkStorage(DocuLinkXml.SchemaVersion, folders, pdfs, storage.LinkedRectangles));

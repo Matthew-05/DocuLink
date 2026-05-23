@@ -4,6 +4,7 @@ using System.Globalization;
 using System.Linq;
 using System.Xml.Linq;
 using DocuLink.Addin.Modules.CustomXml.Models;
+using DocuLink.Addin.Modules.Services;
 
 namespace DocuLink.Addin.Modules.CustomXml.Serialization
 {
@@ -157,9 +158,13 @@ namespace DocuLink.Addin.Modules.CustomXml.Serialization
             if (!string.IsNullOrWhiteSpace(fileSizeStr))
                 long.TryParse(fileSizeStr, NumberStyles.Integer, CultureInfo.InvariantCulture, out fileSizeBytes);
 
-            string ocrStatus = pdfElement.Attribute(DocuLinkXml.OcrStatusAttribute)?.Value;
-            if (string.IsNullOrWhiteSpace(ocrStatus))
-                ocrStatus = "ready";
+            string geometryBase64 = pdfElement.Attribute(DocuLinkXml.GeometryBase64Attribute)?.Value;
+            string base64 = base64Attribute.Value ?? string.Empty;
+
+            string ocrStatus = PdfStatus.NormalizeStored(
+                pdfElement.Attribute(DocuLinkXml.OcrStatusAttribute)?.Value,
+                base64,
+                geometryBase64);
 
             return new PdfDocument(
                 idAttribute.Value.Trim(),
@@ -169,7 +174,8 @@ namespace DocuLink.Addin.Modules.CustomXml.Serialization
                 dateAdded,
                 fileSizeBytes)
             {
-                OcrStatus = ocrStatus
+                OcrStatus = ocrStatus,
+                GeometryBase64 = geometryBase64,
             };
         }
 
@@ -196,8 +202,11 @@ namespace DocuLink.Addin.Modules.CustomXml.Serialization
                 element.Add(new XAttribute(DocuLinkXml.FileSizeBytesAttribute,
                     pdf.FileSizeBytes.ToString(CultureInfo.InvariantCulture)));
 
-            if (!string.IsNullOrWhiteSpace(pdf.OcrStatus) && pdf.OcrStatus != "ready")
+            if (!string.IsNullOrWhiteSpace(pdf.OcrStatus) && pdf.OcrStatus != PdfStatus.None)
                 element.Add(new XAttribute(DocuLinkXml.OcrStatusAttribute, pdf.OcrStatus));
+
+            if (!string.IsNullOrWhiteSpace(pdf.GeometryBase64))
+                element.Add(new XAttribute(DocuLinkXml.GeometryBase64Attribute, pdf.GeometryBase64));
 
             return element;
         }

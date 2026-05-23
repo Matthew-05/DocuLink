@@ -31,10 +31,15 @@ namespace DocuLink.Addin.Modules.CustomXml.Models
         public long FileSizeBytes { get; set; }
 
         /// <summary>
-        /// OCR lifecycle status for this PDF.
-        /// Valid values: "ready", "queued", "processing", "complete", "error".
-        /// Defaults to "ready" for PDFs that have never been through OCR.
+        /// PDF content classification stored in the workbook.
+        /// Valid persisted values: "ocr", "text", "none".
         /// </summary>
-        public string OcrStatus { get; set; } = "ready";
+        public string OcrStatus { get; set; } = "none";
+
+        /// <summary>
+        /// Gzip-compressed text-geometry-v1 JSON, base64-encoded.
+        /// Populated after full OCR or geometry-only Enhance.
+        /// </summary>
+        public string GeometryBase64 { get; set; }
     }
 }

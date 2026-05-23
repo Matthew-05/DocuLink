@@ -43,7 +43,8 @@
     <xs:attribute name="folderId"      type="xs:string"   use="optional" />
     <xs:attribute name="dateAdded"     type="xs:dateTime" use="optional" />
     <xs:attribute name="fileSizeBytes" type="xs:long"     use="optional" />
-    <xs:attribute name="ocrStatus"     type="xs:string"   use="optional" />
+    <xs:attribute name="ocrStatus"       type="xs:string"   use="optional" />
+    <xs:attribute name="geometryBase64"  type="xs:string"   use="optional" />
   </xs:complexType>
 
   <!-- ── Cell-to-PDF-region links ───────────────────────────────────────── -->

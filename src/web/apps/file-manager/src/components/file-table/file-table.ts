@@ -200,7 +200,7 @@ export class FileTable {
     statusTd.className = "col-status";
     const badge = document.createElement("span");
     badge.className = `status-badge status-badge--${file.status}`;
-    badge.textContent = file.status;
+    badge.textContent = formatStatusLabel(file.status);
     statusTd.appendChild(badge);
 
     // Size cell
@@ -272,6 +272,15 @@ export class FileTable {
       if (e.key === "Enter") { input.blur(); }
       if (e.key === "Escape") { input.replaceWith(nameSpan); }
     });
+  }
+}
+
+function formatStatusLabel(status: string): string {
+  switch (status) {
+    case "ocr":  return "OCR";
+    case "text": return "Text";
+    case "none": return "None";
+    default:     return status;
   }
 }
 

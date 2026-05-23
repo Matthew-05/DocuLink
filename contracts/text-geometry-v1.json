@@ -1,0 +1,80 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "http://doculink.dev/schemas/text-geometry/1",
+  "title": "DocuLink Text Geometry v1",
+  "description": "Per-character bounding boxes in normalized page coordinates (top-left origin, 0–1). Stored gzip-compressed and base64-encoded at persistence boundaries.",
+
+  "definitions": {
+
+    "CharacterBox": {
+      "description": "A single character glyph box on one PDF page.",
+      "type": "object",
+      "required": ["char", "x", "y", "width", "height"],
+      "additionalProperties": false,
+      "properties": {
+        "char":   { "type": "string", "minLength": 1, "maxLength": 1, "description": "Single Unicode character." },
+        "x":      { "type": "number", "minimum": 0, "maximum": 1, "description": "Left edge, normalized page width." },
+        "y":      { "type": "number", "minimum": 0, "maximum": 1, "description": "Top edge, normalized page height." },
+        "width":  { "type": "number", "minimum": 0, "maximum": 1, "description": "Box width, normalized page width." },
+        "height": { "type": "number", "minimum": 0, "maximum": 1, "description": "Box height, normalized page height." }
+      }
+    },
+
+    "PageGeometry": {
+      "description": "All character boxes for one PDF page.",
+      "type": "object",
+      "required": ["pageIndex", "characters"],
+      "additionalProperties": false,
+      "properties": {
+        "pageIndex": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "0-based page index matching link/search page fields."
+        },
+        "characters": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/CharacterBox" }
+        }
+      }
+    },
+
+    "TextGeometry": {
+      "description": "Full document character geometry extracted from OCR or Enhance.",
+      "type": "object",
+      "required": ["version", "coordinateSpace", "pages"],
+      "additionalProperties": false,
+      "properties": {
+        "version": {
+          "type": "integer",
+          "const": 1
+        },
+        "coordinateSpace": {
+          "type": "string",
+          "const": "normalized",
+          "description": "Boxes use top-left origin with x/y/width/height in 0–1 page fractions."
+        },
+        "pages": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/PageGeometry" }
+        }
+      },
+      "examples": [
+        {
+          "version": 1,
+          "coordinateSpace": "normalized",
+          "pages": [
+            {
+              "pageIndex": 0,
+              "characters": [
+                { "char": "H", "x": 0.12, "y": 0.08, "width": 0.009, "height": 0.014 }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+
+  },
+
+  "$ref": "#/definitions/TextGeometry"
+}

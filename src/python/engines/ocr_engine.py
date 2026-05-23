@@ -62,6 +62,19 @@ _configure_bundled_tools()
 import ocrmypdf  # noqa: E402 — must come after env setup
 
 
+def configure_tesseract() -> None:
+    """Point pytesseract at the bundled Tesseract binary when frozen."""
+    if not getattr(sys, "frozen", False):
+        return
+
+    bundle_dir = Path(sys._MEIPASS)  # type: ignore[attr-defined]
+    tess_exe = bundle_dir / "tesseract" / "tesseract.exe"
+    if tess_exe.exists():
+        import pytesseract
+
+        pytesseract.pytesseract.tesseract_cmd = str(tess_exe)
+
+
 def ocr_pdf_bytes(
     pdf_bytes: bytes,
     language: str = "eng",

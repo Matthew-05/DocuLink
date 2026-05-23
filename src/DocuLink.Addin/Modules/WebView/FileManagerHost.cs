@@ -302,6 +302,10 @@ namespace DocuLink.Addin.Modules.WebView
                     case "ocr-pdfs":
                         _ = HandleOcrPdfsAsync(FileManagerMessageParser.ParseOcrPdfs(raw));
                         break;
+
+                    case "enhance-pdfs":
+                        _ = HandleEnhancePdfsAsync(FileManagerMessageParser.ParseEnhancePdfs(raw));
+                        break;
                 }
             }
             catch (Exception ex)
@@ -324,11 +328,10 @@ namespace DocuLink.Addin.Modules.WebView
                 wb,
                 onStatusUpdate: (pdfId, status, message) =>
                 {
-                    // Already on the UI thread (OcrService marshals via Invoke).
                     string json = FileManagerMessageSerializer.BuildOcrStatus(pdfId, status, message);
                     _webView.CoreWebView2?.PostWebMessageAsString(json);
 
-                    if (status == "complete")
+                    if (status == PdfStatus.Ocr)
                     {
                         anyComplete = true;
                         Globals.ThisAddIn.RefreshTaskPanePdf(pdfId);
@@ -336,6 +339,37 @@ namespace DocuLink.Addin.Modules.WebView
                 });
 
             if (anyComplete)
+            {
+                SendFilesToWebView();
+                Globals.ThisAddIn.RefreshTaskPanePdfs();
+            }
+        }
+
+        private async System.Threading.Tasks.Task HandleEnhancePdfsAsync(EnhancePdfsRequest req)
+        {
+            if (req?.PdfIds == null || req.PdfIds.Count == 0) return;
+
+            Excel.Workbook wb = GetActiveWorkbook();
+            if (wb == null) return;
+
+            bool anyEnhanced = false;
+
+            await _ocrService.RunEnhanceAsync(
+                req.PdfIds,
+                wb,
+                onStatusUpdate: (pdfId, status, message) =>
+                {
+                    string json = FileManagerMessageSerializer.BuildOcrStatus(pdfId, status, message);
+                    _webView.CoreWebView2?.PostWebMessageAsString(json);
+
+                    if (status == PdfStatus.Ocr)
+                    {
+                        anyEnhanced = true;
+                        Globals.ThisAddIn.RefreshTaskPanePdf(pdfId);
+                    }
+                });
+
+            if (anyEnhanced)
             {
                 SendFilesToWebView();
                 Globals.ThisAddIn.RefreshTaskPanePdfs();

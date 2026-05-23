@@ -38,25 +38,36 @@ namespace DocuLink.Addin.Modules.Services
         }
 
         /// <summary>
-        /// Queues OCR for the given PDF ids, notifying <paramref name="onStatusUpdate"/>
-        /// on the UI thread as each PDF transitions through queued → processing →
-        /// complete | error.
+        /// Queues full OCR for the given PDF ids.
         /// </summary>
-        /// <param name="pdfIds">GUIDs of the PDFs to process.</param>
-        /// <param name="workbook">The active Excel workbook containing the PDFs.</param>
-        /// <param name="onStatusUpdate">
-        /// Callback invoked on the UI thread with (pdfId, status, message?).
-        /// status is one of: "queued", "processing", "complete", "error".
-        /// </param>
-        public async Task RunOcrAsync(
+        public Task RunOcrAsync(
             IList<string> pdfIds,
             Excel.Workbook workbook,
+            Action<string, string, string> onStatusUpdate)
+        {
+            return RunJobsAsync(pdfIds, workbook, "full", onStatusUpdate);
+        }
+
+        /// <summary>
+        /// Queues geometry-only extraction for the given PDF ids (Enhance flow).
+        /// </summary>
+        public Task RunEnhanceAsync(
+            IList<string> pdfIds,
+            Excel.Workbook workbook,
+            Action<string, string, string> onStatusUpdate)
+        {
+            return RunJobsAsync(pdfIds, workbook, "geometry-only", onStatusUpdate);
+        }
+
+        private async Task RunJobsAsync(
+            IList<string> pdfIds,
+            Excel.Workbook workbook,
+            string mode,
             Action<string, string, string> onStatusUpdate)
         {
             if (pdfIds == null || pdfIds.Count == 0) return;
             if (workbook == null) throw new ArgumentNullException(nameof(workbook));
 
-            // ── Phase 1: read data on the UI thread (Excel COM requirement) ──────
             string workerExe = GetWorkerExePath();
             if (!File.Exists(workerExe))
             {
@@ -66,20 +77,19 @@ namespace DocuLink.Addin.Modules.Services
                 return;
             }
 
-            var jobs = LoadJobData(pdfIds, workbook);
+            var jobs = LoadJobData(pdfIds, workbook, mode);
 
-            // Signal queued immediately (UI thread, no async yet)
             foreach (var job in jobs)
                 onStatusUpdate(job.PdfId, "queued", null);
 
-            // ── Phase 2: process I/O on a background thread ───────────────────
-            await Task.Run(() => RunWorker(workerExe, jobs, workbook, onStatusUpdate));
+            await Task.Run(() => RunWorker(workerExe, jobs, workbook, mode, onStatusUpdate));
         }
 
         private void RunWorker(
             string workerExe,
             IList<OcrJobEntry> jobs,
             Excel.Workbook workbook,
+            string mode,
             Action<string, string, string> onStatusUpdate)
         {
             var psi = new ProcessStartInfo
@@ -129,19 +139,30 @@ namespace DocuLink.Addin.Modules.Services
                     }
 
                     var parsed = ParseResultLine(resultLine);
-                    string status = parsed.Item1;
-                    string payload = parsed.Item2;
+                    string status = parsed.Status;
+                    string errorMessage = parsed.Error;
 
                     if (status == "success")
                     {
-                        string newBase64 = payload;
-                        // Marshal storage write + final callback to UI thread
                         Invoke(() =>
                         {
                             try
                             {
-                                _manageService.UpdatePdfAfterOcr(workbook, job.PdfId, newBase64);
-                                onStatusUpdate(job.PdfId, "complete", null);
+                                if (string.Equals(mode, "geometry-only", StringComparison.Ordinal))
+                                {
+                                    _manageService.UpdatePdfGeometry(
+                                        workbook, job.PdfId, parsed.GeometryBase64 ?? string.Empty);
+                                    onStatusUpdate(job.PdfId, PdfStatus.Ocr, null);
+                                }
+                                else
+                                {
+                                    _manageService.UpdatePdfAfterOcr(
+                                        workbook,
+                                        job.PdfId,
+                                        parsed.PdfBase64 ?? string.Empty,
+                                        parsed.GeometryBase64 ?? string.Empty);
+                                    onStatusUpdate(job.PdfId, PdfStatus.Ocr, null);
+                                }
                             }
                             catch (Exception ex)
                             {
@@ -151,7 +172,7 @@ namespace DocuLink.Addin.Modules.Services
                     }
                     else
                     {
-                        Invoke(() => onStatusUpdate(job.PdfId, "error", payload));
+                        Invoke(() => onStatusUpdate(job.PdfId, "error", errorMessage));
                     }
                 }
 
@@ -199,8 +220,7 @@ namespace DocuLink.Addin.Modules.Services
             return null;
         }
 
-        /// <summary>Returns (status, payload) where payload is base64 on success or error message on error.</summary>
-        private static Tuple<string, string> ParseResultLine(string line)
+        private static OcrWorkerResult ParseResultLine(string line)
         {
             try
             {
@@ -210,29 +230,38 @@ namespace DocuLink.Addin.Modules.Services
 
                 if (status == "success")
                 {
-                    string b64 = obj.TryGetValue("pdf_base64", out object b) ? b?.ToString() ?? string.Empty : string.Empty;
-                    return Tuple.Create("success", b64);
+                    string pdfB64 = obj.TryGetValue("pdf_base64", out object b) ? b?.ToString() ?? string.Empty : string.Empty;
+                    string geometryB64 = obj.TryGetValue("geometry_base64", out object g) ? g?.ToString() ?? string.Empty : string.Empty;
+                    return new OcrWorkerResult
+                    {
+                        Status = "success",
+                        PdfBase64 = pdfB64,
+                        GeometryBase64 = geometryB64,
+                    };
                 }
-                else
-                {
-                    string err = obj.TryGetValue("error", out object e) ? e?.ToString() ?? "Unknown error" : "Unknown error";
-                    return Tuple.Create("error", err);
-                }
+
+                string err = obj.TryGetValue("error", out object e) ? e?.ToString() ?? "Unknown error" : "Unknown error";
+                return new OcrWorkerResult { Status = "error", Error = err };
             }
             catch (Exception ex)
             {
-                return Tuple.Create("error", "Failed to parse worker response: " + ex.Message);
+                return new OcrWorkerResult
+                {
+                    Status = "error",
+                    Error = "Failed to parse worker response: " + ex.Message,
+                };
             }
         }
 
         private static string BuildJobJson(OcrJobEntry job)
         {
-            // Manual JSON build to avoid pulling in another serializer for this simple shape.
             var sb = new StringBuilder();
             sb.Append("{\"job_id\":");
             AppendJsonString(sb, job.PdfId);
             sb.Append(",\"command\":\"ocr\",\"pdf_base64\":");
             AppendJsonString(sb, job.Base64);
+            sb.Append(",\"mode\":");
+            AppendJsonString(sb, job.Mode ?? "full");
             sb.Append('}');
             return sb.ToString();
         }
@@ -265,7 +294,7 @@ namespace DocuLink.Addin.Modules.Services
         /// Reads the base64 bytes for the requested PDFs from the workbook.
         /// Must be called on the UI thread.
         /// </summary>
-        private static IList<OcrJobEntry> LoadJobData(IList<string> pdfIds, Excel.Workbook workbook)
+        private static IList<OcrJobEntry> LoadJobData(IList<string> pdfIds, Excel.Workbook workbook, string mode)
         {
             var store = new CustomXml.DocuLinkCustomXmlPartStore(workbook);
             var storage = store.Load();
@@ -276,7 +305,7 @@ namespace DocuLink.Addin.Modules.Services
                 var pdf = storage.Pdfs.FirstOrDefault(
                     p => string.Equals(p.Id, id, StringComparison.Ordinal));
                 if (pdf != null)
-                    result.Add(new OcrJobEntry { PdfId = pdf.Id, Base64 = pdf.Base64 });
+                    result.Add(new OcrJobEntry { PdfId = pdf.Id, Base64 = pdf.Base64, Mode = mode });
             }
             return result;
         }
@@ -301,6 +330,15 @@ namespace DocuLink.Addin.Modules.Services
         {
             public string PdfId { get; set; }
             public string Base64 { get; set; }
+            public string Mode { get; set; }
+        }
+
+        private sealed class OcrWorkerResult
+        {
+            public string Status { get; set; }
+            public string PdfBase64 { get; set; }
+            public string GeometryBase64 { get; set; }
+            public string Error { get; set; }
         }
     }
 }
