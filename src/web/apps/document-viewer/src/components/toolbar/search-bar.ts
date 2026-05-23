@@ -13,7 +13,7 @@ export class SearchBar {
 
   private readonly _onQueryCallbacks: Array<(query: string) => void> = [];
   private readonly _onMatchClickedCallbacks: Array<(match: SearchMatch) => void> = [];
-  private _mousedownOutside = false;
+  private readonly _onResultsShownCallbacks: Array<() => void> = [];
 
   constructor() {
     this.element = document.createElement("div");
@@ -34,21 +34,22 @@ export class SearchBar {
 
     this.element.append(this._input, this._resultsPanel.element);
 
-    document.addEventListener("mousedown", (e) => {
-      this._mousedownOutside = !this.element.contains(e.target as Node);
-    });
+    document.addEventListener(
+      "mousedown",
+      (e) => {
+        if (!this.element.contains(e.target as Node)) {
+          this._resultsPanel.hide();
+        }
+      },
+      true
+    );
 
-    document.addEventListener("click", (e) => {
-      if (this._mousedownOutside && !this.element.contains(e.target as Node)) {
-        this._resultsPanel.hide();
-      }
-    });
+    const reopenIfDismissed = (): void => {
+      this._showResults();
+    };
 
-    this._input.addEventListener("focus", () => {
-      if (this._resultsPanel.hasResults()) {
-        this._resultsPanel.show();
-      }
-    });
+    this._input.addEventListener("focus", reopenIfDismissed);
+    this._input.addEventListener("click", reopenIfDismissed);
   }
 
   enable(): void {
@@ -74,12 +75,38 @@ export class SearchBar {
     this._onMatchClickedCallbacks.push(cb);
   }
 
+  onResultsShown(cb: () => void): void {
+    this._onResultsShownCallbacks.push(cb);
+  }
+
+  hideResults(): void {
+    this._resultsPanel.hide();
+  }
+
   setResults(matches: SearchMatch[]): void {
+    const wasHidden = this._resultsPanel.element.hidden;
     this._resultsPanel.setResults(matches);
+    if (!this._resultsPanel.element.hidden && wasHidden) {
+      this._notifyResultsShown();
+    }
   }
 
   clearResults(): void {
     this._resultsPanel.clearResults();
+  }
+
+  private _showResults(): void {
+    if (!this._resultsPanel.hasResults()) return;
+
+    const wasHidden = this._resultsPanel.element.hidden;
+    this._resultsPanel.show();
+    if (wasHidden) {
+      this._notifyResultsShown();
+    }
+  }
+
+  private _notifyResultsShown(): void {
+    for (const cb of this._onResultsShownCallbacks) cb();
   }
 
   private _handleInput(): void {

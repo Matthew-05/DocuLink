@@ -19,6 +19,9 @@ export function createToolbar(): { element: HTMLElement } & ToolbarComponents {
   const selector = new PdfSelector();
   const search = new SearchBar();
 
+  selector.onOpen(() => search.hideResults());
+  search.onResultsShown(() => selector.close());
+
   const left = document.createElement("div");
   left.className = "toolbar__left";
   left.append(selector.element);
