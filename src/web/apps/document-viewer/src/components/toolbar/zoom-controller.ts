@@ -5,6 +5,11 @@ const MAX_SCALE = 4.0;
 const STEP = 0.25;
 const SCROLL_STEP = 0.1;
 
+export interface ZoomAnchor {
+  x: number;
+  y: number;
+}
+
 export class ZoomController {
   static readonly SCROLL_STEP = SCROLL_STEP;
 
@@ -12,7 +17,7 @@ export class ZoomController {
 
   private _scale: ZoomLevel = 1.0;
   private _label: HTMLSpanElement;
-  private readonly _callbacks: Array<(scale: ZoomLevel) => void> = [];
+  private readonly _callbacks: Array<(scale: ZoomLevel, anchor?: ZoomAnchor) => void> = [];
 
   constructor() {
     this.element = document.createElement("div");
@@ -37,7 +42,7 @@ export class ZoomController {
     this._updateLabel();
   }
 
-  onChange(cb: (scale: ZoomLevel) => void): void {
+  onChange(cb: (scale: ZoomLevel, anchor?: ZoomAnchor) => void): void {
     this._callbacks.push(cb);
   }
 
@@ -46,9 +51,14 @@ export class ZoomController {
     this._updateLabel();
   }
 
-  adjustBy(delta: number): void {
-    this.setScale(Math.round((this._scale + delta) * 100) / 100);
-    for (const cb of this._callbacks) cb(this._scale);
+  adjustBy(delta: number, anchor?: ZoomAnchor): void {
+    const next = Math.round((this._scale + delta) * 100) / 100;
+    const clamped = Math.min(MAX_SCALE, Math.max(MIN_SCALE, next));
+    if (clamped === this._scale) return;
+
+    this._scale = clamped;
+    this._updateLabel();
+    for (const cb of this._callbacks) cb(this._scale, anchor);
   }
 
   private _updateLabel(): void {
