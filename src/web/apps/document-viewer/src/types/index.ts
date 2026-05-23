@@ -28,6 +28,10 @@ export interface LinkRectPayload {
   text: string;
 }
 
+export interface LinkRectUpdatedPayload extends LinkRectPayload {
+  id: string;
+}
+
 export interface LinkedRectEntry {
   id: string;
   pdfId: string;

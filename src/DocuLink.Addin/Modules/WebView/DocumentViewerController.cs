@@ -104,6 +104,10 @@ namespace DocuLink.Addin.Modules.WebView
                         HandleLinkRectangleCreated(raw);
                         break;
 
+                    case "link-rectangle-updated":
+                        HandleLinkRectangleUpdated(raw);
+                        break;
+
                     case "link-rectangle-clicked":
                         HandleLinkRectangleClicked(raw);
                         break;
@@ -170,6 +174,35 @@ namespace DocuLink.Addin.Modules.WebView
                 }
                 catch { }
             }));
+        }
+
+        private void HandleLinkRectangleUpdated(string json)
+        {
+            var payload = HostMessageParser.ParseLinkRectangleUpdated(json);
+            if (payload == null) return;
+
+            Excel.Workbook wb = Globals.ThisAddIn.Application?.ActiveWorkbook;
+            if (wb == null) return;
+
+            string text = payload.Text;
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                IWin32Window owner = _invokeTarget.FindForm() ?? _invokeTarget;
+                if (!LinkTextPromptDialog.TryPrompt(owner, out text))
+                {
+                    SendLinkedRectanglesToWebView();
+                    return;
+                }
+            }
+
+            new UpdateLinkService().UpdateLink(
+                payload.Id,
+                payload.Page,
+                payload.X, payload.Y, payload.Width, payload.Height,
+                text,
+                wb);
+
+            SendLinkedRectanglesToWebView();
         }
 
         private void HandleLinkRectangleClicked(string json)

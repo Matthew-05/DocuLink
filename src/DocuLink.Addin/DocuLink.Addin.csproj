@@ -240,6 +240,8 @@
     <Compile Include="Modules\Services\CellFormatter.cs" />
     <Compile Include="Modules\Services\CreateLinkService.cs" />
     <Compile Include="Modules\Services\DeleteLinkService.cs" />
+    <Compile Include="Modules\Services\LinkCellResolver.cs" />
+    <Compile Include="Modules\Services\UpdateLinkService.cs" />
     <Compile Include="Modules\Services\LinkCellTracker.cs" />
     <Compile Include="Modules\Services\LinkNavigationService.cs" />
     <Compile Include="Modules\Services\ManageFilesService.cs" />

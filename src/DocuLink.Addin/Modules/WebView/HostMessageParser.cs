@@ -55,6 +55,20 @@ namespace DocuLink.Addin.Modules.WebView
     /// </summary>
     public static LinkRectangleCreatedPayload ParseLinkRectangleCreated(string json)
         {
+            return ParseLinkRectangleWithText(json, includeId: false) as LinkRectangleCreatedPayload;
+        }
+
+    /// <summary>
+    /// Parses a <c>link-rectangle-updated</c> message into a
+    /// <see cref="LinkRectangleUpdatedPayload"/>. Returns <c>null</c> on failure.
+    /// </summary>
+    public static LinkRectangleUpdatedPayload ParseLinkRectangleUpdated(string json)
+        {
+            return ParseLinkRectangleWithText(json, includeId: true) as LinkRectangleUpdatedPayload;
+        }
+
+    private static object ParseLinkRectangleWithText(string json, bool includeId)
+        {
             if (string.IsNullOrWhiteSpace(json))
                 return null;
 
@@ -63,9 +77,13 @@ namespace DocuLink.Addin.Modules.WebView
                 var obj = WebMessageParser.Serializer.Deserialize<Dictionary<string, object>>(json);
                 if (obj == null) return null;
 
+                string id    = obj.TryGetValue("id",    out object idVal)  ? idVal as string : null;
                 string pdfId = obj.TryGetValue("pdfId", out object pidVal) ? pidVal as string : null;
                 int    page  = obj.TryGetValue("page",  out object pgVal)  ? Convert.ToInt32(pgVal) : 0;
                 string text  = obj.TryGetValue("text",  out object txtVal) ? (txtVal as string ?? "") : "";
+
+                if (includeId && string.IsNullOrWhiteSpace(id))
+                    return null;
 
                 double rx = 0, ry = 0, rw = 0, rh = 0;
                 if (obj.TryGetValue("rect", out object rectVal)
@@ -75,6 +93,21 @@ namespace DocuLink.Addin.Modules.WebView
                     ry = rect.TryGetValue("y",      out object yv) ? Convert.ToDouble(yv) : 0;
                     rw = rect.TryGetValue("width",  out object wv) ? Convert.ToDouble(wv) : 0;
                     rh = rect.TryGetValue("height", out object hv) ? Convert.ToDouble(hv) : 0;
+                }
+
+                if (includeId)
+                {
+                    return new LinkRectangleUpdatedPayload
+                    {
+                        Id     = id,
+                        PdfId  = pdfId,
+                        Page   = page,
+                        X      = rx,
+                        Y      = ry,
+                        Width  = rw,
+                        Height = rh,
+                        Text   = text,
+                    };
                 }
 
                 return new LinkRectangleCreatedPayload
@@ -98,6 +131,19 @@ namespace DocuLink.Addin.Modules.WebView
     /// <summary>Deserialized payload for a <c>link-rectangle-created</c> message.</summary>
     internal sealed class LinkRectangleCreatedPayload
     {
+        public string PdfId  { get; set; }
+        public int    Page   { get; set; }
+        public double X      { get; set; }
+        public double Y      { get; set; }
+        public double Width  { get; set; }
+        public double Height { get; set; }
+        public string Text   { get; set; }
+    }
+
+    /// <summary>Deserialized payload for a <c>link-rectangle-updated</c> message.</summary>
+    internal sealed class LinkRectangleUpdatedPayload
+    {
+        public string Id     { get; set; }
         public string PdfId  { get; set; }
         public int    Page   { get; set; }
         public double X      { get; set; }

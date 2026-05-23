@@ -2,6 +2,7 @@ import { createToolbar } from "../toolbar/toolbar.js";
 import { ZoomController } from "../toolbar/zoom-controller.js";
 import { connectViewerToHostBridge } from "./viewer-bridge.js";
 import { RectDrawOverlay } from "./rect-draw-overlay.js";
+import { RectEditOverlay } from "./rect-edit-overlay.js";
 import { RectRenderer } from "./rect-renderer.js";
 import { RectContextMenu } from "./rect-context-menu.js";
 import { CharBboxOverlay } from "./char-bbox-overlay.js";
@@ -12,6 +13,7 @@ import { createSearchNavigator } from "./search-navigator.js";
 import { TextContentCache } from "../../services/text-content-cache.js";
 import {
   sendLinkRectangleCreated,
+  sendLinkRectangleUpdated,
   sendLinkRectangleClicked,
   sendLinkRectangleDeleted,
   sendCacheBuildStarted,
@@ -72,6 +74,7 @@ export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLEleme
   const renderer        = new RectRenderer(viewer);
   const contextMenu     = new RectContextMenu();
   const overlay         = new RectDrawOverlay(viewer, cache);
+  const editOverlay     = new RectEditOverlay(viewer, cache, renderer);
   const charBboxDebug   = new CharBboxOverlay(viewer, cache);
   const matchRenderer   = new SearchMatchRenderer(viewer);
   const searcher        = new PdfTextSearcher(cache);
@@ -135,6 +138,12 @@ export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLEleme
       rect:  payload.rect,
     });
   });
+
+  editOverlay.onRectUpdated((payload) => {
+    sendLinkRectangleUpdated(payload);
+  });
+
+  renderer.setClickGuard(() => editOverlay.consumeClickSuppression());
 
   renderer.onRectClicked((id) => sendLinkRectangleClicked(id));
 

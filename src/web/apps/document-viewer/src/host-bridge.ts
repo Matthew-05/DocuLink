@@ -1,4 +1,4 @@
-import type { PdfEntry, LinkRectPayload, LinkedRectEntry, NormalizedRect } from "./types/index.js";
+import type { PdfEntry, LinkRectPayload, LinkRectUpdatedPayload, LinkedRectEntry, NormalizedRect } from "./types/index.js";
 
 interface PdfPayload {
   id: string;
@@ -220,6 +220,17 @@ export function sendLinkRectangleDeleted(id: string): void {
 export function sendLinkRectangleCreated(payload: LinkRectPayload): void {
   postToHost({
     type:  "link-rectangle-created",
+    pdfId: payload.pdfId,
+    page:  payload.page,
+    rect:  payload.rect,
+    text:  payload.text,
+  });
+}
+
+export function sendLinkRectangleUpdated(payload: LinkRectUpdatedPayload): void {
+  postToHost({
+    type:  "link-rectangle-updated",
+    id:    payload.id,
     pdfId: payload.pdfId,
     page:  payload.page,
     rect:  payload.rect,
