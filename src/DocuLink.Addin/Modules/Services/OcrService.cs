@@ -38,31 +38,21 @@ namespace DocuLink.Addin.Modules.Services
         }
 
         /// <summary>
-        /// Queues full OCR for the given PDF ids.
+        /// Queues OCR or geometry extraction for the given PDF ids. Scanned PDFs (status none)
+        /// receive full OCR; PDFs with an embedded text layer (status text) receive geometry-only.
+        /// Already-processed PDFs (status ocr) are skipped.
         /// </summary>
         public Task RunOcrAsync(
             IList<string> pdfIds,
             Excel.Workbook workbook,
             Action<string, string, string> onStatusUpdate)
         {
-            return RunJobsAsync(pdfIds, workbook, "full", onStatusUpdate);
-        }
-
-        /// <summary>
-        /// Queues geometry-only extraction for the given PDF ids (Enhance flow).
-        /// </summary>
-        public Task RunEnhanceAsync(
-            IList<string> pdfIds,
-            Excel.Workbook workbook,
-            Action<string, string, string> onStatusUpdate)
-        {
-            return RunJobsAsync(pdfIds, workbook, "geometry-only", onStatusUpdate);
+            return RunJobsAsync(pdfIds, workbook, onStatusUpdate);
         }
 
         private async Task RunJobsAsync(
             IList<string> pdfIds,
             Excel.Workbook workbook,
-            string mode,
             Action<string, string, string> onStatusUpdate)
         {
             if (pdfIds == null || pdfIds.Count == 0) return;
@@ -77,19 +67,19 @@ namespace DocuLink.Addin.Modules.Services
                 return;
             }
 
-            var jobs = LoadJobData(pdfIds, workbook, mode);
+            var jobs = LoadJobData(pdfIds, workbook);
+            if (jobs.Count == 0) return;
 
             foreach (var job in jobs)
                 onStatusUpdate(job.PdfId, "queued", null);
 
-            await Task.Run(() => RunWorker(workerExe, jobs, workbook, mode, onStatusUpdate));
+            await Task.Run(() => RunWorker(workerExe, jobs, workbook, onStatusUpdate));
         }
 
         private void RunWorker(
             string workerExe,
             IList<OcrJobEntry> jobs,
             Excel.Workbook workbook,
-            string mode,
             Action<string, string, string> onStatusUpdate)
         {
             var psi = new ProcessStartInfo
@@ -148,7 +138,7 @@ namespace DocuLink.Addin.Modules.Services
                         {
                             try
                             {
-                                if (string.Equals(mode, "geometry-only", StringComparison.Ordinal))
+                                if (string.Equals(job.Mode, "geometry-only", StringComparison.Ordinal))
                                 {
                                     _manageService.UpdatePdfGeometry(
                                         workbook, job.PdfId, parsed.GeometryBase64 ?? string.Empty);
@@ -291,10 +281,10 @@ namespace DocuLink.Addin.Modules.Services
         }
 
         /// <summary>
-        /// Reads the base64 bytes for the requested PDFs from the workbook.
-        /// Must be called on the UI thread.
+        /// Reads the base64 bytes for the requested PDFs from the workbook and assigns
+        /// full OCR vs geometry-only mode per PDF. Must be called on the UI thread.
         /// </summary>
-        private static IList<OcrJobEntry> LoadJobData(IList<string> pdfIds, Excel.Workbook workbook, string mode)
+        private static IList<OcrJobEntry> LoadJobData(IList<string> pdfIds, Excel.Workbook workbook)
         {
             var store = new CustomXml.DocuLinkCustomXmlPartStore(workbook);
             var storage = store.Load();
@@ -304,8 +294,14 @@ namespace DocuLink.Addin.Modules.Services
             {
                 var pdf = storage.Pdfs.FirstOrDefault(
                     p => string.Equals(p.Id, id, StringComparison.Ordinal));
-                if (pdf != null)
-                    result.Add(new OcrJobEntry { PdfId = pdf.Id, Base64 = pdf.Base64, Mode = mode });
+                if (pdf == null) continue;
+
+                string status = PdfStatus.NormalizeStored(
+                    pdf.OcrStatus, pdf.Base64, pdf.GeometryBase64);
+                if (status == PdfStatus.Ocr) continue;
+
+                string mode = status == PdfStatus.Text ? "geometry-only" : "full";
+                result.Add(new OcrJobEntry { PdfId = pdf.Id, Base64 = pdf.Base64, Mode = mode });
             }
             return result;
         }

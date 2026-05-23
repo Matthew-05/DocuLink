@@ -117,10 +117,6 @@ export function sendOcrPdfs(pdfIds: string[]): void {
   send({ type: "ocr-pdfs", pdfIds });
 }
 
-export function sendEnhancePdfs(pdfIds: string[]): void {
-  send({ type: "enhance-pdfs", pdfIds });
-}
-
 /** Notifies host of the actively selected folder (for OS drag-drop import). Omit folderId → All Files. */
 export function sendSelectedFolder(folderId: string | null): void {
   const msg: Record<string, unknown> = { type: "set-selected-folder" };
