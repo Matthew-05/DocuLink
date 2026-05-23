@@ -39,7 +39,7 @@ namespace DocuLink.Addin.Modules.Services
                     return false;
 
                 int trackIndex = rect.LinkedCell.TrackIndex;
-                Excel.Range cell = TryResolveCell(workbook, rect);
+                Excel.Range cell = LinkCellResolver.TryResolveCell(workbook, rect);
 
                 if (cell != null)
                 {
@@ -113,7 +113,7 @@ namespace DocuLink.Addin.Modules.Services
                     if (rect == null)
                         continue;
 
-                    Excel.Range cell = TryResolveCell(workbook, rect);
+                    Excel.Range cell = LinkCellResolver.TryResolveCell(workbook, rect);
                     if (cell != null)
                         cellsToClear.Add(cell);
 
@@ -203,72 +203,6 @@ namespace DocuLink.Addin.Modules.Services
                     }
                 }
             }
-        }
-
-        private static Excel.Range TryResolveCell(Excel.Workbook workbook, LinkedRectangle rect)
-        {
-            try
-            {
-                Excel.Worksheet ws = FindWorksheet(workbook, rect.LinkedCell.SheetName);
-                if (ws != null)
-                {
-                    Excel.Range cell = ws.Range[rect.LinkedCell.Address] as Excel.Range;
-                    if (cell != null)
-                        return cell;
-                }
-            }
-            catch (COMException) { }
-
-            return TryResolveCellViaXmlMap(workbook, rect.LinkedCell.TrackIndex);
-        }
-
-        private static Excel.Range TryResolveCellViaXmlMap(Excel.Workbook workbook, int trackIndex)
-        {
-            if (trackIndex <= 0)
-                return null;
-
-            string mapName = "DocuLink_" + trackIndex;
-            Excel.XmlMap map = null;
-
-            foreach (Excel.XmlMap candidate in workbook.XmlMaps)
-            {
-                try
-                {
-                    if (string.Equals(candidate.Name, mapName, StringComparison.Ordinal))
-                    {
-                        map = candidate;
-                        break;
-                    }
-                }
-                catch (COMException) { }
-            }
-
-            if (map == null)
-                return null;
-
-            const string linkXPath = "/DocuLinkLink";
-            foreach (Excel.Worksheet ws in workbook.Worksheets)
-            {
-                try
-                {
-                    object result = ws.XmlDataQuery(linkXPath, Type.Missing, map);
-                    if (result is Excel.Range range)
-                        return range;
-                }
-                catch (COMException) { }
-            }
-
-            return null;
-        }
-
-        private static Excel.Worksheet FindWorksheet(Excel.Workbook workbook, string sheetName)
-        {
-            foreach (Excel.Worksheet ws in workbook.Worksheets)
-            {
-                if (string.Equals(ws.Name, sheetName, StringComparison.OrdinalIgnoreCase))
-                    return ws;
-            }
-            return null;
         }
     }
 }

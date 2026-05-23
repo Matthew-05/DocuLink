@@ -1,7 +1,12 @@
 import type { PdfViewer } from "./pdf-viewer.js";
 import type { TextContentCache } from "../../services/text-content-cache.js";
 import { extractText } from "../../services/text-extractor.js";
-import type { LinkRectPayload, NormalizedRect } from "../../types/index.js";
+import type { LinkRectPayload } from "../../types/index.js";
+import {
+  clamp,
+  MIN_DRAG_PX,
+  pixelBoxToNormalizedRect,
+} from "./rect-utils.js";
 
 type RectCreatedCallback = (payload: LinkRectPayload) => void;
 
@@ -15,8 +20,7 @@ interface DragState {
   selectionDiv: HTMLDivElement;
 }
 
-/** Minimum drag size (px) required to commit a selection. */
-const MIN_DRAG_PX = 4;
+const LINK_SELECTOR = ".rect-draw__link";
 
 /**
  * Attaches always-on click-drag rectangle selection to the PDF viewer.
@@ -48,6 +52,7 @@ export class RectDrawOverlay {
   private _onMouseDown(e: MouseEvent): void {
     if (e.button !== 0) return;
     if (!this._viewer.getDocument()) return;
+    if (e.target instanceof Element && e.target.closest(LINK_SELECTOR)) return;
 
     const pageWrapper = this._findPageWrapper(e.target);
     if (!pageWrapper) return;
@@ -110,15 +115,7 @@ export class RectDrawOverlay {
     const pxH = Math.abs(curY - startYPx);
     if (pxW < MIN_DRAG_PX || pxH < MIN_DRAG_PX) return;
 
-    const pageW = pageWrapper.offsetWidth;
-    const pageH = pageWrapper.offsetHeight;
-
-    const normalizedRect: NormalizedRect = {
-      x:      Math.min(startXPx, curX) / pageW,
-      y:      Math.min(startYPx, curY) / pageH,
-      width:  pxW / pageW,
-      height: pxH / pageH,
-    };
+    const normalizedRect = pixelBoxToNormalizedRect(pageWrapper, startXPx, startYPx, curX, curY);
 
     const pdfId   = this._viewer.getActivePdfId() ?? "";
     const entries = this._cache.get(pdfId, pageIndex);
@@ -131,8 +128,4 @@ export class RectDrawOverlay {
     if (!target || !(target instanceof Element)) return null;
     return target.closest<HTMLDivElement>("[data-page]");
   }
-}
-
-function clamp(value: number, min: number, max: number): number {
-  return Math.max(min, Math.min(max, value));
 }

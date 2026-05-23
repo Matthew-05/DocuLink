@@ -1,10 +1,9 @@
-.viewer {
+.viewer__page {
   cursor: crosshair;
 }
 
 .rect-draw__selection {
   position: absolute;
-  border: 1.5px dashed #2563eb;
   background: rgba(37, 99, 235, 0.1);
   pointer-events: none;
   box-sizing: border-box;
@@ -12,15 +11,17 @@
 
 .rect-draw__link {
   position: absolute;
-  border: 1.5px solid #2563eb;
   background: rgba(37, 99, 235, 0.12);
   pointer-events: auto;
   cursor: pointer;
   box-sizing: border-box;
 }
 
+.rect-draw__link--editing {
+  z-index: 2;
+}
+
 .rect-draw__link--highlighted {
-  border-color: #ea580c;
   background: rgba(234, 88, 12, 0.2);
 }
 

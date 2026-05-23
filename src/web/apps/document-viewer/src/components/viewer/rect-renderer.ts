@@ -1,5 +1,7 @@
 import type { PdfViewer } from "./pdf-viewer.js";
-import type { LinkedRectEntry } from "../../types/index.js";
+import type { LinkedRectEntry, NormalizedRect } from "../../types/index.js";
+import { ensureOverlayLayer } from "./page-renderer.js";
+import { applyNormalizedRectToElement } from "./rect-utils.js";
 
 const LINK_CLASS      = "rect-draw__link";
 const HIGHLIGHT_CLASS = "rect-draw__link--highlighted";
@@ -17,9 +19,16 @@ export class RectRenderer {
   private readonly _onRectClickedCallbacks: Array<(id: string) => void> = [];
   private readonly _onRectContextMenuCallbacks: Array<(id: string, x: number, y: number) => void> = [];
   private _highlightedId: string | null = null;
+  /** When set, the next click callback checks this before firing navigation. */
+  private _clickGuard: (() => boolean) | null = null;
 
   constructor(private readonly _viewer: PdfViewer) {
     this._viewer.onDocumentChanged(() => this._renderAll());
+  }
+
+  /** Registers a guard invoked before click navigation; return true to suppress. */
+  setClickGuard(guard: (() => boolean) | null): void {
+    this._clickGuard = guard;
   }
 
   /** Registers a callback invoked when the user clicks a link rectangle overlay. */
@@ -51,6 +60,23 @@ export class RectRenderer {
   /** Returns whether the given rectangle id is in the renderer's stored set. */
   hasRectangle(id: string): boolean {
     return this._rects.some((r) => r.id === id);
+  }
+
+  getRectangle(id: string): LinkedRectEntry | undefined {
+    return this._rects.find((r) => r.id === id);
+  }
+
+  /** Patches a single rectangle's geometry in state and the DOM. */
+  updateRectangle(id: string, rect: NormalizedRect): void {
+    const index = this._rects.findIndex((r) => r.id === id);
+    if (index < 0) return;
+
+    this._rects[index] = { ...this._rects[index]!, rect: { ...rect } };
+
+    const el = this._viewer.element.querySelector<HTMLElement>(
+      `[data-rect-id="${CSS.escape(id)}"]`,
+    );
+    if (el) applyNormalizedRectToElement(el, rect);
   }
 
   private _applyHighlight(): void {
@@ -134,16 +160,16 @@ export class RectRenderer {
       (r) => r.pdfId === pdfId && r.page === pageIndex,
     );
 
+    const overlayLayer = ensureOverlayLayer(wrapper);
+
     for (const entry of pageRects) {
       const div = document.createElement("div");
       div.className = LINK_CLASS;
       div.dataset["rectId"] = entry.id;
-      div.style.left   = `${entry.rect.x      * 100}%`;
-      div.style.top    = `${entry.rect.y      * 100}%`;
-      div.style.width  = `${entry.rect.width  * 100}%`;
-      div.style.height = `${entry.rect.height * 100}%`;
+      applyNormalizedRectToElement(div, entry.rect);
       div.addEventListener("click", (e) => {
         e.stopPropagation();
+        if (this._clickGuard?.()) return;
         this.highlightRectangle(entry.id);
         for (const cb of this._onRectClickedCallbacks) cb(entry.id);
       });
@@ -154,7 +180,7 @@ export class RectRenderer {
           cb(entry.id, e.clientX, e.clientY);
         }
       });
-      wrapper.appendChild(div);
+      overlayLayer.appendChild(div);
     }
   }
 }

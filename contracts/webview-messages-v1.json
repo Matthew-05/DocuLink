@@ -273,6 +273,31 @@
       ]
     },
 
+    "LinkRectangleUpdatedMessage": {
+      "description": "Sent by the document-viewer when the user finishes moving or resizing an existing link rectangle. Contains the updated PDF region and re-extracted text to replace the linked cell contents.",
+      "type": "object",
+      "required": ["type", "id", "pdfId", "page", "rect", "text"],
+      "additionalProperties": false,
+      "properties": {
+        "type":  { "const": "link-rectangle-updated" },
+        "id":    { "type": "string", "description": "GUID of the LinkedRectangle being updated." },
+        "pdfId": { "type": "string", "description": "GUID of the PDF the rectangle belongs to." },
+        "page":  { "type": "integer", "minimum": 0, "description": "0-based page index." },
+        "rect":  { "$ref": "#/definitions/RectPayload" },
+        "text":  { "type": "string", "description": "Re-extracted text contained within the updated rectangle." }
+      },
+      "examples": [
+        {
+          "type": "link-rectangle-updated",
+          "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+          "pdfId": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+          "page": 0,
+          "rect": { "x": 0.12, "y": 0.22, "width": 0.38, "height": 0.06 },
+          "text": "Invoice Total: $1,234.56"
+        }
+      ]
+    },
+
     "CacheBuildStartedMessage": {
       "description": "Sent by the document-viewer immediately before building the per-page text-content cache for the loaded PDF. The host should show a loading indicator.",
       "type": "object",
@@ -494,6 +519,7 @@
     { "$ref": "#/definitions/RemoveFolderMessage" },
     { "$ref": "#/definitions/SetSelectedFolderMessage" },
     { "$ref": "#/definitions/LinkRectangleCreatedMessage" },
+    { "$ref": "#/definitions/LinkRectangleUpdatedMessage" },
     { "$ref": "#/definitions/CacheBuildStartedMessage" },
     { "$ref": "#/definitions/CacheBuildCompleteMessage" },
     { "$ref": "#/definitions/LinkedRectanglesLoadedMessage" },
