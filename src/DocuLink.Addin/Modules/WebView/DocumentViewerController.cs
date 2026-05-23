@@ -206,46 +206,26 @@ namespace DocuLink.Addin.Modules.WebView
                     DocuLinkLog.Trace("SendNavigateToRectangle done");
                 }
 
-                DocuLinkLog.Trace("queuing BeginInvoke for focus restore");
-                _invokeTarget.BeginInvoke(new Action(() =>
+                DocuLinkLog.Trace("restoring focus to Excel");
+                try
                 {
-                    DocuLinkLog.Trace("BeginInvoke ENTER");
-
-                    try
+                    int appHwnd = Globals.ThisAddIn.Application?.Hwnd ?? 0;
+                    if (appHwnd != 0)
                     {
-                        Excel.Window window = Globals.ThisAddIn.Application?.ActiveWindow;
-                        DocuLinkLog.Trace($"ActiveWindow={(window == null ? "null" : "ok")}");
-                        window?.Activate();
-                        DocuLinkLog.Trace("Window.Activate done");
+                        IntPtr prev = SetFocus(new IntPtr(appHwnd));
+                        DocuLinkLog.Trace($"SetFocus(Application.Hwnd) success, prev=0x{prev.ToInt64():X}");
                     }
-                    catch (Exception ex) { DocuLinkLog.Trace($"Window.Activate failed: {ex.Message}"); }
-
-                    try
+                    else
                     {
-                        Excel.Application app = Globals.ThisAddIn.Application;
-                        var activeCell = app?.ActiveCell as Excel.Range;
-                        DocuLinkLog.Trace($"activeCell={activeCell?.get_Address() ?? "null"}, value={activeCell?.Value2 ?? "(null)"}");
-                        activeCell?.Select();
-                        DocuLinkLog.Trace("activeCell.Select done");
+                        DocuLinkLog.Trace("SetFocus skipped: Application.Hwnd is 0");
                     }
-                    catch (Exception ex) { DocuLinkLog.Trace($"activeCell.Select failed: {ex.Message}"); }
+                }
+                catch (Exception ex)
+                {
+                    DocuLinkLog.Trace($"SetFocus failed: {ex.Message}");
+                }
 
-                    try
-                    {
-                        int appHwnd = Globals.ThisAddIn.Application?.Hwnd ?? 0;
-                        DocuLinkLog.Trace($"Application.Hwnd=0x{appHwnd:X}");
-                        if (appHwnd != 0)
-                        {
-                            IntPtr prev = SetFocus(new IntPtr(appHwnd));
-                            DocuLinkLog.Trace($"SetFocus(Application.Hwnd) prev=0x{prev.ToInt64():X}");
-                        }
-                    }
-                    catch (Exception ex) { DocuLinkLog.Trace($"SetFocus failed: {ex.Message}"); }
-
-                    DocuLinkLog.Trace("BeginInvoke EXIT");
-                }));
-
-                DocuLinkLog.Trace("EXIT (BeginInvoke queued)");
+                DocuLinkLog.Trace("EXIT");
             }
         }
 
@@ -276,6 +256,19 @@ namespace DocuLink.Addin.Modules.WebView
                 wb);
 
             SendLinkedRectanglesToWebView();
+
+            try
+            {
+                int appHwnd = Globals.ThisAddIn.Application?.Hwnd ?? 0;
+                if (appHwnd != 0)
+                {
+                    SetFocus(new IntPtr(appHwnd));
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[DocuLink] HandleLinkRectangleUpdated focus restore failed: {ex.Message}");
+            }
         }
 
         private void HandleLinkRectangleClicked(string json)
