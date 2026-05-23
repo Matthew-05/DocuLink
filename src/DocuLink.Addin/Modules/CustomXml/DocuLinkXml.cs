@@ -4,13 +4,19 @@ namespace DocuLink.Addin.Modules.CustomXml
 {
     internal static class DocuLinkXml
     {
-        public const string NamespaceUri = "http://doculink.dev/schemas/storage/1";
+        public const string ContentNamespaceUri = "http://doculink.dev/schemas/storage/1/content";
 
-        public static readonly XNamespace Ns = NamespaceUri;
+        public static readonly XNamespace ContentNs = ContentNamespaceUri;
+
+        public const string ContentRootElementName = "DocuLinkContent";
+
+        public const string LinksNamespaceUri = "http://doculink.dev/schemas/storage/1/links";
+
+        public static readonly XNamespace LinksNs = LinksNamespaceUri;
+
+        public const string LinksRootElementName = "DocuLinkLinks";
 
         public const uint SchemaVersion = 1;
-
-        public const string RootElementName = "DocuLinkStore";
 
         public const string FoldersElementName = "Folders";
 

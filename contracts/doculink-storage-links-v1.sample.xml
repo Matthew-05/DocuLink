@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<DocuLinkLinks xmlns="http://doculink.dev/schemas/storage/1/links" version="1">
+  <LinkedRectangles>
+    <LinkedRectangle id="a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+                     pdfId="3fa85f64-5717-4562-b3fc-2c963f66afa6">
+      <Cell sheet="Sheet1" address="$B$5" trackIndex="1" />
+      <Rect page="0" x="0.12" y="0.34" width="0.44" height="0.08" coordinateSpace="normalized" />
+    </LinkedRectangle>
+  </LinkedRectangles>
+</DocuLinkLinks>

@@ -6,6 +6,7 @@ using System.Reflection;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using DocuLink.Addin.Modules.CustomXml;
+using DocuLink.Addin.Modules.CustomXml.Models;
 using DocuLink.Addin.Modules.Services;
 using DocuLink.Addin.Modules.UI;
 using Microsoft.Web.WebView2.Core;
@@ -466,9 +467,9 @@ namespace DocuLink.Addin.Modules.WebView
                 if (wb == null) return;
 
                 var store = new DocuLinkCustomXmlPartStore(wb);
-                var storage = store.Load();
+                DocuLinkContent content = store.LoadContent();
 
-                string json = FileManagerMessageSerializer.BuildFilesLoaded(storage.Folders, storage.Pdfs);
+                string json = FileManagerMessageSerializer.BuildFilesLoaded(content.Folders, content.Pdfs);
                 _webView.CoreWebView2?.PostWebMessageAsString(json);
             }
             catch (Exception ex)

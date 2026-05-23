@@ -9,14 +9,16 @@ The `contracts/` folder is the single source of truth for all cross-boundary dat
 
 | File | Describes |
 |------|-----------|
-| `doculink-storage-v1.xsd` | XML persisted in the workbook's CustomXMLParts |
-| `doculink-storage-v1.sample.xml` | Valid sample for the above |
+| `doculink-storage-content-v1.xsd` | PDF/folder catalogue persisted in the content Custom XML part |
+| `doculink-storage-content-v1.sample.xml` | Valid sample for the above |
+| `doculink-storage-links-v1.xsd` | Linked rectangles persisted in the links Custom XML part |
+| `doculink-storage-links-v1.sample.xml` | Valid sample for the above |
 | `webview-messages-v1.json` | JSON messages between C# host and the web viewer |
 
 ## Rules
 
 - **Before implementing** a new message type or storage field, define its shape in the relevant contract file first, then implement.
-- **After changing** serialization in `DocuLinkStorageSerializer.cs` or `DocuLinkXml.cs`, update `doculink-storage-v1.xsd` and `doculink-storage-v1.sample.xml` to match.
+- **After changing** serialization in `DocuLinkContentSerializer.cs`, `DocuLinkLinksSerializer.cs`, or `DocuLinkXml.cs`, update the matching XSD and sample XML to match.
 - **After adding** a new WebView2 message type in `HostMessageSerializer.cs` or `HostMessageParser.cs`, add it to `webview-messages-v1.json` (new `definition` + `oneOf` entry).
 - **Never** hand-duplicate a shape across languages (C# + TS) without a contract entry — extract to the relevant schema first.
 - When Python is added, its job/result shapes go in a new `contracts/python-worker-v1.json`.
