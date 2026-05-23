@@ -1,5 +1,6 @@
 using System;
 using System.Linq;
+using System.Runtime.InteropServices;
 using DocuLink.Addin.Modules.CustomXml;
 using DocuLink.Addin.Modules.CustomXml.Models;
 using Excel = Microsoft.Office.Interop.Excel;
@@ -12,6 +13,9 @@ namespace DocuLink.Addin.Modules.Services
     /// </summary>
     internal sealed class LinkNavigationService
     {
+        [DllImport("user32.dll")]
+        private static extern IntPtr SetFocus(IntPtr hWnd);
+
         public bool NavigateToLinkedCell(string rectId, Excel.Workbook workbook)
         {
             if (string.IsNullOrWhiteSpace(rectId) || workbook == null)
@@ -31,6 +35,13 @@ namespace DocuLink.Addin.Modules.Services
 
                 ws.Activate();
                 ((Excel.Range)ws.Range[rect.LinkedCell.Address]).Select();
+
+                int appHwnd = Globals.ThisAddIn.Application?.Hwnd ?? 0;
+                if (appHwnd != 0)
+                {
+                    SetFocus(new IntPtr(appHwnd));
+                }
+
                 return true;
             }
             catch (Exception ex)
