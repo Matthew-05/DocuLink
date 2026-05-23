@@ -31,20 +31,15 @@ function charBoxOverlapsRect(
   return intersectArea / charArea >= MIN_CHAR_BOX_OVERLAP;
 }
 
-function readingOrder(a: CharacterEntry, b: CharacterEntry): number {
-  if (a.normTop !== b.normTop) return a.normTop - b.normTop;
-  return a.normLeft - b.normLeft;
-}
-
 /**
  * Extracts and joins the text whose character boxes overlap `rect` by at least 30%.
  *
  * Inclusion criterion: a character is included when at least 30% of its bounding
  * box area overlaps the selection rectangle, enabling partial-word selection.
  *
- * Stored geometry includes literal space characters from the PDF text layer.
- * The pdf.js fallback infers spaces between TextItems when the horizontal gap
- * exceeds one estimated character-width.
+ * Stored geometry (OCR) is already in reading order; overlapping chars are kept
+ * in that subsequence order. The pdf.js fallback infers spaces between TextItems
+ * when the horizontal gap exceeds one estimated character-width.
  */
 export function extractText(
   entries: CharacterEntry[] | null,
@@ -63,12 +58,11 @@ export function extractText(
   if (included.length === 0) return "";
 
   const spacesPrecomputed = entries[0]?.spacesPrecomputed === true;
-  const ordered = spacesPrecomputed ? [...included].sort(readingOrder) : included;
 
   let result = "";
   let prev: CharacterEntry | null = null;
 
-  for (const entry of ordered) {
+  for (const entry of included) {
     if (!spacesPrecomputed && prev !== null && entry.itemIndex !== prev.itemIndex) {
       const prevCharWidth = prev.normRight - prev.normLeft;
       const gap = entry.normLeft - prev.normRight;
