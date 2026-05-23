@@ -247,7 +247,6 @@
     <Compile Include="Modules\Services\LinkCellResolver.cs" />
     <Compile Include="Modules\Services\UpdateLinkService.cs" />
     <Compile Include="Modules\Services\LinkCellTracker.cs" />
-    <Compile Include="Modules\Services\LinkNavigationService.cs" />
     <Compile Include="Modules\Services\ManageFilesService.cs" />
     <Compile Include="Modules\Services\PdfStatus.cs" />
     <Compile Include="Modules\Services\PdfTextLayerDetector.cs" />

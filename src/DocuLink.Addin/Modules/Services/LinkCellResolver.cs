@@ -12,19 +12,25 @@ namespace DocuLink.Addin.Modules.Services
     {
         internal static Excel.Range TryResolveCell(Excel.Workbook workbook, LinkedRectangle rect)
         {
+            // PRIMARY: Query XmlMap binding (always current through cell moves and worksheet renames)
+            Excel.Range cell = TryResolveCellViaXmlMap(workbook, rect.LinkedCell.TrackIndex);
+            if (cell != null)
+                return cell;
+
+            // FALLBACK: Use stored sheet name + address (for backward compatibility with old workbooks)
             try
             {
                 Excel.Worksheet ws = FindWorksheet(workbook, rect.LinkedCell.SheetName);
                 if (ws != null)
                 {
-                    Excel.Range cell = ws.Range[rect.LinkedCell.Address] as Excel.Range;
+                    cell = ws.Range[rect.LinkedCell.Address] as Excel.Range;
                     if (cell != null)
                         return cell;
                 }
             }
             catch (COMException) { }
 
-            return TryResolveCellViaXmlMap(workbook, rect.LinkedCell.TrackIndex);
+            return null;
         }
 
         private static Excel.Range TryResolveCellViaXmlMap(Excel.Workbook workbook, int trackIndex)
