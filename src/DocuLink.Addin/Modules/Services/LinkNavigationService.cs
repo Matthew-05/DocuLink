@@ -12,21 +12,13 @@ namespace DocuLink.Addin.Modules.Services
     /// </summary>
     internal sealed class LinkNavigationService
     {
-        /// <summary>
-        /// Finds the <see cref="LinkedRectangle"/> with the given id, activates
-        /// its worksheet, and selects the linked cell.
-        /// </summary>
-        /// <returns>
-        /// <c>true</c> if the rectangle was found and navigation succeeded;
-        /// <c>false</c> otherwise.
-        /// </returns>
         public bool NavigateToLinkedCell(string rectId, Excel.Workbook workbook)
         {
             if (string.IsNullOrWhiteSpace(rectId) || workbook == null)
                 return false;
 
-            var storage = new DocuLinkCustomXmlPartStore(workbook).Load();
-            var rect    = storage.LinkedRectangles.FirstOrDefault(r => r.Id == rectId);
+            var rect = Globals.ThisAddIn.GetStorageSession(workbook).GetLinks()
+                .FirstOrDefault(r => r.Id == rectId);
 
             if (rect == null)
                 return false;
@@ -49,11 +41,6 @@ namespace DocuLink.Addin.Modules.Services
             }
         }
 
-        /// <summary>
-        /// Returns the first <see cref="LinkedRectangle"/> whose linked cell
-        /// matches the given sheet name and absolute address (e.g. <c>$A$1</c>),
-        /// or <c>null</c> if no match is found.
-        /// </summary>
         public LinkedRectangle FindRectangleForCell(
             string sheetName,
             string address,
@@ -66,8 +53,7 @@ namespace DocuLink.Addin.Modules.Services
 
             try
             {
-                var storage = new DocuLinkCustomXmlPartStore(workbook).Load();
-                return storage.LinkedRectangles.FirstOrDefault(r =>
+                return Globals.ThisAddIn.GetStorageSession(workbook).GetLinks().FirstOrDefault(r =>
                     string.Equals(r.LinkedCell.SheetName, sheetName, StringComparison.OrdinalIgnoreCase) &&
                     string.Equals(r.LinkedCell.Address,   address,   StringComparison.OrdinalIgnoreCase));
             }

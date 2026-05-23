@@ -12,10 +12,6 @@ namespace DocuLink.Addin.Modules.Services
     /// </summary>
     internal sealed class UpdateLinkService
     {
-        /// <summary>
-        /// Updates the persisted rectangle and linked cell text.
-        /// </summary>
-        /// <returns><c>true</c> if the rectangle was found and updated.</returns>
         public bool UpdateLink(
             string rectId,
             int page,
@@ -28,8 +24,8 @@ namespace DocuLink.Addin.Modules.Services
 
             try
             {
-                var store = new DocuLinkCustomXmlPartStore(workbook);
-                if (!store.TryGetLinkedRectangle(rectId, out LinkedRectangle existing))
+                WorkbookStorageSession session = Globals.ThisAddIn.GetStorageSession(workbook);
+                if (!session.TryGetLink(rectId, out LinkedRectangle existing))
                     return false;
 
                 Excel.Range cell = LinkCellResolver.TryResolveCell(workbook, existing);
@@ -45,8 +41,7 @@ namespace DocuLink.Addin.Modules.Services
 
                 var rect = new PdfRectangle(page, x, y, width, height, RectangleCoordinateSpace.Normalized);
                 var updated = new LinkedRectangle(existing.Id, existing.PdfId, existing.LinkedCell, rect);
-                store.UpsertLinkedRectangle(updated);
-                return true;
+                return session.UpdateLink(updated);
             }
             catch (Exception ex)
             {

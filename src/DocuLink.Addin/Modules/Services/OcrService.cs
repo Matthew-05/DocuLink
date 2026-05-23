@@ -8,6 +8,7 @@ using System.Text;
 using System.Threading.Tasks;
 using System.Web.Script.Serialization;
 using System.Windows.Forms;
+using DocuLink.Addin.Modules.CustomXml.Models;
 using Excel = Microsoft.Office.Interop.Excel;
 
 namespace DocuLink.Addin.Modules.Services
@@ -287,12 +288,12 @@ namespace DocuLink.Addin.Modules.Services
         private static IList<OcrJobEntry> LoadJobData(IList<string> pdfIds, Excel.Workbook workbook)
         {
             var store = new CustomXml.DocuLinkCustomXmlPartStore(workbook);
-            var storage = store.Load();
+            DocuLinkContent content = store.LoadContent();
 
             var result = new List<OcrJobEntry>();
             foreach (string id in pdfIds)
             {
-                var pdf = storage.Pdfs.FirstOrDefault(
+                var pdf = content.Pdfs.FirstOrDefault(
                     p => string.Equals(p.Id, id, StringComparison.Ordinal));
                 if (pdf == null) continue;
 

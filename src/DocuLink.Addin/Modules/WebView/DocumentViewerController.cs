@@ -19,9 +19,10 @@ namespace DocuLink.Addin.Modules.WebView
     /// <summary>Shared WebView2 + messaging logic for the document-viewer web app.</summary>
     internal sealed class DocumentViewerController
     {
-        // SetFocus (not SetForegroundWindow) is required: it directly reassigns which
-        // child HWND receives WM_KEYDOWN, sending WM_KILLFOCUS to the Chromium window
-        // inside WebView2 and WM_SETFOCUS to the Excel workbook grid window.
+        // Transfers Win32 keyboard focus to the target HWND, sending WM_KILLFOCUS to
+        // the previously focused window (the WebView2 Chromium child) and WM_SETFOCUS
+        // to the target. Must target Application.Hwnd (XLMAIN), not Window.Hwnd (the
+        // workbook frame), to avoid blanking the formula bar.
         [DllImport("user32.dll")]
         private static extern IntPtr SetFocus(IntPtr hWnd);
 
@@ -141,39 +142,111 @@ namespace DocuLink.Addin.Modules.WebView
             Excel.Workbook wb = Globals.ThisAddIn.Application?.ActiveWorkbook;
             if (wb == null) return;
 
-            string text = payload.Text;
-            if (string.IsNullOrWhiteSpace(text))
+            _invokeTarget.BeginInvoke(new Action(() => ExecuteLinkRectangleCreated(payload, wb)));
+        }
+
+        private void ExecuteLinkRectangleCreated(LinkRectangleCreatedPayload payload, Excel.Workbook wb)
+        {
+            using (DocuLinkLog.Time("ExecuteLinkRectangleCreated total"))
             {
-                IWin32Window owner = _invokeTarget.FindForm() ?? _invokeTarget;
-                if (!LinkTextPromptDialog.TryPrompt(owner, out text))
-                {
-                    SendLinkedRectanglesToWebView();
-                    return;
-                }
-            }
+                DocuLinkLog.Trace("ENTER");
 
-            var linkedRect = new CreateLinkService().CreateLink(
-                payload.PdfId,
-                payload.Page,
-                payload.X, payload.Y, payload.Width, payload.Height,
-                text,
-                wb);
-
-            SendLinkedRectanglesToWebView();
-
-            if (linkedRect != null)
-                SendNavigateToRectangle(linkedRect.Id, linkedRect.PdfId, linkedRect.Rectangle.PageIndex);
-
-            _invokeTarget.BeginInvoke(new Action(() =>
-            {
                 try
                 {
-                    var window = Globals.ThisAddIn.Application?.ActiveWindow;
-                    if (window != null)
-                        SetFocus(new IntPtr(window.Hwnd));
+                    var sel = Globals.ThisAddIn.Application?.Selection as Excel.Range;
+                    DocuLinkLog.Trace($"selection before CreateLink: {sel?.get_Address() ?? "null"}");
+                    DocuLinkLog.Trace($"active cell before CreateLink: {(Globals.ThisAddIn.Application?.ActiveCell as Excel.Range)?.get_Address() ?? "null"}, value={((Globals.ThisAddIn.Application?.ActiveCell as Excel.Range)?.Value2 ?? "(null)")}");
                 }
-                catch { }
-            }));
+                catch (Exception ex) { DocuLinkLog.Trace($"pre-create cell read failed: {ex.Message}"); }
+
+                string text = payload.Text;
+                if (string.IsNullOrWhiteSpace(text))
+                {
+                    IWin32Window owner = _invokeTarget.FindForm() ?? _invokeTarget;
+                    if (!LinkTextPromptDialog.TryPrompt(owner, out text))
+                    {
+                        DocuLinkLog.Trace("text prompt cancelled");
+                        SendLinkedRectanglesToWebView();
+                        return;
+                    }
+                }
+
+                DocuLinkLog.Trace($"text='{text}' – calling CreateLink");
+                LinkedRectangle linkedRect;
+                IList<LinkedRectangle> allRects;
+                using (Globals.ThisAddIn.EnterSelectionNavSuppress())
+                {
+                    (linkedRect, allRects) = new CreateLinkService().CreateLink(
+                        payload.PdfId,
+                        payload.Page,
+                        payload.X, payload.Y, payload.Width, payload.Height,
+                        text,
+                        wb);
+                }
+                DocuLinkLog.Trace($"CreateLink returned id={linkedRect?.Id ?? "null"}");
+
+                try
+                {
+                    var ac = Globals.ThisAddIn.Application?.ActiveCell as Excel.Range;
+                    DocuLinkLog.Trace($"active cell after CreateLink: {ac?.get_Address() ?? "null"}, value={ac?.Value2 ?? "(null)"}");
+                }
+                catch (Exception ex) { DocuLinkLog.Trace($"post-create cell read failed: {ex.Message}"); }
+
+                DocuLinkLog.Trace("calling SendLinkedRectanglesToWebView (pre-loaded)");
+                if (allRects != null)
+                    SendLinkedRectanglesToWebView(allRects);
+                else
+                    SendLinkedRectanglesToWebView();
+                DocuLinkLog.Trace("SendLinkedRectanglesToWebView done");
+
+                if (linkedRect != null)
+                {
+                    DocuLinkLog.Trace($"calling SendNavigateToRectangle id={linkedRect.Id}");
+                    SendNavigateToRectangle(linkedRect.Id, linkedRect.PdfId, linkedRect.Rectangle.PageIndex);
+                    DocuLinkLog.Trace("SendNavigateToRectangle done");
+                }
+
+                DocuLinkLog.Trace("queuing BeginInvoke for focus restore");
+                _invokeTarget.BeginInvoke(new Action(() =>
+                {
+                    DocuLinkLog.Trace("BeginInvoke ENTER");
+
+                    try
+                    {
+                        Excel.Window window = Globals.ThisAddIn.Application?.ActiveWindow;
+                        DocuLinkLog.Trace($"ActiveWindow={(window == null ? "null" : "ok")}");
+                        window?.Activate();
+                        DocuLinkLog.Trace("Window.Activate done");
+                    }
+                    catch (Exception ex) { DocuLinkLog.Trace($"Window.Activate failed: {ex.Message}"); }
+
+                    try
+                    {
+                        Excel.Application app = Globals.ThisAddIn.Application;
+                        var activeCell = app?.ActiveCell as Excel.Range;
+                        DocuLinkLog.Trace($"activeCell={activeCell?.get_Address() ?? "null"}, value={activeCell?.Value2 ?? "(null)"}");
+                        activeCell?.Select();
+                        DocuLinkLog.Trace("activeCell.Select done");
+                    }
+                    catch (Exception ex) { DocuLinkLog.Trace($"activeCell.Select failed: {ex.Message}"); }
+
+                    try
+                    {
+                        int appHwnd = Globals.ThisAddIn.Application?.Hwnd ?? 0;
+                        DocuLinkLog.Trace($"Application.Hwnd=0x{appHwnd:X}");
+                        if (appHwnd != 0)
+                        {
+                            IntPtr prev = SetFocus(new IntPtr(appHwnd));
+                            DocuLinkLog.Trace($"SetFocus(Application.Hwnd) prev=0x{prev.ToInt64():X}");
+                        }
+                    }
+                    catch (Exception ex) { DocuLinkLog.Trace($"SetFocus failed: {ex.Message}"); }
+
+                    DocuLinkLog.Trace("BeginInvoke EXIT");
+                }));
+
+                DocuLinkLog.Trace("EXIT (BeginInvoke queued)");
+            }
         }
 
         private void HandleLinkRectangleUpdated(string json)
@@ -327,16 +400,38 @@ namespace DocuLink.Addin.Modules.WebView
                 if (workbook == null)
                     return;
 
-                var store = new DocuLinkCustomXmlPartStore(workbook);
-                DocuLinkStorage storage = store.Load();
-
-                string json = HostMessageSerializer.BuildLinkedRectanglesLoaded(storage.LinkedRectangles);
-                _webView.CoreWebView2.PostWebMessageAsString(json);
+                PostLinkedRectangles(Globals.ThisAddIn.GetStorageSession(workbook).GetLinks());
             }
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"[DocuLink] SendLinkedRectanglesToWebView failed: {ex.Message}");
             }
+        }
+
+        /// <summary>
+        /// Sends a pre-loaded linked-rectangles list to the viewer without reloading
+        /// from storage. Use this when the caller already has the current list in memory
+        /// (e.g. immediately after CreateLink returns) to avoid a redundant XML load.
+        /// </summary>
+        internal void SendLinkedRectanglesToWebView(IList<LinkedRectangle> linkedRectangles)
+        {
+            if (linkedRectangles == null) return;
+            try
+            {
+                PostLinkedRectangles(linkedRectangles);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine(
+                    $"[DocuLink] SendLinkedRectanglesToWebView(list) failed: {ex.Message}");
+            }
+        }
+
+        private void PostLinkedRectangles(IList<LinkedRectangle> linkedRectangles)
+        {
+            if (!_webViewReady) return;
+            string json = HostMessageSerializer.BuildLinkedRectanglesLoaded(linkedRectangles);
+            _webView.CoreWebView2.PostWebMessageAsString(json);
         }
 
         internal void SendPdfsToWebView()
@@ -349,9 +444,9 @@ namespace DocuLink.Addin.Modules.WebView
                     return;
 
                 var store = new DocuLinkCustomXmlPartStore(workbook);
-                DocuLinkStorage storage = store.Load();
+                DocuLinkContent content = store.LoadContent();
 
-                string json = HostMessageSerializer.BuildPdfsLoaded(storage.Pdfs);
+                string json = HostMessageSerializer.BuildPdfsLoaded(content.Pdfs);
                 _webView.CoreWebView2.PostWebMessageAsString(json);
             }
             catch (Exception ex)
@@ -373,11 +468,7 @@ namespace DocuLink.Addin.Modules.WebView
                     return;
 
                 var store = new DocuLinkCustomXmlPartStore(workbook);
-                DocuLinkStorage storage = store.Load();
-
-                PdfDocument pdf = storage.Pdfs.FirstOrDefault(
-                    p => string.Equals(p.Id, pdfId, StringComparison.Ordinal));
-                if (pdf == null)
+                if (!store.TryGetPdf(pdfId, out PdfDocument pdf))
                     return;
 
                 string json = HostMessageSerializer.BuildPdfUpdated(pdf);

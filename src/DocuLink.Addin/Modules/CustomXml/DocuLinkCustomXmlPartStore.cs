@@ -19,52 +19,90 @@ namespace DocuLink.Addin.Modules.CustomXml
             _workbook = workbook ?? throw new ArgumentNullException(nameof(workbook));
         }
 
-        public DocuLinkStorage Load()
+        public DocuLinkContent LoadContent()
         {
-            Office.CustomXMLPart part = FindDocuLinkPart();
+            Office.CustomXMLPart part = FindPartByNamespace(DocuLinkXml.ContentNamespaceUri);
             if (part == null)
-                return new DocuLinkStorage(DocuLinkXml.SchemaVersion, new PdfFolder[0], new PdfDocument[0], new LinkedRectangle[0]);
+                return new DocuLinkContent(DocuLinkXml.SchemaVersion, new PdfFolder[0], new PdfDocument[0]);
 
             string xml = part.XML;
             if (string.IsNullOrWhiteSpace(xml))
-                return new DocuLinkStorage(DocuLinkXml.SchemaVersion, new PdfFolder[0], new PdfDocument[0], new LinkedRectangle[0]);
+                return new DocuLinkContent(DocuLinkXml.SchemaVersion, new PdfFolder[0], new PdfDocument[0]);
 
             try
             {
                 XDocument document = XDocument.Parse(xml);
-                return DocuLinkStorageSerializer.FromXDocument(document);
+                return DocuLinkContentSerializer.FromXDocument(document);
             }
             catch (System.Xml.XmlException ex)
             {
-                throw new InvalidOperationException("DocuLink custom XML part contains invalid XML.", ex);
+                throw new InvalidOperationException("DocuLink content custom XML part contains invalid XML.", ex);
             }
+        }
+
+        public void SaveContent(DocuLinkContent content)
+        {
+            if (content == null) throw new ArgumentNullException(nameof(content));
+
+            XDocument document = DocuLinkContentSerializer.ToXDocument(content);
+            string xml = document.ToString(SaveOptions.DisableFormatting);
+            ReplacePart(DocuLinkXml.ContentNamespaceUri, xml);
+        }
+
+        public IList<LinkedRectangle> LoadLinks()
+        {
+            Office.CustomXMLPart part = FindPartByNamespace(DocuLinkXml.LinksNamespaceUri);
+            if (part == null)
+                return new List<LinkedRectangle>();
+
+            string xml = part.XML;
+            if (string.IsNullOrWhiteSpace(xml))
+                return new List<LinkedRectangle>();
+
+            try
+            {
+                XDocument document = XDocument.Parse(xml);
+                return DocuLinkLinksSerializer.FromXDocument(document);
+            }
+            catch (System.Xml.XmlException ex)
+            {
+                throw new InvalidOperationException("DocuLink links custom XML part contains invalid XML.", ex);
+            }
+        }
+
+        public void SaveLinks(IList<LinkedRectangle> linkedRectangles)
+        {
+            XDocument document = DocuLinkLinksSerializer.ToXDocument(linkedRectangles);
+            string xml = document.ToString(SaveOptions.DisableFormatting);
+            ReplacePart(DocuLinkXml.LinksNamespaceUri, xml);
+        }
+
+        public DocuLinkStorage Load()
+        {
+            DocuLinkContent content = LoadContent();
+            IList<LinkedRectangle> links = LoadLinks();
+            return new DocuLinkStorage(
+                content.Version,
+                content.Folders,
+                content.Pdfs,
+                links);
         }
 
         public void Save(DocuLinkStorage storage)
         {
             if (storage == null) throw new ArgumentNullException(nameof(storage));
 
-            XDocument document = DocuLinkStorageSerializer.ToXDocument(storage);
-            string xml = document.ToString(SaveOptions.DisableFormatting);
-
-            Office.CustomXMLPart existing = FindDocuLinkPart();
-            if (existing != null)
-                existing.Delete();
-
-            Office.CustomXMLParts parts = _workbook.CustomXMLParts;
-            object missing = Type.Missing;
-            parts.Add(xml, missing);
+            SaveContent(new DocuLinkContent(storage.Version, storage.Folders, storage.Pdfs));
+            SaveLinks(storage.LinkedRectangles);
         }
-
-        // ── PDF operations ────────────────────────────────────────────────────
 
         public bool TryGetPdf(string id, out PdfDocument pdf)
         {
             if (string.IsNullOrWhiteSpace(id))
                 throw new ArgumentException("PDF id must be non-empty.", nameof(id));
 
-            DocuLinkStorage storage = Load();
-            pdf = storage.Pdfs.FirstOrDefault(p => string.Equals(p.Id, id, StringComparison.Ordinal));
+            DocuLinkContent content = LoadContent();
+            pdf = content.Pdfs.FirstOrDefault(p => string.Equals(p.Id, id, StringComparison.Ordinal));
             return pdf != null;
         }
 
@@ -74,15 +112,15 @@ namespace DocuLink.Addin.Modules.CustomXml
             if (string.IsNullOrWhiteSpace(pdf.Id))
                 throw new ArgumentException("PDF id must be non-empty.", nameof(pdf));
 
-            DocuLinkStorage storage = Load();
-            List<PdfDocument> pdfs = storage.Pdfs.ToList();
+            DocuLinkContent content = LoadContent();
+            List<PdfDocument> pdfs = content.Pdfs.ToList();
             int index = pdfs.FindIndex(p => string.Equals(p.Id, pdf.Id, StringComparison.Ordinal));
             if (index >= 0)
                 pdfs[index] = pdf;
             else
                 pdfs.Add(pdf);
 
-            Save(new DocuLinkStorage(DocuLinkXml.SchemaVersion, storage.Folders, pdfs, storage.LinkedRectangles));
+            SaveContent(new DocuLinkContent(content.Version, content.Folders, pdfs));
         }
 
         public bool RemovePdf(string id)
@@ -90,16 +128,14 @@ namespace DocuLink.Addin.Modules.CustomXml
             if (string.IsNullOrWhiteSpace(id))
                 throw new ArgumentException("PDF id must be non-empty.", nameof(id));
 
-            DocuLinkStorage storage = Load();
-            List<PdfDocument> pdfs = storage.Pdfs.Where(p => !string.Equals(p.Id, id, StringComparison.Ordinal)).ToList();
-            if (pdfs.Count == storage.Pdfs.Count)
+            DocuLinkContent content = LoadContent();
+            List<PdfDocument> pdfs = content.Pdfs.Where(p => !string.Equals(p.Id, id, StringComparison.Ordinal)).ToList();
+            if (pdfs.Count == content.Pdfs.Count)
                 return false;
 
-            Save(new DocuLinkStorage(DocuLinkXml.SchemaVersion, storage.Folders, pdfs, storage.LinkedRectangles));
+            SaveContent(new DocuLinkContent(content.Version, content.Folders, pdfs));
             return true;
         }
-
-        // ── Folder operations ─────────────────────────────────────────────────
 
         public void UpsertFolder(PdfFolder folder)
         {
@@ -107,15 +143,15 @@ namespace DocuLink.Addin.Modules.CustomXml
             if (string.IsNullOrWhiteSpace(folder.Id))
                 throw new ArgumentException("Folder id must be non-empty.", nameof(folder));
 
-            DocuLinkStorage storage = Load();
-            List<PdfFolder> folders = storage.Folders.ToList();
+            DocuLinkContent content = LoadContent();
+            List<PdfFolder> folders = content.Folders.ToList();
             int index = folders.FindIndex(f => string.Equals(f.Id, folder.Id, StringComparison.Ordinal));
             if (index >= 0)
                 folders[index] = folder;
             else
                 folders.Add(folder);
 
-            Save(new DocuLinkStorage(DocuLinkXml.SchemaVersion, folders, storage.Pdfs, storage.LinkedRectangles));
+            SaveContent(new DocuLinkContent(content.Version, folders, content.Pdfs));
         }
 
         public bool RemoveFolder(string id)
@@ -123,13 +159,12 @@ namespace DocuLink.Addin.Modules.CustomXml
             if (string.IsNullOrWhiteSpace(id))
                 throw new ArgumentException("Folder id must be non-empty.", nameof(id));
 
-            DocuLinkStorage storage = Load();
-            List<PdfFolder> folders = storage.Folders.Where(f => !string.Equals(f.Id, id, StringComparison.Ordinal)).ToList();
-            if (folders.Count == storage.Folders.Count)
+            DocuLinkContent content = LoadContent();
+            List<PdfFolder> folders = content.Folders.Where(f => !string.Equals(f.Id, id, StringComparison.Ordinal)).ToList();
+            if (folders.Count == content.Folders.Count)
                 return false;
 
-            // Clear folderId on any PDFs that belonged to this folder.
-            List<PdfDocument> pdfs = storage.Pdfs.Select(p =>
+            List<PdfDocument> pdfs = content.Pdfs.Select(p =>
             {
                 if (!string.Equals(p.FolderId, id, StringComparison.Ordinal))
                     return p;
@@ -140,19 +175,17 @@ namespace DocuLink.Addin.Modules.CustomXml
                 };
             }).ToList();
 
-            Save(new DocuLinkStorage(DocuLinkXml.SchemaVersion, folders, pdfs, storage.LinkedRectangles));
+            SaveContent(new DocuLinkContent(content.Version, folders, pdfs));
             return true;
         }
-
-        // ── LinkedRectangle operations ────────────────────────────────────────
 
         public bool TryGetLinkedRectangle(string id, out LinkedRectangle linkedRectangle)
         {
             if (string.IsNullOrWhiteSpace(id))
                 throw new ArgumentException("LinkedRectangle id must be non-empty.", nameof(id));
 
-            DocuLinkStorage storage = Load();
-            linkedRectangle = storage.LinkedRectangles.FirstOrDefault(r => string.Equals(r.Id, id, StringComparison.Ordinal));
+            IList<LinkedRectangle> links = LoadLinks();
+            linkedRectangle = links.FirstOrDefault(r => string.Equals(r.Id, id, StringComparison.Ordinal));
             return linkedRectangle != null;
         }
 
@@ -162,15 +195,14 @@ namespace DocuLink.Addin.Modules.CustomXml
             if (string.IsNullOrWhiteSpace(linkedRectangle.Id))
                 throw new ArgumentException("LinkedRectangle id must be non-empty.", nameof(linkedRectangle));
 
-            DocuLinkStorage storage = Load();
-            List<LinkedRectangle> linkedRectangles = storage.LinkedRectangles.ToList();
-            int index = linkedRectangles.FindIndex(r => string.Equals(r.Id, linkedRectangle.Id, StringComparison.Ordinal));
+            List<LinkedRectangle> links = LoadLinks().ToList();
+            int index = links.FindIndex(r => string.Equals(r.Id, linkedRectangle.Id, StringComparison.Ordinal));
             if (index >= 0)
-                linkedRectangles[index] = linkedRectangle;
+                links[index] = linkedRectangle;
             else
-                linkedRectangles.Add(linkedRectangle);
+                links.Add(linkedRectangle);
 
-            Save(new DocuLinkStorage(DocuLinkXml.SchemaVersion, storage.Folders, storage.Pdfs, linkedRectangles));
+            SaveLinks(links);
         }
 
         public bool RemoveLinkedRectangle(string id)
@@ -178,54 +210,50 @@ namespace DocuLink.Addin.Modules.CustomXml
             if (string.IsNullOrWhiteSpace(id))
                 throw new ArgumentException("LinkedRectangle id must be non-empty.", nameof(id));
 
-            DocuLinkStorage storage = Load();
-            List<LinkedRectangle> linkedRectangles = storage.LinkedRectangles
-                .Where(r => !string.Equals(r.Id, id, StringComparison.Ordinal))
-                .ToList();
-            if (linkedRectangles.Count == storage.LinkedRectangles.Count)
+            List<LinkedRectangle> links = LoadLinks().ToList();
+            int before = links.Count;
+            links = links.Where(r => !string.Equals(r.Id, id, StringComparison.Ordinal)).ToList();
+            if (links.Count == before)
                 return false;
 
-            Save(new DocuLinkStorage(DocuLinkXml.SchemaVersion, storage.Folders, storage.Pdfs, linkedRectangles));
+            SaveLinks(links);
             return true;
         }
 
         public void DeleteStore()
         {
-            Office.CustomXMLPart part = FindDocuLinkPart();
-            if (part != null)
-                part.Delete();
+            DeletePart(DocuLinkXml.ContentNamespaceUri);
+            DeletePart(DocuLinkXml.LinksNamespaceUri);
         }
 
-        private Office.CustomXMLPart FindDocuLinkPart()
+        private Office.CustomXMLPart FindPartByNamespace(string namespaceUri)
         {
-            Office.CustomXMLParts parts = _workbook.CustomXMLParts;
-            foreach (Office.CustomXMLPart part in parts)
+            try
             {
-                if (part == null)
-                    continue;
-
-                string xml = part.XML;
-                if (string.IsNullOrWhiteSpace(xml))
-                    continue;
-
-                try
-                {
-                    XDocument document = XDocument.Parse(xml);
-                    XElement root = document.Root;
-                    if (root != null && root.Name == DocuLinkXml.Ns + DocuLinkXml.RootElementName)
-                        return part;
-                }
-                catch (COMException)
-                {
-                    continue;
-                }
-                catch (System.Xml.XmlException)
-                {
-                    continue;
-                }
+                Office.CustomXMLParts matches = _workbook.CustomXMLParts.SelectByNamespace(namespaceUri);
+                if (matches != null && matches.Count > 0)
+                    return (Office.CustomXMLPart)matches[1];
             }
+            catch (COMException) { }
 
             return null;
+        }
+
+        private void ReplacePart(string namespaceUri, string xml)
+        {
+            Office.CustomXMLPart existing = FindPartByNamespace(namespaceUri);
+            if (existing != null)
+                existing.Delete();
+
+            object missing = Type.Missing;
+            _workbook.CustomXMLParts.Add(xml, missing);
+        }
+
+        private void DeletePart(string namespaceUri)
+        {
+            Office.CustomXMLPart part = FindPartByNamespace(namespaceUri);
+            if (part != null)
+                part.Delete();
         }
     }
 }

@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Runtime.InteropServices;
 using DocuLink.Addin.Modules.CustomXml;
 using DocuLink.Addin.Modules.CustomXml.Models;
@@ -29,13 +31,13 @@ namespace DocuLink.Addin.Modules.Services
 
         /// <summary>
         /// Returns the next available TrackIndex for a new link by inspecting the
-        /// largest existing TrackIndex in storage and incrementing it.
+        /// largest existing TrackIndex and incrementing it.
         /// </summary>
-        public static int NextTrackIndex(DocuLinkStorage storage)
+        public static int NextTrackIndex(IEnumerable<LinkedRectangle> linkedRectangles)
         {
-            if (storage == null) throw new ArgumentNullException(nameof(storage));
+            if (linkedRectangles == null) throw new ArgumentNullException(nameof(linkedRectangles));
             int max = 0;
-            foreach (LinkedRectangle r in storage.LinkedRectangles)
+            foreach (LinkedRectangle r in linkedRectangles)
                 if (r.LinkedCell.TrackIndex > max)
                     max = r.LinkedCell.TrackIndex;
             return max + 1;
@@ -110,11 +112,11 @@ namespace DocuLink.Addin.Modules.Services
         {
             if (workbook == null) return;
 
-            var store = new DocuLinkCustomXmlPartStore(workbook);
-            DocuLinkStorage storage = store.Load();
+            WorkbookStorageSession session = Globals.ThisAddIn.GetStorageSession(workbook);
+            IList<LinkedRectangle> links = session.GetLinks();
             bool anyChanged = false;
 
-            foreach (LinkedRectangle linkedRect in storage.LinkedRectangles)
+            foreach (LinkedRectangle linkedRect in links)
             {
                 int trackIndex = linkedRect.LinkedCell.TrackIndex;
                 Excel.XmlMap map = FindMap(workbook, trackIndex);
@@ -136,7 +138,7 @@ namespace DocuLink.Addin.Modules.Services
             }
 
             if (anyChanged)
-                store.Save(storage);
+                session.SetLinks(links.ToList());
         }
 
         // ── Private helpers ───────────────────────────────────────────────────

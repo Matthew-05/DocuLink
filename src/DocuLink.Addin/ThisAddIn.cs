@@ -38,6 +38,9 @@ namespace DocuLink.Addin
 
         private ViewerWindowHost _viewerWindow;
 
+        private readonly Dictionary<string, WorkbookStorageSession> _storageSessions =
+            new Dictionary<string, WorkbookStorageSession>(StringComparer.OrdinalIgnoreCase);
+
 
 
         /// <summary>
@@ -100,6 +103,71 @@ namespace DocuLink.Addin
 
             return entry != null && entry.Pane.Visible;
 
+        }
+
+
+
+        internal WorkbookStorageSession GetStorageSession(Excel.Workbook workbook)
+
+        {
+
+            if (workbook == null) throw new ArgumentNullException(nameof(workbook));
+
+            string key = GetWorkbookSessionKey(workbook);
+
+            if (!_storageSessions.TryGetValue(key, out WorkbookStorageSession session))
+
+            {
+
+                session = new WorkbookStorageSession(workbook);
+
+                _storageSessions[key] = session;
+
+            }
+
+            return session;
+
+        }
+
+
+
+        internal void ReleaseStorageSession(Excel.Workbook workbook)
+
+        {
+
+            if (workbook == null) return;
+
+            _storageSessions.Remove(GetWorkbookSessionKey(workbook));
+
+        }
+
+
+
+        private static string GetWorkbookSessionKey(Excel.Workbook workbook)
+
+        {
+
+            try
+
+            {
+
+                if (!string.IsNullOrEmpty(workbook.FullName))
+
+                    return workbook.FullName;
+
+            }
+
+            catch (COMException) { }
+
+            IntPtr unknown = Marshal.GetIUnknownForObject(workbook);
+            try
+            {
+                return "unsaved:" + ((IntPtr)Marshal.GetUniqueObjectForIUnknown(unknown)).ToInt64().ToString();
+            }
+            finally
+            {
+                Marshal.Release(unknown);
+            }
         }
 
 
@@ -439,6 +507,10 @@ namespace DocuLink.Addin
 
         {
 
+            Modules.DocuLinkLog.Clear();
+
+            Modules.DocuLinkLog.Trace("addin startup");
+
             WebViewEagerLoader.Initialize(this);
 
             Application.SheetSelectionChange += Application_SheetSelectionChange;
@@ -480,6 +552,8 @@ namespace DocuLink.Addin
         private void Application_WorkbookBeforeClose(Excel.Workbook wb, ref bool cancel)
 
         {
+
+            ReleaseStorageSession(wb);
 
             var entry = FindEntryFor(wb);
 
@@ -635,11 +709,15 @@ namespace DocuLink.Addin
 
         {
 
+            Modules.DocuLinkLog.Trace($"ENTER addr={target?.get_Address() ?? "null"} SuppressNext={SuppressNextSelectionNav} SuppressDepth={_suppressSelectionNavDepth}");
+
             if (SuppressNextSelectionNav)
 
             {
 
                 SuppressNextSelectionNav = false;
+
+                Modules.DocuLinkLog.Trace("suppressed (SuppressNext) – return");
 
                 return;
 
@@ -647,7 +725,13 @@ namespace DocuLink.Addin
 
             if (IsSelectionNavSuppressed)
 
+            {
+
+                Modules.DocuLinkLog.Trace("suppressed (depth) – return");
+
                 return;
+
+            }
 
 
 
@@ -679,11 +763,11 @@ namespace DocuLink.Addin
 
 
 
-                DocuLinkStorage storage = new DocuLinkCustomXmlPartStore(wb).Load();
+                IList<LinkedRectangle> links = GetStorageSession(wb).GetLinks();
 
                 LinkedRectangle rect = null;
 
-                foreach (LinkedRectangle r in storage.LinkedRectangles)
+                foreach (LinkedRectangle r in links)
 
                 {
 

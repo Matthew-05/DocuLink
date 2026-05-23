@@ -14,11 +14,6 @@ namespace DocuLink.Addin.Modules.Services
     /// </summary>
     internal sealed class DeleteLinkService
     {
-        /// <summary>
-        /// Deletes a single link rectangle by id. Clears cell background and
-        /// unbinds the XmlMap. Cell text is preserved.
-        /// </summary>
-        /// <returns><c>true</c> if the rectangle was found and removed.</returns>
         public bool DeleteLink(string rectId, Excel.Workbook workbook)
         {
             if (string.IsNullOrWhiteSpace(rectId) || workbook == null)
@@ -34,8 +29,8 @@ namespace DocuLink.Addin.Modules.Services
         {
             try
             {
-                var store = new DocuLinkCustomXmlPartStore(workbook);
-                if (!store.TryGetLinkedRectangle(rectId, out LinkedRectangle rect))
+                WorkbookStorageSession session = Globals.ThisAddIn.GetStorageSession(workbook);
+                if (!session.TryGetLink(rectId, out LinkedRectangle rect))
                     return false;
 
                 int trackIndex = rect.LinkedCell.TrackIndex;
@@ -52,7 +47,7 @@ namespace DocuLink.Addin.Modules.Services
                 }
 
                 LinkCellTracker.UnbindCell(workbook, cell, trackIndex);
-                return store.RemoveLinkedRectangle(rectId);
+                return session.RemoveLink(rectId);
             }
             catch (Exception ex)
             {
@@ -62,18 +57,13 @@ namespace DocuLink.Addin.Modules.Services
             }
         }
 
-        /// <summary>
-        /// Deletes all link rectangles whose linked cells fall within
-        /// <paramref name="selection"/>. Supports multi-area selections.
-        /// </summary>
-        /// <returns>The ids of links successfully deleted.</returns>
         public IList<string> DeleteLinksInSelection(Excel.Range selection, Excel.Workbook workbook)
         {
             if (selection == null || workbook == null)
                 return Array.Empty<string>();
 
-            var store = new DocuLinkCustomXmlPartStore(workbook);
-            DocuLinkStorage storage = store.Load();
+            WorkbookStorageSession session = Globals.ThisAddIn.GetStorageSession(workbook);
+            IList<LinkedRectangle> links = session.GetLinks();
             var idsToDelete = new HashSet<string>(StringComparer.Ordinal);
 
             try
@@ -84,18 +74,18 @@ namespace DocuLink.Addin.Modules.Services
                 if (areaCount > 1)
                 {
                     foreach (Excel.Range area in areas)
-                        CollectLinkedRectIds(area, storage, idsToDelete);
+                        CollectLinkedRectIds(area, links, idsToDelete);
                 }
                 else
                 {
-                    CollectLinkedRectIds(selection, storage, idsToDelete);
+                    CollectLinkedRectIds(selection, links, idsToDelete);
                 }
             }
             catch (COMException ex)
             {
                 System.Diagnostics.Debug.WriteLine(
                     $"[DocuLink] DeleteLinksInSelection iteration failed: {ex.Message}");
-                CollectLinkedRectIds(selection, storage, idsToDelete);
+                CollectLinkedRectIds(selection, links, idsToDelete);
             }
 
             if (idsToDelete.Count == 0)
@@ -108,7 +98,7 @@ namespace DocuLink.Addin.Modules.Services
 
                 foreach (string id in idsToDelete)
                 {
-                    LinkedRectangle rect = storage.LinkedRectangles.FirstOrDefault(
+                    LinkedRectangle rect = links.FirstOrDefault(
                         r => string.Equals(r.Id, id, StringComparison.Ordinal));
                     if (rect == null)
                         continue;
@@ -154,26 +144,21 @@ namespace DocuLink.Addin.Modules.Services
                         app.EnableEvents = prevEnableEvents;
                 }
 
-                var remaining = storage.LinkedRectangles
+                var remaining = links
                     .Where(r => !idsToDelete.Contains(r.Id))
                     .ToList();
 
-                if (remaining.Count == storage.LinkedRectangles.Count)
+                if (remaining.Count == links.Count)
                     return Array.Empty<string>();
 
-                store.Save(new DocuLinkStorage(
-                    DocuLinkXml.SchemaVersion,
-                    storage.Folders,
-                    storage.Pdfs,
-                    remaining));
-
+                session.SetLinks(remaining);
                 return idsToDelete.ToList();
             }
         }
 
         private static void CollectLinkedRectIds(
             Excel.Range range,
-            DocuLinkStorage storage,
+            IList<LinkedRectangle> links,
             HashSet<string> idsToDelete)
         {
             int rows = range.Rows.Count;
@@ -191,7 +176,7 @@ namespace DocuLink.Addin.Modules.Services
                         if (trackIndex <= 0)
                             continue;
 
-                        LinkedRectangle rect = storage.LinkedRectangles.FirstOrDefault(
+                        LinkedRectangle rect = links.FirstOrDefault(
                             lr => lr.LinkedCell.TrackIndex == trackIndex);
                         if (rect != null)
                             idsToDelete.Add(rect.Id);
