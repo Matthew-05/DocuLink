@@ -89,8 +89,9 @@ export class PdfViewer {
     }
   }
 
-  setZoom(scale: ZoomLevel): void {
-    this._scale = scale;
+  setZoom(scale: ZoomLevel, anchor?: { x: number; y: number }): void {
+    const oldScale = this._scale;
+    if (oldScale === scale) return;
 
     // Instantly resize wrapper divs so the layout reflows correctly — pages
     // respace immediately without any CSS transform hackery. The canvas inside
@@ -100,6 +101,24 @@ export class PdfViewer {
       wrapper.style.width = `${baseWidth * scale}px`;
       wrapper.style.height = `${baseHeight * scale}px`;
     }
+
+    const ax = anchor?.x ?? this.element.clientWidth / 2;
+    const ay = anchor?.y ?? this.element.clientHeight / 2;
+    const ratio = scale / oldScale;
+
+    this.element.scrollLeft = (this.element.scrollLeft + ax) * ratio - ax;
+    this.element.scrollTop = (this.element.scrollTop + ay) * ratio - ay;
+
+    this.element.scrollLeft = Math.max(
+      0,
+      Math.min(this.element.scrollLeft, this.element.scrollWidth - this.element.clientWidth)
+    );
+    this.element.scrollTop = Math.max(
+      0,
+      Math.min(this.element.scrollTop, this.element.scrollHeight - this.element.clientHeight)
+    );
+
+    this._scale = scale;
 
     this._cancelZoomDebounce();
     this._zoomDebounce = setTimeout(() => {

@@ -39,8 +39,8 @@ export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLEleme
     page.setCurrentPage(1);
   });
 
-  zoom.onChange((scale) => {
-    viewer.setZoom(scale);
+  zoom.onChange((scale, anchor) => {
+    viewer.setZoom(scale, anchor);
   });
 
   page.onChange((pageNum) => {
@@ -56,7 +56,12 @@ export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLEleme
     (e) => {
       if (!e.ctrlKey) return;
       e.preventDefault();
-      zoom.adjustBy(e.deltaY > 0 ? -ZoomController.SCROLL_STEP : ZoomController.SCROLL_STEP);
+      const rect = viewer.element.getBoundingClientRect();
+      const anchor = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+      zoom.adjustBy(
+        e.deltaY > 0 ? -ZoomController.SCROLL_STEP : ZoomController.SCROLL_STEP,
+        anchor
+      );
     },
     { passive: false }
   );
