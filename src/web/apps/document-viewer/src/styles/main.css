@@ -4,6 +4,7 @@
 @import "./page-controller.css";
 @import "./pdf-selector.css";
 @import "./search-bar.css";
+@import "./search-results-panel.css";
 @import "./viewer.css";
 @import "./rect-draw.css";
 @import "./rect-context-menu.css";

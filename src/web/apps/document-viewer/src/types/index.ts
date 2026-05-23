@@ -32,3 +32,13 @@ export interface LinkedRectEntry {
   page: number; // 0-based
   rect: NormalizedRect;
 }
+
+export interface SearchMatch {
+  id: string;
+  pdfId: string;
+  pdfName: string;
+  pageIndex: number; // 0-based
+  contextText: string;
+  matchInContext: { start: number; end: number };
+  highlightRect: NormalizedRect;
+}

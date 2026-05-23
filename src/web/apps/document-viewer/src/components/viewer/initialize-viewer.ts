@@ -6,6 +6,9 @@ import { RectRenderer } from "./rect-renderer.js";
 import { RectContextMenu } from "./rect-context-menu.js";
 import { CharBboxOverlay } from "./char-bbox-overlay.js";
 import { createRectNavigator } from "./rect-navigator.js";
+import { PdfTextSearcher, normalizeSearchQuery } from "./pdf-text-searcher.js";
+import { SearchMatchRenderer } from "./search-match-renderer.js";
+import { createSearchNavigator } from "./search-navigator.js";
 import { TextContentCache } from "../../services/text-content-cache.js";
 import {
   sendLinkRectangleCreated,
@@ -14,6 +17,7 @@ import {
   sendCacheBuildStarted,
   sendCacheBuildComplete,
 } from "../../host-bridge.js";
+import type { SearchMatch } from "../../types/index.js";
 import type { PdfViewer } from "./pdf-viewer.js";
 
 interface DocuLinkDebugApi {
@@ -28,7 +32,7 @@ interface DocuLinkDebugApi {
  * Returns the toolbar element for the caller to mount in the DOM.
  */
 export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLElement } {
-  const { element: toolbarElement, zoom, page, selector } = createToolbar();
+  const { element: toolbarElement, zoom, page, selector, search } = createToolbar();
 
   viewer.onLoaded((total) => {
     page.setTotal(total);
@@ -59,11 +63,61 @@ export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLEleme
 
   // ── Text cache & rect-draw overlay ────────────────────────────────────────
 
-  const cache         = new TextContentCache();
-  const renderer      = new RectRenderer(viewer);
-  const contextMenu   = new RectContextMenu();
-  const overlay       = new RectDrawOverlay(viewer, cache);
-  const charBboxDebug = new CharBboxOverlay(viewer, cache);
+  const cache           = new TextContentCache();
+  const renderer        = new RectRenderer(viewer);
+  const contextMenu     = new RectContextMenu();
+  const overlay         = new RectDrawOverlay(viewer, cache);
+  const charBboxDebug   = new CharBboxOverlay(viewer, cache);
+  const matchRenderer   = new SearchMatchRenderer(viewer);
+  const searcher        = new PdfTextSearcher(cache);
+  const searchNavigator = createSearchNavigator(viewer, selector, matchRenderer);
+
+  let lastSearchResults: SearchMatch[] = [];
+  let focusedMatch: SearchMatch | null = null;
+
+  const applyActivePdfHighlights = (): void => {
+    const activePdfId = viewer.getActivePdfId();
+    if (!activePdfId) {
+      matchRenderer.clearMatches();
+      return;
+    }
+
+    if (focusedMatch && focusedMatch.pdfId === activePdfId) {
+      matchRenderer.setMatches([focusedMatch]);
+      matchRenderer.highlightMatch(focusedMatch.id);
+      return;
+    }
+
+    if (focusedMatch && focusedMatch.pdfId !== activePdfId) {
+      focusedMatch = null;
+    }
+
+    matchRenderer.setMatches(lastSearchResults.filter((m) => m.pdfId === activePdfId));
+  };
+
+  const runSearch = (query: string): void => {
+    focusedMatch = null;
+
+    if (!query) {
+      search.clearResults();
+      matchRenderer.clearMatches();
+      lastSearchResults = [];
+      return;
+    }
+
+    lastSearchResults = searcher.search(query, selector.getEntries());
+    search.setResults(lastSearchResults);
+    applyActivePdfHighlights();
+  };
+
+  search.onQuery(runSearch);
+
+  search.onMatchClicked((match) => {
+    focusedMatch = match;
+    searchNavigator(match, lastSearchResults);
+  });
+
+  search.disable();
 
   contextMenu.attachScrollTarget(viewer.element);
 
@@ -94,13 +148,31 @@ export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLEleme
     const doc   = viewer.getDocument();
     if (!pdfId || !doc) return;
 
+    const finish = (): void => {
+      charBboxDebug.refresh();
+      const query = normalizeSearchQuery(search.getQuery());
+      if (query) {
+        applyActivePdfHighlights();
+      }
+    };
+
+    if (cache.has(pdfId)) {
+      finish();
+      return;
+    }
+
     const gen = ++cacheGeneration;
-    cache.clear();
     sendCacheBuildStarted();
-    void cache.buildAll(pdfId, doc)
+
+    const entry = selector.getEntry(pdfId);
+    const buildPromise = entry
+      ? cache.buildForUrl(pdfId, entry.url)
+      : cache.buildFromDoc(pdfId, doc);
+
+    void buildPromise
       .then(() => {
         if (gen !== cacheGeneration) return;
-        charBboxDebug.refresh();
+        finish();
         sendCacheBuildComplete();
       })
       .catch(() => { if (gen === cacheGeneration) sendCacheBuildComplete(); });
@@ -121,6 +193,16 @@ export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLEleme
   connectViewerToHostBridge(
     viewer,
     selector,
+    cache,
+    (indexing) => {
+      if (indexing) {
+        search.disable();
+      } else {
+        search.enable();
+        const query = normalizeSearchQuery(search.getQuery());
+        if (query) runSearch(query);
+      }
+    },
     (rects) => {
       contextMenu.hide();
       renderer.setRectangles(rects);

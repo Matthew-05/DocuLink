@@ -1,4 +1,4 @@
-import type * as pdfjsLib from "pdfjs-dist";
+import * as pdfjsLib from "pdfjs-dist";
 
 export interface CharacterEntry {
   char: string;
@@ -14,11 +14,65 @@ export class TextContentCache {
   private readonly _cache = new Map<string, Map<number, CharacterEntry[]>>();
 
   /**
-   * Builds the full character cache for every page of the given document.
-   * Called once when a document loads; subsequent draws on any page are
-   * purely synchronous.
+   * Builds the full character cache for every page by loading the PDF from
+   * the given URL. Opens and destroys its own pdf.js document handle.
+   * Skips work when the pdfId is already indexed.
    */
-  async buildAll(pdfId: string, doc: pdfjsLib.PDFDocumentProxy): Promise<void> {
+  async buildForUrl(pdfId: string, url: string): Promise<void> {
+    if (this.has(pdfId)) return;
+
+    const doc = await pdfjsLib.getDocument(url).promise;
+    try {
+      await this._buildFromDoc(pdfId, doc);
+    } finally {
+      doc.destroy();
+    }
+  }
+
+  /**
+   * Builds the cache from an already-open document owned by the viewer.
+   * Used as a fallback when the active PDF was not indexed yet.
+   */
+  async buildFromDoc(pdfId: string, doc: pdfjsLib.PDFDocumentProxy): Promise<void> {
+    if (this.has(pdfId)) return;
+    await this._buildFromDoc(pdfId, doc);
+  }
+
+  /** Returns true when every page of the PDF has been indexed. */
+  has(pdfId: string): boolean {
+    return this._cache.has(pdfId);
+  }
+
+  /** Returns all indexed pdfIds. */
+  getIndexedPdfIds(): string[] {
+    return Array.from(this._cache.keys());
+  }
+
+  /** Returns sorted 0-based page indices for an indexed PDF. */
+  getPageIndices(pdfId: string): number[] {
+    const pageMap = this._cache.get(pdfId);
+    if (!pageMap) return [];
+    return Array.from(pageMap.keys()).sort((a, b) => a - b);
+  }
+
+  /** Synchronous lookup. Returns null if the page cache was never built. */
+  get(pdfId: string, pageIndex: number): CharacterEntry[] | null {
+    return this._cache.get(pdfId)?.get(pageIndex) ?? null;
+  }
+
+  /** Removes a single PDF from the cache (e.g. after OCR update). */
+  clearPdf(pdfId: string): void {
+    this._cache.delete(pdfId);
+  }
+
+  clear(): void {
+    this._cache.clear();
+  }
+
+  private async _buildFromDoc(
+    pdfId: string,
+    doc: pdfjsLib.PDFDocumentProxy,
+  ): Promise<void> {
     const pageMap = new Map<number, CharacterEntry[]>();
 
     for (let pageNum = 1; pageNum <= doc.numPages; pageNum++) {
@@ -31,15 +85,6 @@ export class TextContentCache {
     }
 
     this._cache.set(pdfId, pageMap);
-  }
-
-  /** Synchronous lookup. Returns null if the page cache was never built. */
-  get(pdfId: string, pageIndex: number): CharacterEntry[] | null {
-    return this._cache.get(pdfId)?.get(pageIndex) ?? null;
-  }
-
-  clear(): void {
-    this._cache.clear();
   }
 }
 
