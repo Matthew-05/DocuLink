@@ -291,7 +291,7 @@ namespace DocuLink.Addin
 
             pane.DockPosition = Office.MsoCTPDockPosition.msoCTPDockPositionRight;
 
-            pane.Width = 420;
+            pane.Width = 640;
 
 
 
