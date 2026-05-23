@@ -281,7 +281,25 @@ namespace DocuLink.Addin.Modules.WebView
 
             Globals.ThisAddIn.SuppressNextSelectionNav = true;
 
-            new LinkNavigationService().NavigateToLinkedCell(rectId, wb);
+            var session = Globals.ThisAddIn.GetStorageSession(wb);
+            var rect = session.GetLinks().FirstOrDefault(r => string.Equals(r.Id, rectId, StringComparison.Ordinal));
+            if (rect == null) return;
+
+            Excel.Range cell = LinkCellResolver.TryResolveCell(wb, rect);
+            if (cell == null) return;
+
+            try
+            {
+                ((Excel.Worksheet)cell.Worksheet).Activate();
+                cell.Select();
+                int appHwnd = Globals.ThisAddIn.Application?.Hwnd ?? 0;
+                if (appHwnd != 0)
+                    SetFocus(new IntPtr(appHwnd));
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[DocuLink] HandleLinkRectangleClicked navigate failed: {ex.Message}");
+            }
         }
 
         private void HandleLinkRectangleDeleted(string json)
