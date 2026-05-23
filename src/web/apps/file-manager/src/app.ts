@@ -1,5 +1,5 @@
 import type { FileEntry, FolderEntry } from "./types/index.js";
-import { initHostBridge, sendSelectedFolder, sendRemoveFile, sendMoveFile, sendOcrPdfs, sendEnhancePdfs } from "./host-bridge.js";
+import { initHostBridge, sendSelectedFolder, sendRemoveFile, sendMoveFile, sendOcrPdfs } from "./host-bridge.js";
 import { FolderPanel } from "./components/folder-panel/folder-panel.js";
 import { Dropzone } from "./components/dropzone/dropzone.js";
 import { FileTable } from "./components/file-table/file-table.js";
@@ -31,13 +31,9 @@ export function mountApp(root: HTMLElement): void {
       for (const id of ids) sendMoveFile(id, folderId);
       fileTable.clearSelection();
     },
-    onOcrSelected() {
+    onProcessSelected() {
       const ids = fileTable.getSelectedIds();
       if (ids.length > 0) sendOcrPdfs(ids);
-    },
-    onEnhanceSelected() {
-      const ids = fileTable.getSelectedIds();
-      if (ids.length > 0) sendEnhancePdfs(ids);
     },
     onFilterChange(text: string) {
       fileTable.setFilter(text);

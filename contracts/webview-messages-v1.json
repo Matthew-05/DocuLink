@@ -437,7 +437,7 @@
     },
 
     "OcrPdfsMessage": {
-      "description": "Sent by the file-manager web app when the user clicks 'OCR Selected'. The host runs OCR on each PDF and replies with one or more OcrStatusMessages.",
+      "description": "Sent by the file-manager web app when the user clicks 'OCR'. The host runs full OCR on scanned PDFs and geometry-only extraction on PDFs with an embedded text layer, replying with one or more OcrStatusMessages.",
       "type": "object",
       "required": ["type", "pdfIds"],
       "additionalProperties": false,
@@ -447,7 +447,7 @@
           "type": "array",
           "items": { "type": "string" },
           "minItems": 1,
-          "description": "GUIDs of the PDFs to OCR."
+          "description": "GUIDs of the PDFs to process."
         }
       },
       "examples": [
@@ -474,25 +474,6 @@
         { "type": "ocr-status", "pdfId": "3fa85f64-5717-4562-b3fc-2c963f66afa6", "status": "processing" },
         { "type": "ocr-status", "pdfId": "3fa85f64-5717-4562-b3fc-2c963f66afa6", "status": "ocr" },
         { "type": "ocr-status", "pdfId": "3fa85f64-5717-4562-b3fc-2c963f66afa6", "status": "error", "message": "Tesseract not found" }
-      ]
-    },
-
-    "EnhancePdfsMessage": {
-      "description": "Sent by the file-manager web app when the user clicks 'Enhance Selected'. The host extracts character geometry without replacing PDF bytes.",
-      "type": "object",
-      "required": ["type", "pdfIds"],
-      "additionalProperties": false,
-      "properties": {
-        "type":   { "const": "enhance-pdfs" },
-        "pdfIds": {
-          "type": "array",
-          "items": { "type": "string" },
-          "minItems": 1,
-          "description": "GUIDs of the PDFs to enhance."
-        }
-      },
-      "examples": [
-        { "type": "enhance-pdfs", "pdfIds": ["3fa85f64-5717-4562-b3fc-2c963f66afa6"] }
       ]
     }
 
@@ -523,7 +504,6 @@
     { "$ref": "#/definitions/ClearRectangleHighlightMessage" },
     { "$ref": "#/definitions/ResetUiMessage" },
     { "$ref": "#/definitions/OcrPdfsMessage" },
-    { "$ref": "#/definitions/EnhancePdfsMessage" },
     { "$ref": "#/definitions/OcrStatusMessage" }
   ]
 }
