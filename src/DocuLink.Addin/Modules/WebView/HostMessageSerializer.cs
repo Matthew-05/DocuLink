@@ -25,6 +25,10 @@ namespace DocuLink.Addin.Modules.WebView
                 sb.Append("\"id\":"); AppendString(sb, pdf.Id);
                 sb.Append(",\"name\":"); AppendString(sb, pdf.Name ?? string.Empty);
                 sb.Append(",\"base64\":"); AppendString(sb, pdf.Base64 ?? string.Empty);
+                if (!string.IsNullOrWhiteSpace(pdf.GeometryBase64))
+                {
+                    sb.Append(",\"geometryBase64\":"); AppendString(sb, pdf.GeometryBase64);
+                }
                 sb.Append('}');
             }
 
@@ -40,6 +44,10 @@ namespace DocuLink.Addin.Modules.WebView
             sb.Append("\"id\":"); AppendString(sb, pdf.Id);
             sb.Append(",\"name\":"); AppendString(sb, pdf.Name ?? string.Empty);
             sb.Append(",\"base64\":"); AppendString(sb, pdf.Base64 ?? string.Empty);
+            if (!string.IsNullOrWhiteSpace(pdf.GeometryBase64))
+            {
+                sb.Append(",\"geometryBase64\":"); AppendString(sb, pdf.GeometryBase64);
+            }
             sb.Append("}}");
             return sb.ToString();
         }

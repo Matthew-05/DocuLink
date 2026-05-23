@@ -189,14 +189,19 @@
   letter-spacing: 0.03em;
 }
 
-.status-badge--ready {
+.status-badge--text {
   background: rgba(62, 207, 110, 0.15);
   color: var(--color-success);
 }
 
-.status-badge--complete {
-  background: rgba(62, 207, 110, 0.15);
-  color: var(--color-success);
+.status-badge--none {
+  background: rgba(130, 130, 130, 0.15);
+  color: var(--color-text-muted, #888);
+}
+
+.status-badge--ocr {
+  background: rgba(90, 140, 255, 0.15);
+  color: #5a8cff;
 }
 
 .status-badge--queued {

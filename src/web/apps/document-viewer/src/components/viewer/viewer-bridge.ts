@@ -18,7 +18,9 @@ async function indexAllPdfs(
   entries: PdfEntry[],
 ): Promise<void> {
   cache.clear();
-  await Promise.all(entries.map((entry) => cache.buildForUrl(entry.id, entry.url)));
+  await Promise.all(
+    entries.map((entry) => cache.buildForUrl(entry.id, entry.url, entry.geometryBase64)),
+  );
 }
 
 /**
@@ -77,7 +79,7 @@ export function connectViewerToHostBridge(
       startIndexing();
       void (async () => {
         cache.clearPdf(entry.id);
-        await cache.buildForUrl(entry.id, entry.url);
+        await cache.buildForUrl(entry.id, entry.url, entry.geometryBase64);
       })().finally(endIndexing);
 
       if (viewer.getActivePdfId() === entry.id) {

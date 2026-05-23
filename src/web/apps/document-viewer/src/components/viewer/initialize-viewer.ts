@@ -166,7 +166,7 @@ export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLEleme
 
     const entry = selector.getEntry(pdfId);
     const buildPromise = entry
-      ? cache.buildForUrl(pdfId, entry.url)
+      ? cache.buildForUrl(pdfId, entry.url, entry.geometryBase64)
       : cache.buildFromDoc(pdfId, doc);
 
     void buildPromise

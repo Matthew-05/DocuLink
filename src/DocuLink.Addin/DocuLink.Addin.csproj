@@ -243,6 +243,8 @@
     <Compile Include="Modules\Services\LinkCellTracker.cs" />
     <Compile Include="Modules\Services\LinkNavigationService.cs" />
     <Compile Include="Modules\Services\ManageFilesService.cs" />
+    <Compile Include="Modules\Services\PdfStatus.cs" />
+    <Compile Include="Modules\Services\PdfTextLayerDetector.cs" />
     <Compile Include="Modules\Services\OcrService.cs" />
     <Compile Include="Modules\UI\ProgressDialog.cs">
       <SubType>Form</SubType>

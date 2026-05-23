@@ -107,6 +107,22 @@ namespace DocuLink.Addin.Modules.WebView
             return new OcrPdfsRequest { PdfIds = ids };
         }
 
+        public static EnhancePdfsRequest ParseEnhancePdfs(string json)
+        {
+            var dict = Deserialize(json);
+            var idsRaw = dict["pdfIds"] as System.Collections.ArrayList;
+            if (idsRaw == null)
+                throw new FormatException("enhance-pdfs message missing 'pdfIds' array.");
+
+            var ids = new List<string>();
+            foreach (var item in idsRaw)
+            {
+                if (item is string s && !string.IsNullOrWhiteSpace(s))
+                    ids.Add(s);
+            }
+            return new EnhancePdfsRequest { PdfIds = ids };
+        }
+
         private static Dictionary<string, object> Deserialize(string json)
         {
             if (string.IsNullOrWhiteSpace(json))
@@ -181,6 +197,11 @@ namespace DocuLink.Addin.Modules.WebView
     }
 
     internal sealed class OcrPdfsRequest
+    {
+        public List<string> PdfIds { get; set; }
+    }
+
+    internal sealed class EnhancePdfsRequest
     {
         public List<string> PdfIds { get; set; }
     }

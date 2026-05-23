@@ -49,7 +49,8 @@ namespace DocuLink.Addin.Modules.Services
 
             var updated = new PdfDocument(pdf.Id, newName.Trim(), pdf.Base64, pdf.FolderId, pdf.DateAdded, pdf.FileSizeBytes)
             {
-                OcrStatus = pdf.OcrStatus
+                OcrStatus = pdf.OcrStatus,
+                GeometryBase64 = pdf.GeometryBase64,
             };
             store.UpsertPdf(updated);
         }
@@ -92,16 +93,17 @@ namespace DocuLink.Addin.Modules.Services
             string normalised = string.IsNullOrWhiteSpace(folderId) ? null : folderId.Trim();
             var updated = new PdfDocument(pdf.Id, pdf.Name, pdf.Base64, normalised, pdf.DateAdded, pdf.FileSizeBytes)
             {
-                OcrStatus = pdf.OcrStatus
+                OcrStatus = pdf.OcrStatus,
+                GeometryBase64 = pdf.GeometryBase64,
             };
             store.UpsertPdf(updated);
         }
 
         /// <summary>
-        /// Replaces a PDF's bytes with the OCR-processed version and marks its status as "complete".
-        /// Called by <see cref="OcrService"/> after a successful OCR run.
+        /// Replaces a PDF's bytes with the OCR-processed version, stores geometry,
+        /// and marks its status as "ocr".
         /// </summary>
-        public void UpdatePdfAfterOcr(Excel.Workbook workbook, string id, string newBase64)
+        public void UpdatePdfAfterOcr(Excel.Workbook workbook, string id, string newBase64, string geometryBase64)
         {
             if (workbook == null) throw new ArgumentNullException(nameof(workbook));
             if (string.IsNullOrWhiteSpace(id)) throw new ArgumentException("id must be non-empty.", nameof(id));
@@ -116,7 +118,32 @@ namespace DocuLink.Addin.Modules.Services
 
             var updated = new PdfDocument(pdf.Id, pdf.Name, newBase64, pdf.FolderId, pdf.DateAdded, pdf.FileSizeBytes)
             {
-                OcrStatus = "complete"
+                OcrStatus = PdfStatus.Ocr,
+                GeometryBase64 = geometryBase64,
+            };
+            store.UpsertPdf(updated);
+        }
+
+        /// <summary>
+        /// Stores character geometry without replacing PDF bytes and marks status as "ocr".
+        /// Called by <see cref="OcrService"/> after a successful geometry-only run.
+        /// </summary>
+        public void UpdatePdfGeometry(Excel.Workbook workbook, string id, string geometryBase64)
+        {
+            if (workbook == null) throw new ArgumentNullException(nameof(workbook));
+            if (string.IsNullOrWhiteSpace(id)) throw new ArgumentException("id must be non-empty.", nameof(id));
+
+            var store = new DocuLinkCustomXmlPartStore(workbook);
+            DocuLinkStorage storage = store.Load();
+
+            PdfDocument pdf = storage.Pdfs.FirstOrDefault(p => string.Equals(p.Id, id, StringComparison.Ordinal));
+            if (pdf == null)
+                throw new InvalidOperationException("PDF not found: " + id);
+
+            var updated = new PdfDocument(pdf.Id, pdf.Name, pdf.Base64, pdf.FolderId, pdf.DateAdded, pdf.FileSizeBytes)
+            {
+                OcrStatus = PdfStatus.Ocr,
+                GeometryBase64 = geometryBase64,
             };
             store.UpsertPdf(updated);
         }

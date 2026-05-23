@@ -6,6 +6,12 @@
 
   "definitions": {
 
+    "OcrMode": {
+      "type": "string",
+      "enum": ["full", "geometry-only"],
+      "description": "full: OCR PDF bytes + geometry. geometry-only: extract geometry without replacing PDF bytes."
+    },
+
     "OcrJob": {
       "description": "Sent by the C# host to the worker via stdin. One JSON object per line.",
       "type": "object",
@@ -14,10 +20,12 @@
       "properties": {
         "job_id":     { "type": "string", "description": "Opaque identifier echoed back in all responses for this job." },
         "command":    { "const": "ocr",   "description": "Operation to perform." },
-        "pdf_base64": { "type": "string", "description": "Base-64 encoded input PDF bytes." }
+        "pdf_base64": { "type": "string", "description": "Base-64 encoded input PDF bytes." },
+        "mode":       { "$ref": "#/definitions/OcrMode", "default": "full" }
       },
       "examples": [
-        { "job_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6", "command": "ocr", "pdf_base64": "JVBERi0xLjQ=" }
+        { "job_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6", "command": "ocr", "pdf_base64": "JVBERi0xLjQ=", "mode": "full" },
+        { "job_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6", "command": "ocr", "pdf_base64": "JVBERi0xLjQ=", "mode": "geometry-only" }
       ]
     },
 
@@ -39,15 +47,26 @@
     "OcrSuccessMessage": {
       "description": "Emitted by the worker to stdout when OCR completes successfully. Exactly one per job.",
       "type": "object",
-      "required": ["job_id", "status", "pdf_base64"],
+      "required": ["job_id", "status"],
       "additionalProperties": false,
       "properties": {
-        "job_id":     { "type": "string" },
-        "status":     { "const": "success" },
-        "pdf_base64": { "type": "string", "description": "Base-64 encoded output PDF bytes with text layer added." }
+        "job_id":           { "type": "string" },
+        "status":           { "const": "success" },
+        "pdf_base64":       { "type": "string", "description": "Base-64 encoded output PDF bytes with text layer added. Omitted for geometry-only jobs." },
+        "geometry_base64":  { "type": "string", "description": "Gzip-compressed text-geometry-v1 JSON, base64-encoded." }
       },
       "examples": [
-        { "job_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6", "status": "success", "pdf_base64": "JVBERi0xLjU=" }
+        {
+          "job_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+          "status": "success",
+          "pdf_base64": "JVBERi0xLjU=",
+          "geometry_base64": "H4sIAAAAAAAAA+3BMQEAAADCoPVP7WsIoAAAAAAAAPwYAwAABtXgAA=="
+        },
+        {
+          "job_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+          "status": "success",
+          "geometry_base64": "H4sIAAAAAAAAA+3BMQEAAADCoPVP7WsIoAAAAAAAAPwYAwAABtXgAA=="
+        }
       ]
     },
 

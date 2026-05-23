@@ -4,6 +4,7 @@ interface PdfPayload {
   id: string;
   name: string;
   base64: string;
+  geometryBase64?: string;
 }
 
 interface PdfsLoadedMessage {
@@ -75,6 +76,7 @@ function toPdfEntry(pdf: PdfPayload): PdfEntry {
     id:   pdf.id,
     name: pdf.name || pdf.id,
     url,
+    geometryBase64: pdf.geometryBase64,
   };
 }
 

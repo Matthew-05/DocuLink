@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Text;
 using DocuLink.Addin.Modules.CustomXml.Models;
+using DocuLink.Addin.Modules.Services;
 
 namespace DocuLink.Addin.Modules.WebView
 {
@@ -46,7 +47,7 @@ namespace DocuLink.Addin.Modules.WebView
                 {
                     sb.Append(",\"folderId\":"); AppendString(sb, p.FolderId);
                 }
-                sb.Append(",\"status\":"); AppendString(sb, !string.IsNullOrWhiteSpace(p.OcrStatus) ? p.OcrStatus : "ready");
+                sb.Append(",\"status\":"); AppendString(sb, !string.IsNullOrWhiteSpace(p.OcrStatus) ? p.OcrStatus : PdfStatus.None);
                 sb.Append(",\"fileSizeBytes\":"); sb.Append(p.FileSizeBytes.ToString(CultureInfo.InvariantCulture));
                 sb.Append(",\"dateAdded\":"); AppendString(sb, dateAdded);
                 sb.Append('}');

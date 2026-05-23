@@ -21,7 +21,10 @@ namespace DocuLink.Addin.Modules.Services
 
             string pdfId = Guid.NewGuid().ToString("D");
             string name = Path.GetFileName(pdfFilePath);
-            var pdf = new PdfDocument(pdfId, name, base64, folderId, DateTime.UtcNow, bytes.LongLength);
+            var pdf = new PdfDocument(pdfId, name, base64, folderId, DateTime.UtcNow, bytes.LongLength)
+            {
+                OcrStatus = PdfTextLayerDetector.ClassifyFromBase64(base64),
+            };
 
             var store = new DocuLinkCustomXmlPartStore(workbook);
             store.UpsertPdf(pdf);
@@ -41,7 +44,10 @@ namespace DocuLink.Addin.Modules.Services
             try { fileSizeBytes = Convert.FromBase64String(base64).LongLength; } catch { }
 
             string pdfId = Guid.NewGuid().ToString("D");
-            var pdf = new PdfDocument(pdfId, name, base64, folderId, DateTime.UtcNow, fileSizeBytes);
+            var pdf = new PdfDocument(pdfId, name, base64, folderId, DateTime.UtcNow, fileSizeBytes)
+            {
+                OcrStatus = PdfTextLayerDetector.ClassifyFromBase64(base64),
+            };
 
             var store = new DocuLinkCustomXmlPartStore(workbook);
             store.UpsertPdf(pdf);
