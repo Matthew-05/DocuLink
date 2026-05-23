@@ -55,7 +55,12 @@ export class PdfTextSearcher {
       if (hitIndex === -1) break;
 
       const matchEnd = hitIndex + queryLen;
-      const { contextText, matchInContext } = expandToWord(pageText, hitIndex, matchEnd);
+      if (!matchSpansSingleLine(entries, hitIndex, matchEnd)) {
+        offset = hitIndex + 1;
+        continue;
+      }
+
+      const { contextText, matchInContext } = expandToWord(pageText, entries, hitIndex, matchEnd);
       const highlightRect = rectFromEntries(entries, hitIndex, matchEnd - 1);
 
       matches.push({
@@ -75,18 +80,42 @@ export class PdfTextSearcher {
   }
 }
 
+function matchSpansSingleLine(
+  entries: CharacterEntry[],
+  start: number,
+  end: number,
+): boolean {
+  for (let i = start; i < end - 1; i++) {
+    const curr = entries[i];
+    const next = entries[i + 1];
+    if (curr === undefined || next === undefined || curr.lineIndex !== next.lineIndex) {
+      return false;
+    }
+  }
+  return true;
+}
+
 function expandToWord(
   text: string,
+  entries: CharacterEntry[],
   matchStart: number,
   matchEnd: number,
 ): { contextText: string; matchInContext: { start: number; end: number } } {
   let wordStart = matchStart;
-  while (wordStart > 0 && !/\s/.test(text[wordStart - 1] ?? "")) {
+  while (
+    wordStart > 0
+    && !/\s/.test(text[wordStart - 1] ?? "")
+    && entries[wordStart].lineIndex === entries[wordStart - 1].lineIndex
+  ) {
     wordStart--;
   }
 
   let wordEnd = matchEnd;
-  while (wordEnd < text.length && !/\s/.test(text[wordEnd] ?? "")) {
+  while (
+    wordEnd < text.length
+    && !/\s/.test(text[wordEnd] ?? "")
+    && entries[wordEnd - 1].lineIndex === entries[wordEnd].lineIndex
+  ) {
     wordEnd++;
   }
 

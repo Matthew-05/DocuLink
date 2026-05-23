@@ -15,10 +15,18 @@ export interface CharacterEntry {
   normTop: number;
   normRight: number;
   normBottom: number;
+  /** 0-based visual line index within the page. */
+  lineIndex: number;
   /** Index of the source TextItem within the page's text content. */
   itemIndex: number;
   /** When true, word spaces are already encoded as space characters in the array. */
   spacesPrecomputed?: boolean;
+}
+
+function isNewLine(prev: CharacterEntry, nextTop: number): boolean {
+  const prevHeight = prev.normBottom - prev.normTop;
+  const threshold = Math.max(prevHeight * 0.5, 0.001);
+  return nextTop - prev.normTop > threshold;
 }
 
 export class TextContentCache {
@@ -112,15 +120,32 @@ export class TextContentCache {
     const pageMap = new Map<number, CharacterEntry[]>();
 
     for (const page of geometry.pages) {
-      const entries: CharacterEntry[] = page.characters.map((box, index) => ({
-        char:               box.char,
-        normLeft:           box.x,
-        normTop:            box.y,
-        normRight:          box.x + box.width,
-        normBottom:         box.y + box.height,
-        itemIndex:          index,
-        spacesPrecomputed:    true,
-      }));
+      const entries: CharacterEntry[] = [];
+      let lineIndex = 0;
+      let prev: CharacterEntry | null = null;
+
+      for (let index = 0; index < page.characters.length; index++) {
+        const box = page.characters[index];
+        const entry: CharacterEntry = {
+          char:               box.char,
+          normLeft:           box.x,
+          normTop:            box.y,
+          normRight:          box.x + box.width,
+          normBottom:         box.y + box.height,
+          lineIndex,
+          itemIndex:          index,
+          spacesPrecomputed:    true,
+        };
+
+        if (prev && isNewLine(prev, entry.normTop)) {
+          lineIndex++;
+          entry.lineIndex = lineIndex;
+        }
+
+        entries.push(entry);
+        prev = entry;
+      }
+
       pageMap.set(page.pageIndex, entries);
     }
 
@@ -151,6 +176,8 @@ async function buildPageEntries(page: pdfjsLib.PDFPageProxy): Promise<CharacterE
   const textContent = await page.getTextContent();
   const entries: CharacterEntry[] = [];
   let itemIndex = 0;
+  let lineIndex = 0;
+  let lastEntry: CharacterEntry | null = null;
 
   const measureCtx = document.createElement("canvas").getContext("2d");
 
@@ -180,6 +207,10 @@ async function buildPageEntries(page: pdfjsLib.PDFPageProxy): Promise<CharacterE
     const fontFamily = style?.fontFamily ?? "sans-serif";
     const fontSize = item.height;
 
+    if (lastEntry && isNewLine(lastEntry, normTop)) {
+      lineIndex++;
+    }
+
     const charWidths = measureCharWidths(measureCtx, chars, fontSize, fontFamily);
     const totalMeasured = charWidths.reduce((sum, w) => sum + w, 0);
     const itemWidth = normRight - normLeft;
@@ -188,15 +219,18 @@ async function buildPageEntries(page: pdfjsLib.PDFPageProxy): Promise<CharacterE
     let xOffset = 0;
     for (let i = 0; i < chars.length; i++) {
       const charWidth = totalMeasured > 0 ? (charWidths[i] ?? 0) * scale : itemWidth / chars.length;
-      entries.push({
+      const entry: CharacterEntry = {
         char:               chars[i],
         normLeft:           normLeft + xOffset,
         normTop,
         normRight:          normLeft + xOffset + charWidth,
         normBottom,
+        lineIndex,
         itemIndex,
         spacesPrecomputed:  false,
-      });
+      };
+      entries.push(entry);
+      lastEntry = entry;
       xOffset += charWidth;
     }
 
