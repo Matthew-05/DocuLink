@@ -57,11 +57,21 @@ export async function renderPage(
 
   // Atomic swap: old canvas stays visible until this synchronous call.
   // The new canvas only appears once fully rendered.
+  //
+  // When inserting fresh (no old canvas), place the canvas BEFORE any existing
+  // overlay layer. The canvas has contain:strict which creates a stacking context
+  // at z-index:0; the overlay (position:absolute, z-index:auto) must come later
+  // in DOM order to paint on top of the canvas and keep rectangles visible.
   const old = wrapper.querySelector("canvas");
   if (old) {
     old.replaceWith(canvas);
   } else {
-    wrapper.appendChild(canvas);
+    const overlay = wrapper.querySelector<HTMLDivElement>(".viewer__overlays");
+    if (overlay) {
+      wrapper.insertBefore(canvas, overlay);
+    } else {
+      wrapper.appendChild(canvas);
+    }
   }
 
   ensureOverlayLayer(wrapper);
