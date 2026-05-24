@@ -52,17 +52,12 @@ export class PdfViewer {
   }
 
   getPageLayout(): Array<{ pageNumber: number; wrapper: HTMLDivElement }> {
-    const result: Array<{ pageNumber: number; wrapper: HTMLDivElement }> = [];
-    for (let i = 0; i < this._pageEntries.length; i++) {
-      const entry = this._pageEntries[i];
-      if (entry) {
-        result.push({ pageNumber: i + 1, wrapper: entry.wrapper });
-      }
-    }
-    return result;
+    return Array.from(
+      this.element.querySelectorAll<HTMLDivElement>("div[data-page]")
+    ).map((wrapper, i) => ({ pageNumber: i + 1, wrapper }));
   }
 
-  async loadDocument(url: string, pdfId?: string): Promise<void> {
+  async loadDocument(url: string, pdfId?: string, priorityPage = 1): Promise<void> {
     const generation = ++this._loadGeneration;
     this._cancelZoomDebounce();
     this._activePdfId = pdfId ?? null;
@@ -81,12 +76,32 @@ export class PdfViewer {
       cb(this._doc.numPages);
     }
 
-    await this._renderAll();
+    const wrappers = this._ensurePageWrappers(this._doc.numPages);
+
+    // Render the target page first so navigation can complete immediately.
+    const target = Math.max(1, Math.min(priorityPage, this._doc.numPages));
+    const targetWrapper = wrappers[target - 1]!;
+    const targetDims = await renderPage(this._doc, target, targetWrapper, this._scale);
     if (generation !== this._loadGeneration) return;
+    this._pageEntries[target - 1] = { wrapper: targetWrapper, ...targetDims };
 
     for (const cb of this._onDocumentChangedCallbacks) {
       cb();
     }
+
+    // Render remaining pages in the background.
+    const capturedDoc = this._doc;
+    this._renderingQueue = this._renderingQueue.then(async () => {
+      for (let i = 1; i <= capturedDoc.numPages; i++) {
+        if (i === target) continue;
+        if (generation !== this._loadGeneration) return;
+        const wrapper = wrappers[i - 1];
+        if (!wrapper) continue;
+        const dims = await renderPage(capturedDoc, i, wrapper, this._scale);
+        if (generation !== this._loadGeneration) return;
+        this._pageEntries[i - 1] = { wrapper, ...dims };
+      }
+    });
   }
 
   setZoom(scale: ZoomLevel, anchor?: { x: number; y: number }): void {
