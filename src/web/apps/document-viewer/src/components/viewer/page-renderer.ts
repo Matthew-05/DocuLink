@@ -37,7 +37,18 @@ export async function renderPage(
     return { baseWidth: viewport.width / scale, baseHeight: viewport.height / scale };
   }
 
-  await page.render({ canvasContext: ctx, viewport }).promise;
+  try {
+    await page.render({ canvasContext: ctx, viewport }).promise;
+  } catch (e) {
+    page.cleanup();
+    // RenderingCancelledException is thrown when the PDF proxy is destroyed while
+    // a render is in flight (e.g. a second navigation loads a different PDF).
+    // Treat it as a clean cancellation: return dimensions but don't swap the canvas.
+    if ((e as { name?: string })?.name === "RenderingCancelledException") {
+      return { baseWidth: viewport.width / scale, baseHeight: viewport.height / scale };
+    }
+    throw e;
+  }
   page.cleanup();
 
   // Update wrapper layout dimensions to match the new viewport.
