@@ -35,7 +35,7 @@ async function _navigate(
     const entry = selector.getEntry(pdfId);
     if (!entry) return;
     selector.setActiveId(pdfId);
-    await viewer.loadDocument(entry.url, pdfId);
+    await viewer.loadDocument(entry.url, pdfId, page + 1);
   }
 
   if (!renderer.hasRectangle(id)) return;
