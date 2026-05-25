@@ -82,6 +82,38 @@ export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLEleme
     { passive: false }
   );
 
+  const onNavigateToPage = (pageNumber: number): void => {
+    currentPage = pageNumber;
+    page.setCurrentPage(pageNumber);
+  };
+
+  const updatePageFromScroll = (): void => {
+    const layout = viewer.getPageLayout();
+    if (layout.length === 0) return;
+
+    const viewerRect = viewer.element.getBoundingClientRect();
+    let mostVisiblePage = layout[0]!.pageNumber;
+    let maxVisibleHeight = 0;
+
+    for (const { pageNumber, wrapper } of layout) {
+      const wrapperRect = wrapper.getBoundingClientRect();
+      const visibleTop = Math.max(wrapperRect.top, viewerRect.top);
+      const visibleBottom = Math.min(wrapperRect.bottom, viewerRect.bottom);
+      const visibleHeight = Math.max(0, visibleBottom - visibleTop);
+
+      if (visibleHeight > maxVisibleHeight) {
+        maxVisibleHeight = visibleHeight;
+        mostVisiblePage = pageNumber;
+      }
+    }
+
+    if (mostVisiblePage !== currentPage) {
+      onNavigateToPage(mostVisiblePage);
+    }
+  };
+
+  viewer.element.addEventListener("scroll", updatePageFromScroll, { passive: true });
+
   // ── Text cache & rect-draw overlay ────────────────────────────────────────
 
   const cache           = new TextContentCache();
@@ -95,7 +127,7 @@ export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLEleme
   const searchNavigator = createSearchNavigator(viewer, selector, matchRenderer, (scale) => {
     zoom.setScale(scale);
     viewer.setZoom(scale);
-  });
+  }, onNavigateToPage);
 
   let lastSearchResults: SearchMatch[] = [];
   let focusedMatch: SearchMatch | null = null;
@@ -222,7 +254,7 @@ export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLEleme
   const navigate = createRectNavigator(viewer, selector, renderer, (scale) => {
     zoom.setScale(scale);
     viewer.setZoom(scale);
-  });
+  }, onNavigateToPage);
 
   connectViewerToHostBridge(
     viewer,

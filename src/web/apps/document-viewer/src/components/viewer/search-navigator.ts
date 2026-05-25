@@ -10,15 +10,17 @@ import type { SearchMatch } from "../../types/index.js";
  * - Shows only the clicked match on the target PDF.
  * - Applies page-fit zoom if the match is off-screen (cross-PDF always, same-PDF if not visible).
  * - Scrolls the page (and match rect if needed) into view.
+ * - Updates the page controller to reflect the current page.
  */
 export function createSearchNavigator(
   viewer: PdfViewer,
   selector: PdfSelector,
   matchRenderer: SearchMatchRenderer,
   onApplyZoom?: (scale: number) => void,
+  onNavigateToPage?: (pageNumber: number) => void,
 ): (match: SearchMatch, allMatches: SearchMatch[]) => void {
   return (match, allMatches) => {
-    void _navigate(viewer, selector, matchRenderer, match, allMatches, onApplyZoom);
+    void _navigate(viewer, selector, matchRenderer, match, allMatches, onApplyZoom, onNavigateToPage);
   };
 }
 
@@ -29,6 +31,7 @@ async function _navigate(
   match: SearchMatch,
   allMatches: SearchMatch[],
   onApplyZoom?: (scale: number) => void,
+  onNavigateToPage?: (pageNumber: number) => void,
 ): Promise<void> {
   const isCrossPdf = viewer.getActivePdfId() !== match.pdfId;
 
@@ -74,4 +77,7 @@ async function _navigate(
   await viewer.renderPageNow(match.pageIndex + 1);
 
   pageWrapper.scrollIntoView({ behavior: "instant" as ScrollBehavior });
+
+  // Update page controller to reflect navigation
+  onNavigateToPage?.(match.pageIndex + 1);
 }
