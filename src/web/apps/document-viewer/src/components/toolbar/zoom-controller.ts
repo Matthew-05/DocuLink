@@ -18,6 +18,7 @@ export class ZoomController {
   private _scale: ZoomLevel = 1.0;
   private _label: HTMLSpanElement;
   private readonly _callbacks: Array<(scale: ZoomLevel, anchor?: ZoomAnchor) => void> = [];
+  private readonly _fitCallbacks: Array<() => void> = [];
 
   constructor() {
     this.element = document.createElement("div");
@@ -38,12 +39,24 @@ export class ZoomController {
     increaseBtn.textContent = "+";
     increaseBtn.addEventListener("click", () => this.adjustBy(+STEP));
 
-    this.element.append(decreaseBtn, this._label, increaseBtn);
+    const fitBtn = document.createElement("button");
+    fitBtn.className = "zoom-controller__btn zoom-controller__fit-btn";
+    fitBtn.title = "Fit page";
+    fitBtn.textContent = "Fit";
+    fitBtn.addEventListener("click", () => {
+      for (const cb of this._fitCallbacks) cb();
+    });
+
+    this.element.append(decreaseBtn, this._label, increaseBtn, fitBtn);
     this._updateLabel();
   }
 
   onChange(cb: (scale: ZoomLevel, anchor?: ZoomAnchor) => void): void {
     this._callbacks.push(cb);
+  }
+
+  onFitPage(cb: () => void): void {
+    this._fitCallbacks.push(cb);
   }
 
   setScale(scale: ZoomLevel): void {

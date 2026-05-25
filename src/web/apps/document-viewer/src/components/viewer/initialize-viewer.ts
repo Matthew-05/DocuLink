@@ -41,12 +41,26 @@ export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLEleme
     page.setCurrentPage(1);
   });
 
+  let currentPage = 1;
+
   zoom.onChange((scale, anchor) => {
     viewer.setZoom(scale, anchor);
   });
 
+  viewer.onLoaded(() => {
+    currentPage = 1;
+  });
+
   page.onChange((pageNum) => {
+    currentPage = pageNum;
     viewer.scrollToPage(pageNum);
+  });
+
+  zoom.onFitPage(() => {
+    const fitScale = viewer.getPageFitScale(currentPage);
+    if (fitScale === null) return;
+    zoom.setScale(fitScale);
+    viewer.setZoom(fitScale);
   });
 
   selector.onSelect((entry) => {
