@@ -92,7 +92,10 @@ export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLEleme
   const charBboxDebug   = new CharBboxOverlay(viewer, cache);
   const matchRenderer   = new SearchMatchRenderer(viewer);
   const searcher        = new PdfTextSearcher(cache);
-  const searchNavigator = createSearchNavigator(viewer, selector, matchRenderer);
+  const searchNavigator = createSearchNavigator(viewer, selector, matchRenderer, (scale) => {
+    zoom.setScale(scale);
+    viewer.setZoom(scale);
+  });
 
   let lastSearchResults: SearchMatch[] = [];
   let focusedMatch: SearchMatch | null = null;

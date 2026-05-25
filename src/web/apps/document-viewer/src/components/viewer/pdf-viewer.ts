@@ -177,6 +177,15 @@ export class PdfViewer {
     return fitScale;
   }
 
+  async renderPageNow(pageNumber: number): Promise<void> {
+    const doc = this._doc;
+    if (!doc) return;
+    const entry = this._pageEntries[pageNumber - 1];
+    if (!entry) return;
+    if (entry.wrapper.querySelector("canvas")) return;
+    await renderPage(doc, pageNumber, entry.wrapper, this._scale);
+  }
+
   private async _renderAll(): Promise<void> {
     const doc = this._doc;
     if (!doc) return;
