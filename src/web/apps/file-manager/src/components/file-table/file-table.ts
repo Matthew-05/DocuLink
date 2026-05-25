@@ -1,5 +1,5 @@
 import type { FileEntry, FolderEntry } from "../../types/index.js";
-import { sendRenameFile } from "../../host-bridge.js";
+import { sendRenameFile, sendRemoveFile } from "../../host-bridge.js";
 
 export interface FileTableOptions {
   onSelectionChange(selectedIds: string[]): void;
@@ -9,11 +9,15 @@ export class FileTable {
   private readonly _root: HTMLElement;
   private readonly _thead: HTMLTableSectionElement;
   private readonly _tbody: HTMLTableSectionElement;
+  private readonly _contextMenu: HTMLDivElement;
   private _files: FileEntry[] = [];
   private _folders: FolderEntry[] = [];
   private _selectedFolderId: string | null = null;
   private _selectedIds: Set<string> = new Set();
   private _filterText = "";
+  private _contextMenuFile: FileEntry | null = null;
+  private _contextMenuNameSpan: HTMLSpanElement | null = null;
+  private _contextMenuRow: HTMLTableRowElement | null = null;
   private readonly _onSelectionChange: (ids: string[]) => void;
 
   constructor(container: HTMLElement, options: FileTableOptions) {
@@ -45,6 +49,19 @@ export class FileTable {
     table.appendChild(this._thead);
     table.appendChild(this._tbody);
     this._root.appendChild(table);
+
+    // Create context menu
+    this._contextMenu = document.createElement("div");
+    this._contextMenu.className = "file-table__context-menu";
+    this._contextMenu.innerHTML = `
+      <button class="file-table__context-item" data-action="rename">Rename</button>
+      <button class="file-table__context-item" data-action="delete">Delete</button>
+    `;
+    this._root.appendChild(this._contextMenu);
+
+    // Hide context menu on outside click
+    document.addEventListener("click", () => this._hideContextMenu());
+
     container.appendChild(this._root);
   }
 
@@ -168,6 +185,13 @@ export class FileTable {
       tr.classList.toggle("is-selected", nowChecked);
     });
 
+    // Row-level right-click → context menu
+    tr.addEventListener("contextmenu", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      this._showContextMenu(file, nameSpan, tr, e.clientX, e.clientY);
+    });
+
     // Checkbox cell
     const checkTd = document.createElement("td");
     checkTd.className = "col-check";
@@ -273,6 +297,46 @@ export class FileTable {
       if (e.key === "Escape") { input.replaceWith(nameSpan); }
     });
   }
+
+  private _showContextMenu(file: FileEntry, nameSpan: HTMLSpanElement, tr: HTMLTableRowElement, x: number, y: number): void {
+    this._contextMenuFile = file;
+    this._contextMenuNameSpan = nameSpan;
+    this._contextMenuRow = tr;
+
+    this._contextMenu.style.position = "fixed";
+    this._contextMenu.style.left = `${x}px`;
+    this._contextMenu.style.top = `${y}px`;
+    this._contextMenu.classList.add("file-table__context-menu--visible");
+
+    // Attach event listeners to menu items
+    const items = this._contextMenu.querySelectorAll<HTMLButtonElement>(".file-table__context-item");
+    items.forEach(item => {
+      item.removeEventListener("click", this._handleContextMenuClick);
+      item.addEventListener("click", (e) => this._handleContextMenuClick(e));
+    });
+  }
+
+  private _hideContextMenu(): void {
+    this._contextMenu.classList.remove("file-table__context-menu--visible");
+    this._contextMenuFile = null;
+    this._contextMenuNameSpan = null;
+    this._contextMenuRow = null;
+  }
+
+  private _handleContextMenuClick = (e: MouseEvent): void => {
+    const button = e.target as HTMLButtonElement;
+    const action = button.dataset["action"];
+
+    if (!this._contextMenuFile || !this._contextMenuNameSpan || !this._contextMenuRow) return;
+
+    if (action === "rename") {
+      this._startRename(this._contextMenuFile, this._contextMenuNameSpan, this._contextMenuRow);
+    } else if (action === "delete") {
+      sendRemoveFile(this._contextMenuFile.id);
+    }
+
+    this._hideContextMenu();
+  };
 }
 
 function formatStatusLabel(status: string): string {
