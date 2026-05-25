@@ -25,5 +25,11 @@ namespace DocuLink.Addin.Modules.WebView
         public void RefreshDataIfReady() => _controller.RefreshDataIfReady();
 
         public void SendPdfUpdated(string pdfId) => _controller.SendPdfUpdated(pdfId);
+
+        public void SendPdfAdded(string pdfId) => _controller.SendPdfAdded(pdfId);
+
+        public void SendPdfNameUpdated(string id, string name) => _controller.SendPdfNameUpdated(id, name);
+
+        public void SendPdfRemoved(string id) => _controller.SendPdfRemoved(id);
     }
 }

@@ -202,7 +202,10 @@ export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLEleme
 
   // ── Host bridge ───────────────────────────────────────────────────────────
 
-  const navigate = createRectNavigator(viewer, selector, renderer);
+  const navigate = createRectNavigator(viewer, selector, renderer, (scale) => {
+    zoom.setScale(scale);
+    viewer.setZoom(scale);
+  });
 
   connectViewerToHostBridge(
     viewer,

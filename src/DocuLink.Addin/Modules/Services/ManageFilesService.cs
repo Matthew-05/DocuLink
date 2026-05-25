@@ -15,36 +15,43 @@ namespace DocuLink.Addin.Modules.Services
     {
         private readonly AddPdfDocumentService _addService = new AddPdfDocumentService();
 
-        public void AddPdf(Excel.Workbook workbook, string name, string base64, string folderId = null)
+        public string AddPdf(Excel.Workbook workbook, string name, string base64, string folderId = null)
         {
             if (workbook == null) throw new ArgumentNullException(nameof(workbook));
-            _addService.AddEmbeddedPdfFromBase64(workbook, name, base64, folderId);
+            return _addService.AddEmbeddedPdfFromBase64(workbook, name, base64, folderId);
         }
 
-        public void AddPdfFromFilePath(Excel.Workbook workbook, string pdfFilePath, string folderId = null)
+        public string AddPdfFromFilePath(Excel.Workbook workbook, string pdfFilePath, string folderId = null)
         {
             if (workbook == null) throw new ArgumentNullException(nameof(workbook));
             if (string.IsNullOrWhiteSpace(pdfFilePath))
                 throw new ArgumentException("PDF path must be non-empty.", nameof(pdfFilePath));
-            _addService.AddEmbeddedPdf(workbook, pdfFilePath, folderId);
+            return _addService.AddEmbeddedPdf(workbook, pdfFilePath, folderId);
         }
 
-        public void RenamePdf(Excel.Workbook workbook, string id, string newName)
+        public DocuLinkContent RenamePdf(Excel.Workbook workbook, string id, string newName)
         {
             if (workbook == null) throw new ArgumentNullException(nameof(workbook));
             if (string.IsNullOrWhiteSpace(id)) throw new ArgumentException("id must be non-empty.", nameof(id));
             if (string.IsNullOrWhiteSpace(newName)) throw new ArgumentException("newName must be non-empty.", nameof(newName));
 
             var store = new DocuLinkCustomXmlPartStore(workbook);
-            if (!store.TryGetPdf(id, out PdfDocument pdf))
+            DocuLinkContent content = store.LoadContent();
+
+            List<PdfMetadata> pdfs = content.Pdfs.ToList();
+            int index = pdfs.FindIndex(p => string.Equals(p.Id, id, StringComparison.Ordinal));
+            if (index < 0)
                 throw new InvalidOperationException("PDF not found: " + id);
 
-            var updated = new PdfDocument(pdf.Id, newName.Trim(), pdf.Base64, pdf.FolderId, pdf.DateAdded, pdf.FileSizeBytes)
+            PdfMetadata existing = pdfs[index];
+            pdfs[index] = new PdfMetadata(existing.Id, newName.Trim(), existing.FolderId, existing.DateAdded, existing.FileSizeBytes)
             {
-                OcrStatus = pdf.OcrStatus,
-                GeometryBase64 = pdf.GeometryBase64,
+                OcrStatus = existing.OcrStatus,
             };
-            store.UpsertPdf(updated);
+
+            var updated = new DocuLinkContent(content.Version, content.Folders, pdfs);
+            store.SaveContent(updated);
+            return updated;
         }
 
         public void RemovePdf(Excel.Workbook workbook, string id)
@@ -54,7 +61,7 @@ namespace DocuLink.Addin.Modules.Services
 
             var store = new DocuLinkCustomXmlPartStore(workbook);
             DocuLinkContent content = store.LoadContent();
-            List<PdfDocument> pdfs = content.Pdfs
+            List<PdfMetadata> pdfs = content.Pdfs
                 .Where(p => !string.Equals(p.Id, id, StringComparison.Ordinal))
                 .ToList();
 
@@ -62,6 +69,7 @@ namespace DocuLink.Addin.Modules.Services
                 throw new InvalidOperationException("PDF not found: " + id);
 
             store.SaveContent(new DocuLinkContent(content.Version, content.Folders, pdfs));
+            store.DeletePdfBinary(id);
 
             WorkbookStorageSession session = Globals.ThisAddIn.GetStorageSession(workbook);
             var remainingLinks = session.GetLinks()
@@ -70,22 +78,29 @@ namespace DocuLink.Addin.Modules.Services
             session.SetLinks(remainingLinks);
         }
 
-        public void MoveFile(Excel.Workbook workbook, string id, string folderId)
+        public DocuLinkContent MoveFile(Excel.Workbook workbook, string id, string folderId)
         {
             if (workbook == null) throw new ArgumentNullException(nameof(workbook));
             if (string.IsNullOrWhiteSpace(id)) throw new ArgumentException("id must be non-empty.", nameof(id));
 
             var store = new DocuLinkCustomXmlPartStore(workbook);
-            if (!store.TryGetPdf(id, out PdfDocument pdf))
+            DocuLinkContent content = store.LoadContent();
+
+            List<PdfMetadata> pdfs = content.Pdfs.ToList();
+            int index = pdfs.FindIndex(p => string.Equals(p.Id, id, StringComparison.Ordinal));
+            if (index < 0)
                 throw new InvalidOperationException("PDF not found: " + id);
 
+            PdfMetadata existing = pdfs[index];
             string normalised = string.IsNullOrWhiteSpace(folderId) ? null : folderId.Trim();
-            var updated = new PdfDocument(pdf.Id, pdf.Name, pdf.Base64, normalised, pdf.DateAdded, pdf.FileSizeBytes)
+            pdfs[index] = new PdfMetadata(existing.Id, existing.Name, normalised, existing.DateAdded, existing.FileSizeBytes)
             {
-                OcrStatus = pdf.OcrStatus,
-                GeometryBase64 = pdf.GeometryBase64,
+                OcrStatus = existing.OcrStatus,
             };
-            store.UpsertPdf(updated);
+
+            var updated = new DocuLinkContent(content.Version, content.Folders, pdfs);
+            store.SaveContent(updated);
+            return updated;
         }
 
         public void UpdatePdfAfterOcr(Excel.Workbook workbook, string id, string newBase64, string geometryBase64)
@@ -95,15 +110,16 @@ namespace DocuLink.Addin.Modules.Services
             if (newBase64 == null) throw new ArgumentNullException(nameof(newBase64));
 
             var store = new DocuLinkCustomXmlPartStore(workbook);
-            if (!store.TryGetPdf(id, out PdfDocument pdf))
+            if (!store.TryGetMetadata(id, out PdfMetadata existing))
                 throw new InvalidOperationException("PDF not found: " + id);
 
-            var updated = new PdfDocument(pdf.Id, pdf.Name, newBase64, pdf.FolderId, pdf.DateAdded, pdf.FileSizeBytes)
+            store.SavePdfBinary(id, newBase64, geometryBase64);
+
+            var updated = new PdfMetadata(existing.Id, existing.Name, existing.FolderId, existing.DateAdded, existing.FileSizeBytes)
             {
                 OcrStatus = PdfStatus.Ocr,
-                GeometryBase64 = geometryBase64,
             };
-            store.UpsertPdf(updated);
+            store.UpsertMetadata(updated);
         }
 
         public void UpdatePdfGeometry(Excel.Workbook workbook, string id, string geometryBase64)
@@ -112,15 +128,17 @@ namespace DocuLink.Addin.Modules.Services
             if (string.IsNullOrWhiteSpace(id)) throw new ArgumentException("id must be non-empty.", nameof(id));
 
             var store = new DocuLinkCustomXmlPartStore(workbook);
-            if (!store.TryGetPdf(id, out PdfDocument pdf))
+            if (!store.TryGetMetadata(id, out PdfMetadata existing))
                 throw new InvalidOperationException("PDF not found: " + id);
 
-            var updated = new PdfDocument(pdf.Id, pdf.Name, pdf.Base64, pdf.FolderId, pdf.DateAdded, pdf.FileSizeBytes)
+            store.TryLoadPdfBinary(id, out string existingBase64, out _);
+            store.SavePdfBinary(id, existingBase64, geometryBase64);
+
+            var updated = new PdfMetadata(existing.Id, existing.Name, existing.FolderId, existing.DateAdded, existing.FileSizeBytes)
             {
                 OcrStatus = PdfStatus.Ocr,
-                GeometryBase64 = geometryBase64,
             };
-            store.UpsertPdf(updated);
+            store.UpsertMetadata(updated);
         }
 
         public string AddFolder(Excel.Workbook workbook, string name)
@@ -129,10 +147,8 @@ namespace DocuLink.Addin.Modules.Services
             if (string.IsNullOrWhiteSpace(name)) throw new ArgumentException("name must be non-empty.", nameof(name));
 
             string id = Guid.NewGuid().ToString("D");
-            var folder = new PdfFolder(id, name.Trim());
-
             var store = new DocuLinkCustomXmlPartStore(workbook);
-            store.UpsertFolder(folder);
+            store.UpsertFolder(new PdfFolder(id, name.Trim()));
             return id;
         }
 
@@ -145,8 +161,7 @@ namespace DocuLink.Addin.Modules.Services
             var store = new DocuLinkCustomXmlPartStore(workbook);
             DocuLinkContent content = store.LoadContent();
 
-            PdfFolder existing = content.Folders.FirstOrDefault(f => string.Equals(f.Id, id, StringComparison.Ordinal));
-            if (existing == null)
+            if (content.Folders.All(f => !string.Equals(f.Id, id, StringComparison.Ordinal)))
                 throw new InvalidOperationException("Folder not found: " + id);
 
             store.UpsertFolder(new PdfFolder(id, newName.Trim()));

@@ -14,7 +14,7 @@ namespace DocuLink.Addin.Modules.WebView
     /// </summary>
     internal static class FileManagerMessageSerializer
     {
-        public static string BuildFilesLoaded(IList<PdfFolder> folders, IList<PdfDocument> pdfs)
+        public static string BuildFilesLoaded(IList<PdfFolder> folders, IList<PdfMetadata> pdfs)
         {
             var sb = new StringBuilder();
             sb.Append("{\"type\":\"files-loaded\",\"folders\":[");
@@ -34,7 +34,7 @@ namespace DocuLink.Addin.Modules.WebView
             for (int i = 0; i < pdfs.Count; i++)
             {
                 if (i > 0) sb.Append(',');
-                PdfDocument p = pdfs[i];
+                PdfMetadata p = pdfs[i];
 
                 string dateAdded = p.DateAdded.HasValue
                     ? p.DateAdded.Value.ToUniversalTime().ToString("O", CultureInfo.InvariantCulture)

@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Per-PDF binary Custom XML part.
+  Each embedded PDF gets its own part with a unique namespace:
+    http://doculink.dev/schemas/storage/1/pdf-data/{pdfId}
+  The root element namespace carries the pdfId, enabling O(1) lookup via
+  CustomXMLParts.SelectByNamespace(). Metadata lives in the content part.
+-->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           elementFormDefault="qualified">
+
+  <!--
+    Root element: PdfData (namespace varies per PDF — schema is illustrative).
+    Base64: required — base64-encoded PDF bytes.
+    GeometryBase64: optional — gzip-compressed text-geometry-v1 JSON, base64-encoded.
+  -->
+  <xs:element name="PdfData">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="Base64"         type="xs:string" />
+        <xs:element name="GeometryBase64" type="xs:string" minOccurs="0" />
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+
+</xs:schema>

@@ -455,9 +455,7 @@ namespace DocuLink.Addin.Modules.WebView
                     return;
 
                 var store = new DocuLinkCustomXmlPartStore(workbook);
-                DocuLinkContent content = store.LoadContent();
-
-                string json = HostMessageSerializer.BuildPdfsLoaded(content.Pdfs);
+                string json = HostMessageSerializer.BuildPdfsLoaded(store.LoadAllPdfsWithBinary());
                 _webView.CoreWebView2.PostWebMessageAsString(json);
             }
             catch (Exception ex)
@@ -488,6 +486,63 @@ namespace DocuLink.Addin.Modules.WebView
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"[DocuLink] SendPdfUpdated failed: {ex.Message}");
+            }
+        }
+
+        internal void SendPdfAdded(string pdfId)
+        {
+            if (!_webViewReady || string.IsNullOrWhiteSpace(pdfId))
+                return;
+
+            try
+            {
+                Excel.Application app = Globals.ThisAddIn.Application;
+                Excel.Workbook workbook = app?.ActiveWorkbook;
+                if (workbook == null)
+                    return;
+
+                var store = new DocuLinkCustomXmlPartStore(workbook);
+                if (!store.TryGetPdf(pdfId, out PdfDocument pdf))
+                    return;
+
+                string json = HostMessageSerializer.BuildPdfAdded(pdf);
+                _webView.CoreWebView2.PostWebMessageAsString(json);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[DocuLink] SendPdfAdded failed: {ex.Message}");
+            }
+        }
+
+        internal void SendPdfNameUpdated(string id, string name)
+        {
+            if (!_webViewReady || string.IsNullOrWhiteSpace(id))
+                return;
+
+            try
+            {
+                string json = HostMessageSerializer.BuildPdfNameUpdated(id, name);
+                _webView.CoreWebView2.PostWebMessageAsString(json);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[DocuLink] SendPdfNameUpdated failed: {ex.Message}");
+            }
+        }
+
+        internal void SendPdfRemoved(string id)
+        {
+            if (!_webViewReady || string.IsNullOrWhiteSpace(id))
+                return;
+
+            try
+            {
+                string json = HostMessageSerializer.BuildPdfRemoved(id);
+                _webView.CoreWebView2.PostWebMessageAsString(json);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[DocuLink] SendPdfRemoved failed: {ex.Message}");
             }
         }
 

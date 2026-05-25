@@ -17,6 +17,22 @@ interface PdfUpdatedMessage {
   pdf: PdfPayload;
 }
 
+interface PdfAddedMessage {
+  type: "pdf-added";
+  pdf: PdfPayload;
+}
+
+interface PdfNameUpdatedMessage {
+  type: "pdf-name-updated";
+  id: string;
+  name: string;
+}
+
+interface PdfRemovedMessage {
+  type: "pdf-removed";
+  id: string;
+}
+
 interface LinkedRectPayload {
   id: string;
   pdfId: string;
@@ -88,6 +104,8 @@ function handleMessage(
   onClearRectangleHighlight?: () => void,
   onPdfUpdated?: (entry: PdfEntry) => void,
   onLinkRectanglesRemoved?: (ids: string[]) => void,
+  onPdfNameUpdated?: (id: string, name: string) => void,
+  onPdfRemoved?: (id: string) => void,
 ): void {
   try {
     const parsed: unknown =
@@ -149,6 +167,26 @@ function handleMessage(
       onLinkRectanglesRemoved(removedMsg.ids);
       return;
     }
+
+    if (type === "pdf-added") {
+      if (!onPdfUpdated) return;
+      const msg = parsed as PdfAddedMessage;
+      onPdfUpdated(toPdfEntry(msg.pdf));
+      return;
+    }
+
+    if (type === "pdf-name-updated") {
+      const msg = parsed as PdfNameUpdatedMessage;
+      onPdfNameUpdated?.(msg.id, msg.name);
+      return;
+    }
+
+    if (type === "pdf-removed") {
+      const msg = parsed as PdfRemovedMessage;
+      revokePdfUrl(msg.id);
+      onPdfRemoved?.(msg.id);
+      return;
+    }
   } catch {
     // Malformed JSON or unexpected shape — silently ignore.
   }
@@ -182,6 +220,8 @@ export function initHostBridge(
   onClearRectangleHighlight?: () => void,
   onPdfUpdated?: (entry: PdfEntry) => void,
   onLinkRectanglesRemoved?: (ids: string[]) => void,
+  onPdfNameUpdated?: (id: string, name: string) => void,
+  onPdfRemoved?: (id: string) => void,
 ): void {
   const webview = (
     window as unknown as { chrome?: { webview?: WebView2Bridge } }
@@ -203,6 +243,8 @@ export function initHostBridge(
       onClearRectangleHighlight,
       onPdfUpdated,
       onLinkRectanglesRemoved,
+      onPdfNameUpdated,
+      onPdfRemoved,
     );
   });
 

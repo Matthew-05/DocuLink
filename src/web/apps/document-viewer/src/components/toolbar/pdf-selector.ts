@@ -88,6 +88,27 @@ export class PdfSelector {
     this._renderList(this._searchInput.value);
   }
 
+  /** Updates the display name of an existing entry without touching its blob URL. */
+  updateEntryName(id: string, name: string): void {
+    const entry = this._entries.find((e) => e.id === id);
+    if (!entry) return;
+    entry.name = name;
+    if (this._activeId === id) {
+      this._triggerLabel.textContent = name;
+    }
+    this._renderList(this._searchInput.value);
+  }
+
+  /** Removes an entry by id. Clears the active selection if it matches. */
+  removeEntry(id: string): void {
+    this._entries = this._entries.filter((e) => e.id !== id);
+    if (this._activeId === id) {
+      this._activeId = null;
+      this._triggerLabel.textContent = "Select PDF…";
+    }
+    this._renderList(this._searchInput.value);
+  }
+
   getEntry(id: string): PdfEntry | undefined {
     return this._entries.find((e) => e.id === id);
   }

@@ -45,5 +45,16 @@ namespace DocuLink.Addin.Modules.CustomXml
         public const string OcrStatusAttribute = "ocrStatus";
 
         public const string GeometryBase64Attribute = "geometryBase64";
+
+        // Per-PDF binary XML parts
+        public const string PdfDataNamespaceBase = "http://doculink.dev/schemas/storage/1/pdf-data/";
+
+        public static string PdfDataNamespaceUri(string pdfId) => PdfDataNamespaceBase + pdfId;
+
+        public const string PdfDataRootElementName = "PdfData";
+
+        public const string Base64ElementName = "Base64";
+
+        public const string GeometryBase64ElementName = "GeometryBase64";
     }
 }

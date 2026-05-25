@@ -1,3 +1,4 @@
+import type { ZoomLevel } from "../../types/index.js";
 import type { PdfViewer } from "./pdf-viewer.js";
 import type { PdfSelector } from "../toolbar/pdf-selector.js";
 import type { RectRenderer } from "./rect-renderer.js";
@@ -9,14 +10,16 @@ import type { RectRenderer } from "./rect-renderer.js";
  *   highlights the rectangle.
  * - If a different PDF is required, switches to it first (awaiting full render),
  *   then jumps and highlights.
+ * - If the rectangle is not fully visible, zoom is set to page-fit first.
  */
 export function createRectNavigator(
   viewer: PdfViewer,
   selector: PdfSelector,
   renderer: RectRenderer,
+  applyZoom: (scale: ZoomLevel) => void,
 ): (id: string, pdfId: string, page: number) => void {
   return (id, pdfId, page) => {
-    void _navigate(viewer, selector, renderer, id, pdfId, page);
+    void _navigate(viewer, selector, renderer, applyZoom, id, pdfId, page);
   };
 }
 
@@ -24,6 +27,7 @@ async function _navigate(
   viewer: PdfViewer,
   selector: PdfSelector,
   renderer: RectRenderer,
+  applyZoom: (scale: ZoomLevel) => void,
   id: string,
   pdfId: string,
   page: number,
@@ -47,7 +51,7 @@ async function _navigate(
 
   renderer.highlightRectangle(id);
 
-  const pageWrapper = viewer.element.querySelector<HTMLElement>(
+  const pageWrapper = viewer.element.querySelector<HTMLDivElement>(
     `[data-page="${page + 1}"]`,
   );
   if (!pageWrapper) return;
@@ -60,6 +64,8 @@ async function _navigate(
     && targetRect.right  <= viewerRect.right;
 
   if (!fullyVisible) {
+    const fitScale = viewer.getPageFitScale(page + 1);
+    if (fitScale !== null) applyZoom(fitScale);
     pageWrapper.scrollIntoView({ behavior: "instant" as ScrollBehavior });
   }
 }

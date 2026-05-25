@@ -137,7 +137,7 @@ namespace DocuLink.Addin.Modules.WebView
             }
 
             var folderIdCache = new Dictionary<string, string>(StringComparer.Ordinal);
-            int added = 0;
+            var addedIds = new List<string>();
 
             using (new ProgressScope("Importing documents\u2026"))
             {
@@ -163,11 +163,11 @@ namespace DocuLink.Addin.Modules.WebView
                     {
                         FileAttributes attr = File.GetAttributes(path);
                         if ((attr & FileAttributes.Directory) == FileAttributes.Directory)
-                            added += ImportDirectoryOfPdfs(wb, path, folderIdCache);
+                            ImportDirectoryOfPdfs(wb, path, folderIdCache, addedIds);
                         else if (path.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase))
                         {
-                            _service.AddPdfFromFilePath(wb, path, _selectedFolderId);
-                            added++;
+                            string newId = _service.AddPdfFromFilePath(wb, path, _selectedFolderId);
+                            addedIds.Add(newId);
                         }
                     }
                     catch (Exception ex)
@@ -177,14 +177,15 @@ namespace DocuLink.Addin.Modules.WebView
                 }
             }
 
-            if (added > 0)
+            if (addedIds.Count > 0)
             {
                 SendFilesToWebView();
-                Globals.ThisAddIn.RefreshTaskPanePdfs();
+                foreach (string id in addedIds)
+                    Globals.ThisAddIn.NotifyViewerPdfAdded(id);
             }
         }
 
-        private int ImportDirectoryOfPdfs(Excel.Workbook wb, string dirPath, Dictionary<string, string> folderIdCache)
+        private void ImportDirectoryOfPdfs(Excel.Workbook wb, string dirPath, Dictionary<string, string> folderIdCache, List<string> addedIds)
         {
             string folderName;
             try
@@ -193,12 +194,11 @@ namespace DocuLink.Addin.Modules.WebView
             }
             catch
             {
-                return 0;
+                return;
             }
 
             string sentinel = "__new__:" + folderName;
             string folderId = ResolveFolderId(wb, sentinel, folderIdCache);
-            int count = 0;
 
             foreach (string pdfPath in Directory.EnumerateFiles(dirPath, "*.pdf", SearchOption.AllDirectories))
             {
@@ -217,16 +217,14 @@ namespace DocuLink.Addin.Modules.WebView
 
                 try
                 {
-                    _service.AddPdfFromFilePath(wb, full, folderId);
-                    count++;
+                    string newId = _service.AddPdfFromFilePath(wb, full, folderId);
+                    addedIds.Add(newId);
                 }
                 catch (Exception ex)
                 {
                     System.Diagnostics.Debug.WriteLine($"[DocuLink] OS import failed for '{full}': {ex.Message}");
                 }
             }
-
-            return count;
         }
 
         private bool ShouldSkipDuplicateOsImport(string fullPath)
@@ -338,7 +336,6 @@ namespace DocuLink.Addin.Modules.WebView
             if (anyComplete)
             {
                 SendFilesToWebView();
-                Globals.ThisAddIn.RefreshTaskPanePdfs();
             }
         }
 
@@ -350,6 +347,7 @@ namespace DocuLink.Addin.Modules.WebView
             // Cache resolved folder ids so that a dropped directory only creates one folder
             // even if it contains many files.
             var resolvedFolderIds = new Dictionary<string, string>(StringComparer.Ordinal);
+            var addedIds = new List<string>();
 
             using (new ProgressScope("Importing documents\u2026"))
             {
@@ -358,7 +356,8 @@ namespace DocuLink.Addin.Modules.WebView
                     try
                     {
                         string folderId = ResolveFolderId(wb, file.FolderId, resolvedFolderIds);
-                        _service.AddPdf(wb, file.Name, file.Base64, folderId);
+                        string newId = _service.AddPdf(wb, file.Name, file.Base64, folderId);
+                        addedIds.Add(newId);
                     }
                     catch (Exception ex)
                     {
@@ -368,7 +367,8 @@ namespace DocuLink.Addin.Modules.WebView
             }
 
             SendFilesToWebView();
-            Globals.ThisAddIn.RefreshTaskPanePdfs();
+            foreach (string id in addedIds)
+                Globals.ThisAddIn.NotifyViewerPdfAdded(id);
         }
 
         /// <summary>
@@ -401,9 +401,18 @@ namespace DocuLink.Addin.Modules.WebView
         {
             Excel.Workbook wb = GetActiveWorkbook();
             if (wb == null) return;
-            _service.RenamePdf(wb, req.Id, req.NewName);
-            SendFilesToWebView();
-            Globals.ThisAddIn.RefreshTaskPanePdfs();
+
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            DocuLinkContent content = _service.RenamePdf(wb, req.Id, req.NewName);
+            System.Diagnostics.Debug.WriteLine($"[DocuLink] RenamePdf: {sw.ElapsedMilliseconds}ms");
+
+            sw.Restart();
+            SendFilesToWebView(content);
+            System.Diagnostics.Debug.WriteLine($"[DocuLink] SendFilesToWebView: {sw.ElapsedMilliseconds}ms");
+
+            sw.Restart();
+            Globals.ThisAddIn.NotifyViewerPdfRenamed(req.Id, req.NewName);
+            System.Diagnostics.Debug.WriteLine($"[DocuLink] NotifyViewerPdfRenamed: {sw.ElapsedMilliseconds}ms");
         }
 
         private void HandleRemoveFile(RemoveFileRequest req)
@@ -412,15 +421,15 @@ namespace DocuLink.Addin.Modules.WebView
             if (wb == null) return;
             _service.RemovePdf(wb, req.Id);
             SendFilesToWebView();
-            Globals.ThisAddIn.RefreshTaskPanePdfs();
+            Globals.ThisAddIn.NotifyViewerPdfRemoved(req.Id);
         }
 
         private void HandleMoveFile(MoveFileRequest req)
         {
             Excel.Workbook wb = GetActiveWorkbook();
             if (wb == null) return;
-            _service.MoveFile(wb, req.Id, req.FolderId);
-            SendFilesToWebView();
+            DocuLinkContent content = _service.MoveFile(wb, req.Id, req.FolderId);
+            SendFilesToWebView(content);
         }
 
         private void HandleAddFolder(AddFolderRequest req)
@@ -459,15 +468,18 @@ namespace DocuLink.Addin.Modules.WebView
         }
 
         /// <summary>Reads the active workbook's file list and pushes it to the web UI.</summary>
-        public void SendFilesToWebView()
+        public void SendFilesToWebView(DocuLinkContent preloaded = null)
         {
             try
             {
-                Excel.Workbook wb = GetActiveWorkbook();
-                if (wb == null) return;
-
-                var store = new DocuLinkCustomXmlPartStore(wb);
-                DocuLinkContent content = store.LoadContent();
+                DocuLinkContent content = preloaded;
+                if (content == null)
+                {
+                    Excel.Workbook wb = GetActiveWorkbook();
+                    if (wb == null) return;
+                    var store = new DocuLinkCustomXmlPartStore(wb);
+                    content = store.LoadContent();
+                }
 
                 string json = FileManagerMessageSerializer.BuildFilesLoaded(content.Folders, content.Pdfs);
                 _webView.CoreWebView2?.PostWebMessageAsString(json);

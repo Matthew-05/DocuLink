@@ -249,6 +249,30 @@ namespace DocuLink.Addin
 
         }
 
+        internal void NotifyViewerPdfAdded(string pdfId)
+
+        {
+
+            GetActiveViewerHost()?.SendPdfAdded(pdfId);
+
+        }
+
+        internal void NotifyViewerPdfRenamed(string id, string name)
+
+        {
+
+            GetActiveViewerHost()?.SendPdfNameUpdated(id, name);
+
+        }
+
+        internal void NotifyViewerPdfRemoved(string id)
+
+        {
+
+            GetActiveViewerHost()?.SendPdfRemoved(id);
+
+        }
+
 
 
         internal void ShowManageFilesWindow()

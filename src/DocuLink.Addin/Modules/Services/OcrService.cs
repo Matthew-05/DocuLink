@@ -288,21 +288,23 @@ namespace DocuLink.Addin.Modules.Services
         private static IList<OcrJobEntry> LoadJobData(IList<string> pdfIds, Excel.Workbook workbook)
         {
             var store = new CustomXml.DocuLinkCustomXmlPartStore(workbook);
-            DocuLinkContent content = store.LoadContent();
+            DocuLinkContent content = store.LoadContent(); // metadata only — fast
 
             var result = new List<OcrJobEntry>();
             foreach (string id in pdfIds)
             {
-                var pdf = content.Pdfs.FirstOrDefault(
+                var metadata = content.Pdfs.FirstOrDefault(
                     p => string.Equals(p.Id, id, StringComparison.Ordinal));
-                if (pdf == null) continue;
+                if (metadata == null) continue;
 
-                string status = PdfStatus.NormalizeStored(
-                    pdf.OcrStatus, pdf.Base64, pdf.GeometryBase64);
-                if (status == PdfStatus.Ocr) continue;
+                string status = metadata.OcrStatus ?? PdfStatus.None;
+                if (string.Equals(status, PdfStatus.Ocr, StringComparison.Ordinal)) continue;
 
-                string mode = status == PdfStatus.Text ? "geometry-only" : "full";
-                result.Add(new OcrJobEntry { PdfId = pdf.Id, Base64 = pdf.Base64, Mode = mode });
+                // Load binary only for PDFs that actually need OCR
+                store.TryLoadPdfBinary(id, out string base64, out _);
+                string mode = string.Equals(status, PdfStatus.Text, StringComparison.Ordinal)
+                    ? "geometry-only" : "full";
+                result.Add(new OcrJobEntry { PdfId = id, Base64 = base64 ?? string.Empty, Mode = mode });
             }
             return result;
         }

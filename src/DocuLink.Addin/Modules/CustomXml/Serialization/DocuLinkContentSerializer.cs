@@ -13,7 +13,6 @@ namespace DocuLink.Addin.Modules.CustomXml.Serialization
         private const string VersionAttribute = "version";
         private const string IdAttribute = "id";
         private const string NameAttribute = "name";
-        private const string Base64Attribute = "Base64";
 
         public static DocuLinkContent FromXDocument(XDocument document)
         {
@@ -41,10 +40,10 @@ namespace DocuLink.Addin.Modules.CustomXml.Serialization
                 throw new InvalidOperationException(
                     "DocuLink content is missing required element '" + DocuLinkXml.PdfsElementName + "'.");
 
-            var pdfs = new List<PdfDocument>(
+            var pdfs = new List<PdfMetadata>(
                 pdfsElement
                     .Elements(DocuLinkXml.ContentNs + DocuLinkXml.PdfElementName)
-                    .Select((element, idx) => ParsePdf(element, idx)));
+                    .Select((el, i) => ParsePdf(el, i)));
 
             return new DocuLinkContent(fileVersion, folders, pdfs);
         }
@@ -94,10 +93,7 @@ namespace DocuLink.Addin.Modules.CustomXml.Serialization
             if (idAttr == null || string.IsNullOrWhiteSpace(idAttr.Value))
                 throw new InvalidOperationException("DocuLink content Folder #" + index + " is missing required attribute 'id'.");
 
-            XAttribute nameAttr = element.Attribute(NameAttribute);
-            string name = nameAttr?.Value ?? string.Empty;
-
-            return new PdfFolder(idAttr.Value.Trim(), name);
+            return new PdfFolder(idAttr.Value.Trim(), element.Attribute(NameAttribute)?.Value ?? string.Empty);
         }
 
         private static XElement SerializeFolder(PdfFolder folder, int index)
@@ -112,22 +108,17 @@ namespace DocuLink.Addin.Modules.CustomXml.Serialization
                 new XAttribute(NameAttribute, folder.Name ?? string.Empty));
         }
 
-        private static PdfDocument ParsePdf(XElement pdfElement, int index)
+        private static PdfMetadata ParsePdf(XElement pdfElement, int index)
         {
             XAttribute idAttribute = pdfElement.Attribute(IdAttribute);
             if (idAttribute == null || string.IsNullOrWhiteSpace(idAttribute.Value))
                 throw new InvalidOperationException(
                     "DocuLink content Pdf #" + index + " is missing required attribute 'id'.");
 
-            XAttribute base64Attribute = pdfElement.Attribute(Base64Attribute);
-            if (base64Attribute == null)
-                throw new InvalidOperationException(
-                    "DocuLink content Pdf #" + index + " is missing required attribute 'Base64'.");
-
             string name = pdfElement.Attribute(NameAttribute)?.Value ?? string.Empty;
+
             string folderId = pdfElement.Attribute(DocuLinkXml.FolderIdAttribute)?.Value;
-            if (string.IsNullOrWhiteSpace(folderId))
-                folderId = null;
+            if (string.IsNullOrWhiteSpace(folderId)) folderId = null;
 
             DateTime? dateAdded = null;
             string dateAddedStr = pdfElement.Attribute(DocuLinkXml.DateAddedAttribute)?.Value;
@@ -140,38 +131,24 @@ namespace DocuLink.Addin.Modules.CustomXml.Serialization
             if (!string.IsNullOrWhiteSpace(fileSizeStr))
                 long.TryParse(fileSizeStr, NumberStyles.Integer, CultureInfo.InvariantCulture, out fileSizeBytes);
 
-            string geometryBase64 = pdfElement.Attribute(DocuLinkXml.GeometryBase64Attribute)?.Value;
-            string base64 = base64Attribute.Value ?? string.Empty;
+            string ocrStatus = pdfElement.Attribute(DocuLinkXml.OcrStatusAttribute)?.Value ?? PdfStatus.None;
 
-            string ocrStatus = PdfStatus.NormalizeStored(
-                pdfElement.Attribute(DocuLinkXml.OcrStatusAttribute)?.Value,
-                base64,
-                geometryBase64);
-
-            return new PdfDocument(
-                idAttribute.Value.Trim(),
-                name,
-                base64Attribute.Value ?? string.Empty,
-                folderId,
-                dateAdded,
-                fileSizeBytes)
+            return new PdfMetadata(idAttribute.Value.Trim(), name, folderId, dateAdded, fileSizeBytes)
             {
                 OcrStatus = ocrStatus,
-                GeometryBase64 = geometryBase64,
             };
         }
 
-        private static XElement SerializePdf(PdfDocument pdf, int index)
+        private static XElement SerializePdf(PdfMetadata pdf, int index)
         {
             if (pdf == null) throw new ArgumentNullException(nameof(pdf));
             if (string.IsNullOrWhiteSpace(pdf.Id))
-                throw new InvalidOperationException("PdfDocument at index " + index + " has an empty Id.");
+                throw new InvalidOperationException("PdfMetadata at index " + index + " has an empty Id.");
 
             var element = new XElement(
                 DocuLinkXml.ContentNs + DocuLinkXml.PdfElementName,
                 new XAttribute(IdAttribute, pdf.Id),
-                new XAttribute(NameAttribute, pdf.Name ?? string.Empty),
-                new XAttribute(Base64Attribute, pdf.Base64 ?? string.Empty));
+                new XAttribute(NameAttribute, pdf.Name ?? string.Empty));
 
             if (!string.IsNullOrWhiteSpace(pdf.FolderId))
                 element.Add(new XAttribute(DocuLinkXml.FolderIdAttribute, pdf.FolderId));
@@ -186,9 +163,6 @@ namespace DocuLink.Addin.Modules.CustomXml.Serialization
 
             if (!string.IsNullOrWhiteSpace(pdf.OcrStatus) && pdf.OcrStatus != PdfStatus.None)
                 element.Add(new XAttribute(DocuLinkXml.OcrStatusAttribute, pdf.OcrStatus));
-
-            if (!string.IsNullOrWhiteSpace(pdf.GeometryBase64))
-                element.Add(new XAttribute(DocuLinkXml.GeometryBase64Attribute, pdf.GeometryBase64));
 
             return element;
         }

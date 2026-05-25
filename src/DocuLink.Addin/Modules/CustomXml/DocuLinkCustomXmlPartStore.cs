@@ -19,20 +19,21 @@ namespace DocuLink.Addin.Modules.CustomXml
             _workbook = workbook ?? throw new ArgumentNullException(nameof(workbook));
         }
 
+        // ── Content (metadata) part ───────────────────────────────────────────
+
         public DocuLinkContent LoadContent()
         {
             Office.CustomXMLPart part = FindPartByNamespace(DocuLinkXml.ContentNamespaceUri);
             if (part == null)
-                return new DocuLinkContent(DocuLinkXml.SchemaVersion, new PdfFolder[0], new PdfDocument[0]);
+                return new DocuLinkContent(DocuLinkXml.SchemaVersion, new PdfFolder[0], new PdfMetadata[0]);
 
             string xml = part.XML;
             if (string.IsNullOrWhiteSpace(xml))
-                return new DocuLinkContent(DocuLinkXml.SchemaVersion, new PdfFolder[0], new PdfDocument[0]);
+                return new DocuLinkContent(DocuLinkXml.SchemaVersion, new PdfFolder[0], new PdfMetadata[0]);
 
             try
             {
-                XDocument document = XDocument.Parse(xml);
-                return DocuLinkContentSerializer.FromXDocument(document);
+                return DocuLinkContentSerializer.FromXDocument(XDocument.Parse(xml));
             }
             catch (System.Xml.XmlException ex)
             {
@@ -43,11 +44,193 @@ namespace DocuLink.Addin.Modules.CustomXml
         public void SaveContent(DocuLinkContent content)
         {
             if (content == null) throw new ArgumentNullException(nameof(content));
-
-            XDocument document = DocuLinkContentSerializer.ToXDocument(content);
-            string xml = document.ToString(SaveOptions.DisableFormatting);
+            string xml = DocuLinkContentSerializer.ToXDocument(content).ToString(SaveOptions.DisableFormatting);
             ReplacePart(DocuLinkXml.ContentNamespaceUri, xml);
         }
+
+        // ── Per-PDF binary parts ──────────────────────────────────────────────
+
+        public void SavePdfBinary(string id, string base64, string geometryBase64)
+        {
+            if (string.IsNullOrWhiteSpace(id))
+                throw new ArgumentException("PDF id must be non-empty.", nameof(id));
+
+            string xml = DocuLinkPdfBinarySerializer.ToXml(id, base64, geometryBase64);
+            ReplacePart(DocuLinkXml.PdfDataNamespaceUri(id), xml);
+        }
+
+        public bool TryLoadPdfBinary(string id, out string base64, out string geometryBase64)
+        {
+            base64 = string.Empty;
+            geometryBase64 = null;
+
+            if (string.IsNullOrWhiteSpace(id))
+                return false;
+
+            Office.CustomXMLPart part = FindPartByNamespace(DocuLinkXml.PdfDataNamespaceUri(id));
+            if (part == null)
+                return false;
+
+            DocuLinkPdfBinarySerializer.FromXml(part.XML, out base64, out geometryBase64);
+            return true;
+        }
+
+        public void DeletePdfBinary(string id)
+        {
+            if (string.IsNullOrWhiteSpace(id))
+                return;
+
+            DeletePart(DocuLinkXml.PdfDataNamespaceUri(id));
+        }
+
+        // ── Convenience: full PDF (metadata + binary) ─────────────────────────
+
+        public bool TryGetPdf(string id, out PdfDocument pdf)
+        {
+            if (string.IsNullOrWhiteSpace(id))
+                throw new ArgumentException("PDF id must be non-empty.", nameof(id));
+
+            DocuLinkContent content = LoadContent();
+            PdfMetadata metadata = content.Pdfs.FirstOrDefault(
+                p => string.Equals(p.Id, id, StringComparison.Ordinal));
+
+            if (metadata == null)
+            {
+                pdf = null;
+                return false;
+            }
+
+            TryLoadPdfBinary(id, out string base64, out string geometryBase64);
+            pdf = new PdfDocument(metadata.Id, metadata.Name, base64 ?? string.Empty,
+                metadata.FolderId, metadata.DateAdded, metadata.FileSizeBytes)
+            {
+                OcrStatus = metadata.OcrStatus,
+                GeometryBase64 = geometryBase64,
+            };
+            return true;
+        }
+
+        public IList<PdfDocument> LoadAllPdfsWithBinary()
+        {
+            DocuLinkContent content = LoadContent();
+            var result = new List<PdfDocument>(content.Pdfs.Count);
+            foreach (PdfMetadata m in content.Pdfs)
+            {
+                TryLoadPdfBinary(m.Id, out string base64, out string geometryBase64);
+                result.Add(new PdfDocument(m.Id, m.Name, base64 ?? string.Empty,
+                    m.FolderId, m.DateAdded, m.FileSizeBytes)
+                {
+                    OcrStatus = m.OcrStatus,
+                    GeometryBase64 = geometryBase64,
+                });
+            }
+            return result;
+        }
+
+        public void UpsertPdf(PdfDocument pdf)
+        {
+            if (pdf == null) throw new ArgumentNullException(nameof(pdf));
+
+            var metadata = new PdfMetadata(pdf.Id, pdf.Name, pdf.FolderId, pdf.DateAdded, pdf.FileSizeBytes)
+            {
+                OcrStatus = pdf.OcrStatus,
+            };
+            UpsertMetadata(metadata);
+            SavePdfBinary(pdf.Id, pdf.Base64, pdf.GeometryBase64);
+        }
+
+        // ── Metadata-only helpers ─────────────────────────────────────────────
+
+        public bool TryGetMetadata(string id, out PdfMetadata metadata)
+        {
+            if (string.IsNullOrWhiteSpace(id))
+                throw new ArgumentException("PDF id must be non-empty.", nameof(id));
+
+            DocuLinkContent content = LoadContent();
+            metadata = content.Pdfs.FirstOrDefault(
+                p => string.Equals(p.Id, id, StringComparison.Ordinal));
+            return metadata != null;
+        }
+
+        public void UpsertMetadata(PdfMetadata metadata)
+        {
+            if (metadata == null) throw new ArgumentNullException(nameof(metadata));
+            if (string.IsNullOrWhiteSpace(metadata.Id))
+                throw new ArgumentException("PDF id must be non-empty.", nameof(metadata));
+
+            DocuLinkContent content = LoadContent();
+            List<PdfMetadata> pdfs = content.Pdfs.ToList();
+            int index = pdfs.FindIndex(p => string.Equals(p.Id, metadata.Id, StringComparison.Ordinal));
+            if (index >= 0) pdfs[index] = metadata;
+            else pdfs.Add(metadata);
+
+            SaveContent(new DocuLinkContent(content.Version, content.Folders, pdfs));
+        }
+
+        public bool RemovePdf(string id)
+        {
+            if (string.IsNullOrWhiteSpace(id))
+                throw new ArgumentException("PDF id must be non-empty.", nameof(id));
+
+            DocuLinkContent content = LoadContent();
+            List<PdfMetadata> pdfs = content.Pdfs
+                .Where(p => !string.Equals(p.Id, id, StringComparison.Ordinal))
+                .ToList();
+
+            if (pdfs.Count == content.Pdfs.Count)
+                return false;
+
+            SaveContent(new DocuLinkContent(content.Version, content.Folders, pdfs));
+            DeletePdfBinary(id);
+            return true;
+        }
+
+        // ── Folders ───────────────────────────────────────────────────────────
+
+        public void UpsertFolder(PdfFolder folder)
+        {
+            if (folder == null) throw new ArgumentNullException(nameof(folder));
+            if (string.IsNullOrWhiteSpace(folder.Id))
+                throw new ArgumentException("Folder id must be non-empty.", nameof(folder));
+
+            DocuLinkContent content = LoadContent();
+            List<PdfFolder> folders = content.Folders.ToList();
+            int index = folders.FindIndex(f => string.Equals(f.Id, folder.Id, StringComparison.Ordinal));
+            if (index >= 0) folders[index] = folder;
+            else folders.Add(folder);
+
+            SaveContent(new DocuLinkContent(content.Version, folders, content.Pdfs));
+        }
+
+        public bool RemoveFolder(string id)
+        {
+            if (string.IsNullOrWhiteSpace(id))
+                throw new ArgumentException("Folder id must be non-empty.", nameof(id));
+
+            DocuLinkContent content = LoadContent();
+            List<PdfFolder> folders = content.Folders
+                .Where(f => !string.Equals(f.Id, id, StringComparison.Ordinal))
+                .ToList();
+
+            if (folders.Count == content.Folders.Count)
+                return false;
+
+            // Move any PDFs in this folder to uncategorised
+            List<PdfMetadata> pdfs = content.Pdfs.Select(p =>
+            {
+                if (!string.Equals(p.FolderId, id, StringComparison.Ordinal))
+                    return p;
+                return new PdfMetadata(p.Id, p.Name, null, p.DateAdded, p.FileSizeBytes)
+                {
+                    OcrStatus = p.OcrStatus,
+                };
+            }).ToList();
+
+            SaveContent(new DocuLinkContent(content.Version, folders, pdfs));
+            return true;
+        }
+
+        // ── Links part ────────────────────────────────────────────────────────
 
         public IList<LinkedRectangle> LoadLinks()
         {
@@ -61,8 +244,7 @@ namespace DocuLink.Addin.Modules.CustomXml
 
             try
             {
-                XDocument document = XDocument.Parse(xml);
-                return DocuLinkLinksSerializer.FromXDocument(document);
+                return DocuLinkLinksSerializer.FromXDocument(XDocument.Parse(xml));
             }
             catch (System.Xml.XmlException ex)
             {
@@ -72,112 +254,28 @@ namespace DocuLink.Addin.Modules.CustomXml
 
         public void SaveLinks(IList<LinkedRectangle> linkedRectangles)
         {
-            XDocument document = DocuLinkLinksSerializer.ToXDocument(linkedRectangles);
-            string xml = document.ToString(SaveOptions.DisableFormatting);
+            string xml = DocuLinkLinksSerializer.ToXDocument(linkedRectangles)
+                .ToString(SaveOptions.DisableFormatting);
             ReplacePart(DocuLinkXml.LinksNamespaceUri, xml);
         }
+
+        // ── Combined load/save (used by WorkbookStorageSession) ───────────────
 
         public DocuLinkStorage Load()
         {
             DocuLinkContent content = LoadContent();
             IList<LinkedRectangle> links = LoadLinks();
-            return new DocuLinkStorage(
-                content.Version,
-                content.Folders,
-                content.Pdfs,
-                links);
+            return new DocuLinkStorage(content.Version, content.Folders, content.Pdfs, links);
         }
 
         public void Save(DocuLinkStorage storage)
         {
             if (storage == null) throw new ArgumentNullException(nameof(storage));
-
             SaveContent(new DocuLinkContent(storage.Version, storage.Folders, storage.Pdfs));
             SaveLinks(storage.LinkedRectangles);
         }
 
-        public bool TryGetPdf(string id, out PdfDocument pdf)
-        {
-            if (string.IsNullOrWhiteSpace(id))
-                throw new ArgumentException("PDF id must be non-empty.", nameof(id));
-
-            DocuLinkContent content = LoadContent();
-            pdf = content.Pdfs.FirstOrDefault(p => string.Equals(p.Id, id, StringComparison.Ordinal));
-            return pdf != null;
-        }
-
-        public void UpsertPdf(PdfDocument pdf)
-        {
-            if (pdf == null) throw new ArgumentNullException(nameof(pdf));
-            if (string.IsNullOrWhiteSpace(pdf.Id))
-                throw new ArgumentException("PDF id must be non-empty.", nameof(pdf));
-
-            DocuLinkContent content = LoadContent();
-            List<PdfDocument> pdfs = content.Pdfs.ToList();
-            int index = pdfs.FindIndex(p => string.Equals(p.Id, pdf.Id, StringComparison.Ordinal));
-            if (index >= 0)
-                pdfs[index] = pdf;
-            else
-                pdfs.Add(pdf);
-
-            SaveContent(new DocuLinkContent(content.Version, content.Folders, pdfs));
-        }
-
-        public bool RemovePdf(string id)
-        {
-            if (string.IsNullOrWhiteSpace(id))
-                throw new ArgumentException("PDF id must be non-empty.", nameof(id));
-
-            DocuLinkContent content = LoadContent();
-            List<PdfDocument> pdfs = content.Pdfs.Where(p => !string.Equals(p.Id, id, StringComparison.Ordinal)).ToList();
-            if (pdfs.Count == content.Pdfs.Count)
-                return false;
-
-            SaveContent(new DocuLinkContent(content.Version, content.Folders, pdfs));
-            return true;
-        }
-
-        public void UpsertFolder(PdfFolder folder)
-        {
-            if (folder == null) throw new ArgumentNullException(nameof(folder));
-            if (string.IsNullOrWhiteSpace(folder.Id))
-                throw new ArgumentException("Folder id must be non-empty.", nameof(folder));
-
-            DocuLinkContent content = LoadContent();
-            List<PdfFolder> folders = content.Folders.ToList();
-            int index = folders.FindIndex(f => string.Equals(f.Id, folder.Id, StringComparison.Ordinal));
-            if (index >= 0)
-                folders[index] = folder;
-            else
-                folders.Add(folder);
-
-            SaveContent(new DocuLinkContent(content.Version, folders, content.Pdfs));
-        }
-
-        public bool RemoveFolder(string id)
-        {
-            if (string.IsNullOrWhiteSpace(id))
-                throw new ArgumentException("Folder id must be non-empty.", nameof(id));
-
-            DocuLinkContent content = LoadContent();
-            List<PdfFolder> folders = content.Folders.Where(f => !string.Equals(f.Id, id, StringComparison.Ordinal)).ToList();
-            if (folders.Count == content.Folders.Count)
-                return false;
-
-            List<PdfDocument> pdfs = content.Pdfs.Select(p =>
-            {
-                if (!string.Equals(p.FolderId, id, StringComparison.Ordinal))
-                    return p;
-                return new PdfDocument(p.Id, p.Name, p.Base64, null, p.DateAdded, p.FileSizeBytes)
-                {
-                    OcrStatus = p.OcrStatus,
-                    GeometryBase64 = p.GeometryBase64,
-                };
-            }).ToList();
-
-            SaveContent(new DocuLinkContent(content.Version, folders, pdfs));
-            return true;
-        }
+        // ── LinkedRectangle helpers ───────────────────────────────────────────
 
         public bool TryGetLinkedRectangle(string id, out LinkedRectangle linkedRectangle)
         {
@@ -197,10 +295,8 @@ namespace DocuLink.Addin.Modules.CustomXml
 
             List<LinkedRectangle> links = LoadLinks().ToList();
             int index = links.FindIndex(r => string.Equals(r.Id, linkedRectangle.Id, StringComparison.Ordinal));
-            if (index >= 0)
-                links[index] = linkedRectangle;
-            else
-                links.Add(linkedRectangle);
+            if (index >= 0) links[index] = linkedRectangle;
+            else links.Add(linkedRectangle);
 
             SaveLinks(links);
         }
@@ -220,11 +316,20 @@ namespace DocuLink.Addin.Modules.CustomXml
             return true;
         }
 
+        // ── Store cleanup ─────────────────────────────────────────────────────
+
         public void DeleteStore()
         {
+            // Delete all per-PDF binary parts first
+            DocuLinkContent content = LoadContent();
+            foreach (PdfMetadata pdf in content.Pdfs)
+                DeletePdfBinary(pdf.Id);
+
             DeletePart(DocuLinkXml.ContentNamespaceUri);
             DeletePart(DocuLinkXml.LinksNamespaceUri);
         }
+
+        // ── Private COM helpers ───────────────────────────────────────────────
 
         private Office.CustomXMLPart FindPartByNamespace(string namespaceUri)
         {

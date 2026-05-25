@@ -235,11 +235,13 @@
     <Compile Include="Modules\CustomXml\Models\LinkedCell.cs" />
     <Compile Include="Modules\CustomXml\Models\LinkedRectangle.cs" />
     <Compile Include="Modules\CustomXml\Models\PdfDocument.cs" />
+    <Compile Include="Modules\CustomXml\Models\PdfMetadata.cs" />
     <Compile Include="Modules\CustomXml\Models\PdfFolder.cs" />
     <Compile Include="Modules\CustomXml\Models\PdfRectangle.cs" />
     <Compile Include="Modules\CustomXml\Models\RectangleCoordinateSpace.cs" />
     <Compile Include="Modules\CustomXml\Serialization\DocuLinkContentSerializer.cs" />
     <Compile Include="Modules\CustomXml\Serialization\DocuLinkLinksSerializer.cs" />
+    <Compile Include="Modules\CustomXml\Serialization\DocuLinkPdfBinarySerializer.cs" />
     <Compile Include="Modules\Services\AddPdfDocumentService.cs" />
     <Compile Include="Modules\Services\CellFormatter.cs" />
     <Compile Include="Modules\Services\CreateLinkService.cs" />

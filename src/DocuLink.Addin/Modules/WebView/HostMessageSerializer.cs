@@ -52,6 +52,43 @@ namespace DocuLink.Addin.Modules.WebView
             return sb.ToString();
         }
 
+        /// <summary>Returns the JSON payload for a <c>pdf-added</c> message.</summary>
+        public static string BuildPdfAdded(PdfDocument pdf)
+        {
+            var sb = new StringBuilder();
+            sb.Append("{\"type\":\"pdf-added\",\"pdf\":{");
+            sb.Append("\"id\":"); AppendString(sb, pdf.Id);
+            sb.Append(",\"name\":"); AppendString(sb, pdf.Name ?? string.Empty);
+            sb.Append(",\"base64\":"); AppendString(sb, pdf.Base64 ?? string.Empty);
+            if (!string.IsNullOrWhiteSpace(pdf.GeometryBase64))
+            {
+                sb.Append(",\"geometryBase64\":"); AppendString(sb, pdf.GeometryBase64);
+            }
+            sb.Append("}}");
+            return sb.ToString();
+        }
+
+        /// <summary>Returns the JSON payload for a <c>pdf-name-updated</c> message.</summary>
+        public static string BuildPdfNameUpdated(string id, string name)
+        {
+            var sb = new StringBuilder();
+            sb.Append("{\"type\":\"pdf-name-updated\"");
+            sb.Append(",\"id\":"); AppendString(sb, id ?? string.Empty);
+            sb.Append(",\"name\":"); AppendString(sb, name ?? string.Empty);
+            sb.Append('}');
+            return sb.ToString();
+        }
+
+        /// <summary>Returns the JSON payload for a <c>pdf-removed</c> message.</summary>
+        public static string BuildPdfRemoved(string id)
+        {
+            var sb = new StringBuilder();
+            sb.Append("{\"type\":\"pdf-removed\"");
+            sb.Append(",\"id\":"); AppendString(sb, id ?? string.Empty);
+            sb.Append('}');
+            return sb.ToString();
+        }
+
         /// <summary>
         /// Returns the JSON payload for a <c>linked-rectangles-loaded</c> message.
         /// </summary>

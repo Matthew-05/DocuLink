@@ -9,7 +9,8 @@ namespace DocuLink.Addin.Modules.Services
     public sealed class AddPdfDocumentService
     {
         /// <summary>Embeds PDF bytes in the workbook custom XML store without creating a linked rectangle.</summary>
-        public void AddEmbeddedPdf(Excel.Workbook workbook, string pdfFilePath, string folderId = null)
+        /// <returns>The GUID of the newly stored PDF.</returns>
+        public string AddEmbeddedPdf(Excel.Workbook workbook, string pdfFilePath, string folderId = null)
         {
             if (workbook == null)
                 throw new ArgumentNullException(nameof(workbook));
@@ -28,10 +29,12 @@ namespace DocuLink.Addin.Modules.Services
 
             var store = new DocuLinkCustomXmlPartStore(workbook);
             store.UpsertPdf(pdf);
+            return pdfId;
         }
 
         /// <summary>Embeds PDF bytes provided as a base64 string without reading from disk.</summary>
-        public void AddEmbeddedPdfFromBase64(Excel.Workbook workbook, string name, string base64, string folderId = null)
+        /// <returns>The GUID of the newly stored PDF.</returns>
+        public string AddEmbeddedPdfFromBase64(Excel.Workbook workbook, string name, string base64, string folderId = null)
         {
             if (workbook == null)
                 throw new ArgumentNullException(nameof(workbook));
@@ -51,6 +54,7 @@ namespace DocuLink.Addin.Modules.Services
 
             var store = new DocuLinkCustomXmlPartStore(workbook);
             store.UpsertPdf(pdf);
+            return pdfId;
         }
 
     }
