@@ -11,15 +11,17 @@ import type { RectRenderer } from "./rect-renderer.js";
  * - If a different PDF is required, switches to it first (awaiting full render),
  *   then jumps and highlights.
  * - If the rectangle is not fully visible, zoom is set to page-fit first.
+ * - Updates the page controller to reflect the current page.
  */
 export function createRectNavigator(
   viewer: PdfViewer,
   selector: PdfSelector,
   renderer: RectRenderer,
   applyZoom: (scale: ZoomLevel) => void,
+  onNavigateToPage?: (pageNumber: number) => void,
 ): (id: string, pdfId: string, page: number) => void {
   return (id, pdfId, page) => {
-    void _navigate(viewer, selector, renderer, applyZoom, id, pdfId, page);
+    void _navigate(viewer, selector, renderer, applyZoom, id, pdfId, page, onNavigateToPage);
   };
 }
 
@@ -31,6 +33,7 @@ async function _navigate(
   id: string,
   pdfId: string,
   page: number,
+  onNavigateToPage?: (pageNumber: number) => void,
 ): Promise<void> {
   // Ignore stale navigate messages (e.g. queued before a ribbon bulk delete).
   if (!renderer.hasRectangle(id)) return;
@@ -89,4 +92,7 @@ async function _navigate(
       console.log(`[RectNavigator] Same-PDF jump to id=${id}, page=${page + 1}, rect fully visible, no zoom needed`);
     }
   }
+
+  // Update page controller to reflect navigation
+  onNavigateToPage?.(page + 1);
 }
