@@ -72,41 +72,56 @@ export class PdfViewer {
 
     this._doc = doc;
 
+    // Fetch all page dimensions in parallel — no canvas, just metadata.
+    const pages = await Promise.all(
+      Array.from({ length: doc.numPages }, (_, i) => doc.getPage(i + 1))
+    );
+    if (generation !== this._loadGeneration) return;
+
+    const dims = pages.map(page => {
+      const vp = page.getViewport({ scale: 1.0 });
+      page.cleanup();
+      return { baseWidth: vp.width, baseHeight: vp.height };
+    });
+
+    // Create all wrappers with correct dimensions and populate _pageEntries fully.
+    const wrappers = this._createPageWrappers(doc.numPages, dims);
+
     for (const cb of this._onLoadedCallbacks) {
-      cb(this._doc.numPages);
+      cb(doc.numPages);
     }
 
-    const wrappers = this._ensurePageWrappers(this._doc.numPages);
-
-    // Render the target page first so navigation can complete immediately.
-    const target = Math.max(1, Math.min(priorityPage, this._doc.numPages));
-    const targetWrapper = wrappers[target - 1]!;
-    const targetDims = await renderPage(this._doc, target, targetWrapper, this._scale);
+    // Render the priority page canvas so the user sees something immediately.
+    const target = Math.max(1, Math.min(priorityPage, doc.numPages));
+    console.log(`[PdfViewer] Priority render: page ${target} at scale ${this._scale}`);
+    await renderPage(doc, target, wrappers[target - 1]!, this._scale);
     if (generation !== this._loadGeneration) return;
-    this._pageEntries[target - 1] = { wrapper: targetWrapper, ...targetDims };
 
     for (const cb of this._onDocumentChangedCallbacks) {
       cb();
     }
 
     // Render remaining pages in the background.
-    const capturedDoc = this._doc;
+    const capturedDoc = doc;
     this._renderingQueue = this._renderingQueue.then(async () => {
+      console.log(`[PdfViewer] Background rendering remaining pages`);
       for (let i = 1; i <= capturedDoc.numPages; i++) {
         if (i === target) continue;
         if (generation !== this._loadGeneration) return;
-        const wrapper = wrappers[i - 1];
-        if (!wrapper) continue;
-        const dims = await renderPage(capturedDoc, i, wrapper, this._scale);
-        if (generation !== this._loadGeneration) return;
-        this._pageEntries[i - 1] = { wrapper, ...dims };
+        const entry = this._pageEntries[i - 1];
+        if (!entry) continue;
+        await renderPage(capturedDoc, i, entry.wrapper, this._scale);
+        console.log(`[PdfViewer] Background rendered page ${i}`);
       }
+      console.log(`[PdfViewer] Background rendering complete`);
     });
   }
 
   setZoom(scale: ZoomLevel, anchor?: { x: number; y: number }): void {
     const oldScale = this._scale;
     if (oldScale === scale) return;
+
+    console.log(`[PdfViewer] setZoom: ${oldScale} → ${scale}`);
 
     // Instantly resize wrapper divs so the layout reflows correctly — pages
     // respace immediately without any CSS transform hackery. The canvas inside
@@ -138,6 +153,7 @@ export class PdfViewer {
 
     this._cancelZoomDebounce();
     this._zoomDebounce = setTimeout(() => {
+      console.log(`[PdfViewer] Debounce timeout: starting _renderAll at scale ${this._scale}`);
       this._zoomDebounce = null;
       this._renderingQueue = this._renderingQueue.then(() => this._renderAll());
     }, ZOOM_DEBOUNCE_MS);
@@ -150,44 +166,44 @@ export class PdfViewer {
     wrapper?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
-  /** Returns the scale that fits the given page fully within the viewer viewport, or null if page dims are not yet known. */
   getPageFitScale(pageNumber: number): ZoomLevel | null {
     const entry = this._pageEntries[pageNumber - 1];
     if (!entry) return null;
     const w = this.element.clientWidth;
     const h = this.element.clientHeight;
     if (!w || !h) return null;
-    return Math.min(w / entry.baseWidth, h / entry.baseHeight);
+    const fitScale = Math.min(w / entry.baseWidth, h / entry.baseHeight);
+    console.log(`[PdfViewer] getPageFitScale(${pageNumber}): base=${entry.baseWidth}×${entry.baseHeight}, viewport=${w}×${h}, scale=${fitScale}`);
+    return fitScale;
   }
 
   private async _renderAll(): Promise<void> {
-    if (!this._doc) return;
+    const doc = this._doc;
+    if (!doc) return;
 
-    const wrappers = this._ensurePageWrappers(this._doc.numPages);
-
-    for (let i = 1; i <= this._doc.numPages; i++) {
-      const wrapper = wrappers[i - 1];
-      if (!wrapper) continue;
-      const { baseWidth, baseHeight } = await renderPage(this._doc, i, wrapper, this._scale);
-      this._pageEntries[i - 1] = { wrapper, baseWidth, baseHeight };
+    console.log(`[PdfViewer] _renderAll at scale ${this._scale}`);
+    for (let i = 0; i < this._pageEntries.length; i++) {
+      const entry = this._pageEntries[i];
+      if (!entry || this._doc !== doc) continue;
+      await renderPage(doc, i + 1, entry.wrapper, this._scale);
     }
   }
 
-  private _ensurePageWrappers(total: number): HTMLDivElement[] {
-    const existing = Array.from(
-      this.element.querySelectorAll<HTMLDivElement>("div[data-page]")
-    );
-
-    if (existing.length === total) return existing;
-
+  private _createPageWrappers(
+    total: number,
+    dims: Array<{ baseWidth: number; baseHeight: number }>,
+  ): HTMLDivElement[] {
     this.element.replaceChildren();
     const result: HTMLDivElement[] = [];
 
-    for (let i = 1; i <= total; i++) {
+    for (let i = 0; i < total; i++) {
       const div = document.createElement("div");
       div.className = "viewer__page";
-      div.dataset["page"] = String(i);
+      div.dataset["page"] = String(i + 1);
+      div.style.width = `${dims[i]!.baseWidth * this._scale}px`;
+      div.style.height = `${dims[i]!.baseHeight * this._scale}px`;
       this.element.appendChild(div);
+      this._pageEntries[i] = { wrapper: div, ...dims[i]! };
       result.push(div);
     }
 

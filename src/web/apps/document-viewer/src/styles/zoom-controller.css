@@ -25,3 +25,9 @@
   font-size: var(--font-size-sm);
   color: var(--color-text);
 }
+
+.zoom-controller__fit-btn {
+  width: auto;
+  padding: 0 8px;
+  font-size: var(--font-size-sm);
+}

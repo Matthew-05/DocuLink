@@ -35,7 +35,8 @@ async function _navigate(
   // Ignore stale navigate messages (e.g. queued before a ribbon bulk delete).
   if (!renderer.hasRectangle(id)) return;
 
-  if (viewer.getActivePdfId() !== pdfId) {
+  const crossPdf = viewer.getActivePdfId() !== pdfId;
+  if (crossPdf) {
     const entry = selector.getEntry(pdfId);
     if (!entry) return;
     selector.setActiveId(pdfId);
@@ -56,16 +57,36 @@ async function _navigate(
   );
   if (!pageWrapper) return;
 
-  const viewerRect  = viewer.element.getBoundingClientRect();
-  const targetRect  = rectEl.getBoundingClientRect();
-  const fullyVisible = targetRect.top    >= viewerRect.top
-    && targetRect.bottom <= viewerRect.bottom
-    && targetRect.left   >= viewerRect.left
-    && targetRect.right  <= viewerRect.right;
-
-  if (!fullyVisible) {
+  if (crossPdf) {
+    console.log(`[RectNavigator] Cross-PDF jump to id=${id}, pdfId=${pdfId}, page=${page + 1}`);
     const fitScale = viewer.getPageFitScale(page + 1);
-    if (fitScale !== null) applyZoom(fitScale);
+    if (fitScale !== null) {
+      console.log(`[RectNavigator] Applying fit scale: ${fitScale}`);
+      applyZoom(fitScale);
+    } else {
+      console.log(`[RectNavigator] getPageFitScale returned null, skipping zoom`);
+    }
     pageWrapper.scrollIntoView({ behavior: "instant" as ScrollBehavior });
+  } else {
+    const viewerRect = viewer.element.getBoundingClientRect();
+    const targetRect = rectEl.getBoundingClientRect();
+    const fullyVisible = targetRect.top    >= viewerRect.top
+      && targetRect.bottom <= viewerRect.bottom
+      && targetRect.left   >= viewerRect.left
+      && targetRect.right  <= viewerRect.right;
+
+    if (!fullyVisible) {
+      console.log(`[RectNavigator] Same-PDF jump to id=${id}, page=${page + 1}, rect not fully visible`);
+      const fitScale = viewer.getPageFitScale(page + 1);
+      if (fitScale !== null) {
+        console.log(`[RectNavigator] Applying fit scale: ${fitScale}`);
+        applyZoom(fitScale);
+      } else {
+        console.log(`[RectNavigator] getPageFitScale returned null, skipping zoom`);
+      }
+      pageWrapper.scrollIntoView({ behavior: "instant" as ScrollBehavior });
+    } else {
+      console.log(`[RectNavigator] Same-PDF jump to id=${id}, page=${page + 1}, rect fully visible, no zoom needed`);
+    }
   }
 }
