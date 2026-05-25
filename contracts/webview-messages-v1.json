@@ -79,6 +79,56 @@
       ]
     },
 
+    "PdfAddedMessage": {
+      "description": "Sent by the C# host when a single new PDF is added to the workbook. The viewer should add the entry without reloading existing PDFs.",
+      "type": "object",
+      "required": ["type", "pdf"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "const": "pdf-added" },
+        "pdf": { "$ref": "#/definitions/PdfPayload" }
+      },
+      "examples": [
+        {
+          "type": "pdf-added",
+          "pdf": {
+            "id":     "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+            "name":   "Invoice Q1 2026.pdf",
+            "base64": "JVBERi0xLjQKJeLjz9M="
+          }
+        }
+      ]
+    },
+
+    "PdfNameUpdatedMessage": {
+      "description": "Sent by the C# host when a PDF is renamed. The viewer should update the display name without reloading any PDF bytes.",
+      "type": "object",
+      "required": ["type", "id", "name"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "const": "pdf-name-updated" },
+        "id":   { "type": "string", "description": "GUID of the renamed PDF." },
+        "name": { "type": "string", "description": "New display name." }
+      },
+      "examples": [
+        { "type": "pdf-name-updated", "id": "3fa85f64-5717-4562-b3fc-2c963f66afa6", "name": "Invoice Q2 2026.pdf" }
+      ]
+    },
+
+    "PdfRemovedMessage": {
+      "description": "Sent by the C# host when a PDF is deleted from the workbook. The viewer should remove the entry and revoke its blob URL.",
+      "type": "object",
+      "required": ["type", "id"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "const": "pdf-removed" },
+        "id":   { "type": "string", "description": "GUID of the removed PDF." }
+      },
+      "examples": [
+        { "type": "pdf-removed", "id": "3fa85f64-5717-4562-b3fc-2c963f66afa6" }
+      ]
+    },
+
     "ManagerReadyMessage": {
       "description": "Sent once by the file-manager web app after JavaScript has initialised. The host responds by posting a FilesLoadedMessage.",
       "type": "object",
@@ -508,6 +558,9 @@
     { "$ref": "#/definitions/ViewerReadyMessage" },
     { "$ref": "#/definitions/PdfsLoadedMessage" },
     { "$ref": "#/definitions/PdfUpdatedMessage" },
+    { "$ref": "#/definitions/PdfAddedMessage" },
+    { "$ref": "#/definitions/PdfNameUpdatedMessage" },
+    { "$ref": "#/definitions/PdfRemovedMessage" },
     { "$ref": "#/definitions/ManagerReadyMessage" },
     { "$ref": "#/definitions/FilesLoadedMessage" },
     { "$ref": "#/definitions/AddFilesMessage" },

@@ -131,15 +131,15 @@ namespace DocuLink.Addin.Ribbon
                     return;
 
                 var service = new AddPdfDocumentService();
-                int added = 0;
+                var addedIds = new System.Collections.Generic.List<string>();
                 var errors = new List<string>();
 
                 foreach (string path in dialog.FileNames)
                 {
                     try
                     {
-                        service.AddEmbeddedPdf(app.ActiveWorkbook, path);
-                        added++;
+                        string newId = service.AddEmbeddedPdf(app.ActiveWorkbook, path);
+                        addedIds.Add(newId);
                     }
                     catch (Exception ex)
                     {
@@ -147,14 +147,14 @@ namespace DocuLink.Addin.Ribbon
                     }
                 }
 
-                if (added > 0)
-                    Globals.ThisAddIn.RefreshTaskPanePdfs();
+                foreach (string id in addedIds)
+                    Globals.ThisAddIn.NotifyViewerPdfAdded(id);
 
                 if (errors.Count > 0)
                 {
                     var message = new StringBuilder();
-                    if (added > 0)
-                        message.AppendLine($"Added {added} PDF(s).").AppendLine();
+                    if (addedIds.Count > 0)
+                        message.AppendLine($"Added {addedIds.Count} PDF(s).").AppendLine();
                     message.AppendLine("Some files could not be added:");
                     message.AppendLine(string.Join(Environment.NewLine, errors));
                     MessageBox.Show(message.ToString(), "DocuLink", MessageBoxButtons.OK, MessageBoxIcon.Warning);

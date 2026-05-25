@@ -60,12 +60,15 @@ export function mountApp(root: HTMLElement): void {
   let currentFiles: FileEntry[] = [];
 
   function onFilesLoaded(folders: FolderEntry[], files: FileEntry[]): void {
+    console.timeEnd("[DocuLink] rename round-trip");
     currentFiles = files;
     currentFolders = folders;
+    const t0 = performance.now();
     folderPanel.update(folders, files);
     fileTable.update(files, selectedFolderId);
     fileTable.updateFolders(folders);
     toolbar.updateFolders(currentFolders);
+    console.log(`[DocuLink] DOM update: ${(performance.now() - t0).toFixed(1)}ms`);
   }
 
   function onOcrStatus(

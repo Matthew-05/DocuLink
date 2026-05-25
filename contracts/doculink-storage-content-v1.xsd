@@ -1,4 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  Content Custom XML part: metadata only.
+  Binary data (PDF bytes + geometry) lives in per-PDF Custom XML parts with namespace:
+    http://doculink.dev/schemas/storage/1/pdf-data/{pdfId}
+  See doculink-storage-pdf-binary-v1.xsd for that schema.
+-->
 <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
            targetNamespace="http://doculink.dev/schemas/storage/1/content"
            xmlns:dl="http://doculink.dev/schemas/storage/1/content"
@@ -34,12 +40,10 @@
   <xs:complexType name="PdfType">
     <xs:attribute name="id"            type="xs:string"   use="required" />
     <xs:attribute name="name"          type="xs:string"   use="required" />
-    <xs:attribute name="Base64"        type="xs:string"   use="required" />
     <xs:attribute name="folderId"      type="xs:string"   use="optional" />
     <xs:attribute name="dateAdded"     type="xs:dateTime" use="optional" />
     <xs:attribute name="fileSizeBytes" type="xs:long"     use="optional" />
-    <xs:attribute name="ocrStatus"       type="xs:string"   use="optional" />
-    <xs:attribute name="geometryBase64"  type="xs:string"   use="optional" />
+    <xs:attribute name="ocrStatus"     type="xs:string"   use="optional" />
   </xs:complexType>
 
 </xs:schema>

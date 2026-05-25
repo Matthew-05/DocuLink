@@ -87,5 +87,16 @@ export function connectViewerToHostBridge(
       }
     },
     onLinkRectanglesRemoved,
+    (id, name) => {
+      selector.updateEntryName(id, name);
+    },
+    (id) => {
+      cache.clearPdf(id);
+      selector.removeEntry(id);
+      if (viewer.getActivePdfId() === id) {
+        const next = selector.getEntries()[0];
+        if (next) reloadEntry(next);
+      }
+    },
   );
 }

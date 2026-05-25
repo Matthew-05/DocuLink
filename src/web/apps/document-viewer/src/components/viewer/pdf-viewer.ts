@@ -112,9 +112,10 @@ export class PdfViewer {
     // respace immediately without any CSS transform hackery. The canvas inside
     // each wrapper fills it via CSS (width/height: 100%), so it stretches to
     // preview the new size until the debounced re-render fires.
-    for (const { wrapper, baseWidth, baseHeight } of this._pageEntries) {
-      wrapper.style.width = `${baseWidth * scale}px`;
-      wrapper.style.height = `${baseHeight * scale}px`;
+    for (const entry of this._pageEntries) {
+      if (!entry) continue;
+      entry.wrapper.style.width = `${entry.baseWidth * scale}px`;
+      entry.wrapper.style.height = `${entry.baseHeight * scale}px`;
     }
 
     const ax = anchor?.x ?? this.element.clientWidth / 2;
@@ -147,6 +148,16 @@ export class PdfViewer {
       `[data-page="${pageNumber}"]`
     );
     wrapper?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  /** Returns the scale that fits the given page fully within the viewer viewport, or null if page dims are not yet known. */
+  getPageFitScale(pageNumber: number): ZoomLevel | null {
+    const entry = this._pageEntries[pageNumber - 1];
+    if (!entry) return null;
+    const w = this.element.clientWidth;
+    const h = this.element.clientHeight;
+    if (!w || !h) return null;
+    return Math.min(w / entry.baseWidth, h / entry.baseHeight);
   }
 
   private async _renderAll(): Promise<void> {
