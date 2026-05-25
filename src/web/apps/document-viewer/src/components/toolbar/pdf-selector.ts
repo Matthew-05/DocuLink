@@ -96,6 +96,10 @@ export class PdfSelector {
     if (this._activeId === id) {
       this._triggerLabel.textContent = name;
     }
+    // If dropdown is open, clear search to show all entries and display the renamed PDF
+    if (this._isOpen) {
+      this._searchInput.value = "";
+    }
     this._renderList(this._searchInput.value);
   }
 
