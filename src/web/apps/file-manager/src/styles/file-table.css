@@ -218,3 +218,41 @@
   background: rgba(224, 85, 85, 0.15);
   color: var(--color-danger);
 }
+
+/* ── Context menu ─────────────────────────────────────────────────────────── */
+
+.file-table__context-menu {
+  position: fixed;
+  display: none;
+  flex-direction: column;
+  min-width: 150px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  z-index: 1000;
+  padding: 4px 0;
+}
+
+.file-table__context-menu--visible {
+  display: flex;
+}
+
+.file-table__context-item {
+  padding: 8px 16px;
+  text-align: left;
+  background: none;
+  border: none;
+  font-size: 12px;
+  color: var(--color-text);
+  cursor: pointer;
+  transition: background 0.1s;
+}
+
+.file-table__context-item:hover {
+  background: var(--color-surface-2);
+}
+
+.file-table__context-item:active {
+  background: rgba(var(--color-accent-rgb, 80, 130, 220), 0.1);
+}
