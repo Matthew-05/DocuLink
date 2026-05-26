@@ -21,6 +21,7 @@ export class PdfViewer {
   private _renderingQueue: Promise<void> = Promise.resolve();
   private _zoomDebounce: ReturnType<typeof setTimeout> | null = null;
   private _loadGeneration = 0;
+  private _loadComplete: Promise<void> = Promise.resolve();
 
   private readonly _onLoadedCallbacks: Array<(totalPages: number) => void> = [];
   private readonly _onDocumentChangedCallbacks: Array<() => void> = [];
@@ -31,7 +32,7 @@ export class PdfViewer {
 
     const placeholder = document.createElement("div");
     placeholder.className = "viewer__placeholder";
-    placeholder.textContent = "No document selected";
+    placeholder.textContent = "DocuLink Initializing…";
     this.element.appendChild(placeholder);
   }
 
@@ -51,6 +52,18 @@ export class PdfViewer {
     return this._activePdfId;
   }
 
+  waitForLoad(): Promise<void> {
+    return this._loadComplete;
+  }
+
+  showNoPdfsState(): void {
+    this.element.replaceChildren();
+    const placeholder = document.createElement("div");
+    placeholder.className = "viewer__placeholder";
+    placeholder.textContent = "No PDFs added";
+    this.element.appendChild(placeholder);
+  }
+
   getPageLayout(): Array<{ pageNumber: number; wrapper: HTMLDivElement }> {
     return Array.from(
       this.element.querySelectorAll<HTMLDivElement>("div[data-page]")
@@ -64,9 +77,13 @@ export class PdfViewer {
     this._pageEntries = [];
     this.element.replaceChildren();
 
+    let resolveLoad!: () => void;
+    this._loadComplete = new Promise<void>((resolve) => { resolveLoad = resolve; });
+
     const doc = await loadPdfDocument(url, this._doc);
     if (generation !== this._loadGeneration) {
       doc.destroy();
+      resolveLoad();
       return;
     }
 
@@ -76,7 +93,10 @@ export class PdfViewer {
     const pages = await Promise.all(
       Array.from({ length: doc.numPages }, (_, i) => doc.getPage(i + 1))
     );
-    if (generation !== this._loadGeneration) return;
+    if (generation !== this._loadGeneration) {
+      resolveLoad();
+      return;
+    }
 
     const dims = pages.map(page => {
       const vp = page.getViewport({ scale: 1.0 });
@@ -95,11 +115,20 @@ export class PdfViewer {
     const target = Math.max(1, Math.min(priorityPage, doc.numPages));
     console.log(`[PdfViewer] Priority render: page ${target} at scale ${this._scale}`);
     await renderPage(doc, target, wrappers[target - 1]!, this._scale);
-    if (generation !== this._loadGeneration) return;
+    if (generation !== this._loadGeneration) {
+      resolveLoad();
+      return;
+    }
 
     for (const cb of this._onDocumentChangedCallbacks) {
       cb();
     }
+
+    // Signal that document load and initial rendering is complete.
+    // This must happen AFTER onDocumentChanged so that rect-renderer's
+    // _renderAll() has already rendered rectangles to the DOM before
+    // navigation proceeds.
+    resolveLoad();
 
     // Render remaining pages in the background.
     const capturedDoc = doc;
