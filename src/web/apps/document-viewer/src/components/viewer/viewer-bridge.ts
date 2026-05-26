@@ -68,6 +68,8 @@ export function connectViewerToHostBridge(
       const target = pickEntryToLoad(entries, viewer.getActivePdfId());
       if (target) {
         reloadEntry(target);
+      } else {
+        viewer.showNoPdfsState();
       }
     },
     onLinkedRectangles,
@@ -96,6 +98,7 @@ export function connectViewerToHostBridge(
       if (viewer.getActivePdfId() === id) {
         const next = selector.getEntries()[0];
         if (next) reloadEntry(next);
+        else viewer.showNoPdfsState();
       }
     },
   );

@@ -18,6 +18,7 @@ export class FileTable {
   private _contextMenuFile: FileEntry | null = null;
   private _contextMenuNameSpan: HTMLSpanElement | null = null;
   private _contextMenuRow: HTMLTableRowElement | null = null;
+  private _isLoading = true;
   private readonly _onSelectionChange: (ids: string[]) => void;
 
   constructor(container: HTMLElement, options: FileTableOptions) {
@@ -66,6 +67,7 @@ export class FileTable {
   }
 
   update(files: FileEntry[], selectedFolderId: string | null): void {
+    this._isLoading = false;
     this._files = files;
     this._selectedFolderId = selectedFolderId;
     // Drop selections that no longer exist
@@ -155,7 +157,9 @@ export class FileTable {
 
     if (visible.length === 0) {
       const empty = document.createElement("tr");
-      empty.innerHTML = `<td colspan="7" class="file-table__empty">No files here yet. Drop PDFs to add them.</td>`;
+      empty.innerHTML = this._isLoading
+        ? `<td colspan="7" class="file-table__empty">DocuLink Initializing…</td>`
+        : `<td colspan="7" class="file-table__empty">No files here yet. Drop PDFs to add them.</td>`;
       this._tbody.appendChild(empty);
       return;
     }
