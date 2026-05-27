@@ -54,7 +54,7 @@ export function connectViewerToHostBridge(
 
   const reloadEntry = (entry: PdfEntry): void => {
     selector.setActiveId(entry.id);
-    void viewer.loadDocument(entry.url, entry.id);
+    void viewer.loadDocument(entry.url, entry.id).then(() => viewer.startBackgroundRender());
   };
 
   initHostBridge(

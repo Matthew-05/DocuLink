@@ -607,6 +607,8 @@ namespace DocuLink.Addin
 
                 {
 
+                    _viewerWindow.InvalidateData();
+
                     _viewerWindow.RefreshDataIfReady();
 
                     return;

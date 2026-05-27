@@ -9,6 +9,7 @@ interface PageEntry {
   wrapper: HTMLDivElement;
   baseWidth: number;
   baseHeight: number;
+  renderedScale: ZoomLevel | null;
 }
 
 export class PdfViewer {
@@ -21,6 +22,7 @@ export class PdfViewer {
   private _renderingQueue: Promise<void> = Promise.resolve();
   private _zoomDebounce: ReturnType<typeof setTimeout> | null = null;
   private _loadGeneration = 0;
+  private _renderGeneration = 0;
   private _loadComplete: Promise<void> = Promise.resolve();
 
   private readonly _onLoadedCallbacks: Array<(totalPages: number) => void> = [];
@@ -52,6 +54,10 @@ export class PdfViewer {
     return this._activePdfId;
   }
 
+  getCurrentZoom(): ZoomLevel {
+    return this._scale;
+  }
+
   waitForLoad(): Promise<void> {
     return this._loadComplete;
   }
@@ -70,7 +76,7 @@ export class PdfViewer {
     ).map((wrapper, i) => ({ pageNumber: i + 1, wrapper }));
   }
 
-  async loadDocument(url: string, pdfId?: string, priorityPage = 1): Promise<void> {
+  async loadDocument(url: string, pdfId?: string): Promise<void> {
     const generation = ++this._loadGeneration;
     this._cancelZoomDebounce();
     this._activePdfId = pdfId ?? null;
@@ -105,50 +111,29 @@ export class PdfViewer {
     });
 
     // Create all wrappers with correct dimensions and populate _pageEntries fully.
-    const wrappers = this._createPageWrappers(doc.numPages, dims);
+    // renderedScale is initialized to null — all pages are unrendered.
+    this._createPageWrappers(doc.numPages, dims);
 
     for (const cb of this._onLoadedCallbacks) {
       cb(doc.numPages);
-    }
-
-    // Render the priority page canvas so the user sees something immediately.
-    const target = Math.max(1, Math.min(priorityPage, doc.numPages));
-    console.log(`[PdfViewer] Priority render: page ${target} at scale ${this._scale}`);
-    await renderPage(doc, target, wrappers[target - 1]!, this._scale);
-    if (generation !== this._loadGeneration) {
-      resolveLoad();
-      return;
     }
 
     for (const cb of this._onDocumentChangedCallbacks) {
       cb();
     }
 
-    // Signal that document load and initial rendering is complete.
-    // This must happen AFTER onDocumentChanged so that rect-renderer's
-    // _renderAll() has already rendered rectangles to the DOM before
-    // navigation proceeds.
+    // Signal that document load and page wrappers are ready.
+    // No canvas renders have happened — all pages are white placeholders.
+    // Callers are responsible for calling startBackgroundRender() or renderPageNow().
     resolveLoad();
-
-    // Render remaining pages in the background.
-    const capturedDoc = doc;
-    this._renderingQueue = this._renderingQueue.then(async () => {
-      console.log(`[PdfViewer] Background rendering remaining pages`);
-      for (let i = 1; i <= capturedDoc.numPages; i++) {
-        if (i === target) continue;
-        if (generation !== this._loadGeneration) return;
-        const entry = this._pageEntries[i - 1];
-        if (!entry) continue;
-        await renderPage(capturedDoc, i, entry.wrapper, this._scale);
-        console.log(`[PdfViewer] Background rendered page ${i}`);
-      }
-      console.log(`[PdfViewer] Background rendering complete`);
-    });
   }
 
   setZoom(scale: ZoomLevel, anchor?: { x: number; y: number }): void {
     const oldScale = this._scale;
-    if (oldScale === scale) return;
+    if (oldScale === scale) {
+      console.log(`[PdfViewer] setZoom: already at ${scale}, skipping`);
+      return;
+    }
 
     console.log(`[PdfViewer] setZoom: ${oldScale} → ${scale}`);
 
@@ -206,13 +191,67 @@ export class PdfViewer {
     return fitScale;
   }
 
-  async renderPageNow(pageNumber: number): Promise<void> {
+  startBackgroundRender(): void {
+    const renderGen = ++this._renderGeneration;
     const doc = this._doc;
     if (!doc) return;
-    const entry = this._pageEntries[pageNumber - 1];
-    if (!entry) return;
-    if (entry.wrapper.querySelector("canvas")) return;
-    await renderPage(doc, pageNumber, entry.wrapper, this._scale);
+    const generation = this._loadGeneration;
+    const capturedScale = this._scale;
+
+    this._renderingQueue = this._renderingQueue.then(async () => {
+      console.log(`[PdfViewer] startBackgroundRender: gen=${renderGen}, doc=${doc.numPages} pages, scale=${capturedScale}`);
+      for (let i = 1; i <= doc.numPages; i++) {
+        if (renderGen !== this._renderGeneration) {
+          console.log(`[PdfViewer] Background render cancelled at page ${i}`);
+          return;
+        }
+        if (generation !== this._loadGeneration) {
+          console.log(`[PdfViewer] Background render aborted: document changed`);
+          return;
+        }
+        const entry = this._pageEntries[i - 1];
+        if (!entry) continue;
+        if (entry.renderedScale === capturedScale) {
+          console.log(`[PdfViewer] Background: skipping page ${i} (already at scale ${capturedScale})`);
+          continue;
+        }
+        console.log(`[PdfViewer] Background: rendering page ${i} at scale ${capturedScale} (currently renderedScale=${entry.renderedScale})`);
+        await renderPage(doc, i, entry.wrapper, capturedScale);
+        entry.renderedScale = capturedScale;
+        console.log(`[PdfViewer] Background rendered page ${i}, renderedScale now=${entry.renderedScale}`);
+      }
+      console.log(`[PdfViewer] Background render complete`);
+    });
+  }
+
+  async renderPageNow(pageNumber: number): Promise<void> {
+    const renderGen = ++this._renderGeneration;
+    const doc = this._doc;
+    if (!doc) return;
+
+    console.log(`[PdfViewer] renderPageNow(${pageNumber}): cancelling background (renderGen=${renderGen}, currentScale=${this._scale}), queuing onto queue`);
+    await new Promise<void>((resolve) => {
+      this._renderingQueue = this._renderingQueue.then(async () => {
+        console.log(`[PdfViewer] renderPageNow(${pageNumber}): dequeued (renderGen=${renderGen}, currentScale=${this._scale})`);
+        const entry = this._pageEntries[pageNumber - 1];
+        if (!entry || this._doc !== doc) {
+          console.log(`[PdfViewer] renderPageNow(${pageNumber}): entry missing or doc changed, aborting`);
+          resolve();
+          return;
+        }
+        console.log(`[PdfViewer] renderPageNow(${pageNumber}): checking renderedScale=${entry.renderedScale} vs currentScale=${this._scale}`);
+        if (entry.renderedScale === this._scale) {
+          console.log(`[PdfViewer] renderPageNow(${pageNumber}): already rendered at scale ${this._scale}, skipping`);
+          resolve();
+          return;
+        }
+        console.log(`[PdfViewer] renderPageNow(${pageNumber}): rendering at scale ${this._scale} (was ${entry.renderedScale})`);
+        await renderPage(doc, pageNumber, entry.wrapper, this._scale);
+        entry.renderedScale = this._scale;
+        console.log(`[PdfViewer] renderPageNow(${pageNumber}): render complete, renderedScale now=${entry.renderedScale}`);
+        resolve();
+      });
+    });
   }
 
   private async _renderAll(): Promise<void> {
@@ -220,19 +259,31 @@ export class PdfViewer {
     if (!doc) return;
 
     console.log(`[PdfViewer] _renderAll at scale ${this._scale}`);
+    let skipped = 0;
+    let rendered = 0;
     for (let i = 0; i < this._pageEntries.length; i++) {
       const entry = this._pageEntries[i];
       if (!entry || this._doc !== doc) continue;
-      await renderPage(doc, i + 1, entry.wrapper, this._scale);
+      const pageNum = i + 1;
+      // Skip pages already rendered at the current scale.
+      if (entry.renderedScale === this._scale) {
+        console.log(`[PdfViewer] _renderAll: skipping page ${pageNum} (scale ${this._scale} already rendered)`);
+        skipped++;
+        continue;
+      }
+      console.log(`[PdfViewer] _renderAll: rendering page ${pageNum} at scale ${this._scale}`);
+      await renderPage(doc, pageNum, entry.wrapper, this._scale);
+      entry.renderedScale = this._scale;
+      rendered++;
     }
+    console.log(`[PdfViewer] _renderAll complete: rendered=${rendered}, skipped=${skipped}`);
   }
 
   private _createPageWrappers(
     total: number,
     dims: Array<{ baseWidth: number; baseHeight: number }>,
-  ): HTMLDivElement[] {
+  ): void {
     this.element.replaceChildren();
-    const result: HTMLDivElement[] = [];
 
     for (let i = 0; i < total; i++) {
       const div = document.createElement("div");
@@ -241,11 +292,8 @@ export class PdfViewer {
       div.style.width = `${dims[i]!.baseWidth * this._scale}px`;
       div.style.height = `${dims[i]!.baseHeight * this._scale}px`;
       this.element.appendChild(div);
-      this._pageEntries[i] = { wrapper: div, ...dims[i]! };
-      result.push(div);
+      this._pageEntries[i] = { wrapper: div, renderedScale: null, ...dims[i]! };
     }
-
-    return result;
   }
 
   private _cancelZoomDebounce(): void {
