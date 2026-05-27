@@ -275,6 +275,7 @@ export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLEleme
     },
     navigate,
     () => { renderer.clearHighlight(); },
+    (id) => { renderer.highlightRectangle(id); },
     (ids) => {
       contextMenu.hide();
       renderer.removeRectangles(ids);

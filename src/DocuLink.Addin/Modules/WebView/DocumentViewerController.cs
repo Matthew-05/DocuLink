@@ -208,9 +208,9 @@ namespace DocuLink.Addin.Modules.WebView
 
                 if (linkedRect != null)
                 {
-                    DocuLinkLog.Trace($"calling SendNavigateToRectangle id={linkedRect.Id}");
-                    SendNavigateToRectangle(linkedRect.Id, linkedRect.PdfId, linkedRect.Rectangle.PageIndex);
-                    DocuLinkLog.Trace("SendNavigateToRectangle done");
+                    DocuLinkLog.Trace($"calling SendHighlightRectangle id={linkedRect.Id}");
+                    SendHighlightRectangle(linkedRect.Id);
+                    DocuLinkLog.Trace("SendHighlightRectangle done");
                 }
 
                 DocuLinkLog.Trace("restoring focus to Excel");
@@ -411,6 +411,20 @@ namespace DocuLink.Addin.Modules.WebView
             {
                 System.Diagnostics.Debug.WriteLine(
                     $"[DocuLink] SendNavigateToRectangle failed: {ex.Message}");
+            }
+        }
+
+        private void SendHighlightRectangle(string id)
+        {
+            try
+            {
+                string json = HostMessageSerializer.BuildHighlightRectangle(id);
+                _webView.CoreWebView2.PostWebMessageAsString(json);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine(
+                    $"[DocuLink] SendHighlightRectangle failed: {ex.Message}");
             }
         }
 

@@ -498,6 +498,20 @@
       ]
     },
 
+    "HighlightRectangleMessage": {
+      "description": "Sent by the C# host to highlight a specific link rectangle in the viewer without changing zoom, scroll, or page. Used after a new rectangle is created so the overlay is visually selected.",
+      "type": "object",
+      "required": ["type", "id"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "const": "highlight-rectangle" },
+        "id":   { "type": "string", "description": "GUID of the LinkedRectangle to highlight." }
+      },
+      "examples": [
+        { "type": "highlight-rectangle", "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890" }
+      ]
+    },
+
     "ResetUiMessage": {
       "description": "Sent by the C# host when the file-manager window is hidden. The web app should reset transient UI state so the next show starts fresh.",
       "type": "object",
@@ -581,6 +595,7 @@
     { "$ref": "#/definitions/LinkRectanglesRemovedMessage" },
     { "$ref": "#/definitions/NavigateToRectangleMessage" },
     { "$ref": "#/definitions/ClearRectangleHighlightMessage" },
+    { "$ref": "#/definitions/HighlightRectangleMessage" },
     { "$ref": "#/definitions/ResetUiMessage" },
     { "$ref": "#/definitions/OcrPdfsMessage" },
     { "$ref": "#/definitions/OcrStatusMessage" }

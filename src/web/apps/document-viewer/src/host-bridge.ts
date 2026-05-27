@@ -57,6 +57,11 @@ interface LinkRectanglesRemovedMessage {
   ids: string[];
 }
 
+interface HighlightRectangleMessage {
+  type: "highlight-rectangle";
+  id: string;
+}
+
 /** Tracks object URLs by PDF id so single-document updates can revoke safely. */
 const _urlsByPdfId = new Map<string, string>();
 
@@ -102,6 +107,7 @@ function handleMessage(
   onLinkedRectangles?: (rects: LinkedRectEntry[]) => void,
   onNavigateToRectangle?: (id: string, pdfId: string, page: number) => void,
   onClearRectangleHighlight?: () => void,
+  onHighlightRectangle?: (id: string) => void,
   onPdfUpdated?: (entry: PdfEntry) => void,
   onLinkRectanglesRemoved?: (ids: string[]) => void,
   onPdfNameUpdated?: (id: string, name: string) => void,
@@ -153,6 +159,13 @@ function handleMessage(
       if (!onNavigateToRectangle) return;
       const navMsg = parsed as NavigateToRectangleMessage;
       onNavigateToRectangle(navMsg.id, navMsg.pdfId, navMsg.page);
+      return;
+    }
+
+    if (type === "highlight-rectangle") {
+      if (!onHighlightRectangle) return;
+      const msg = parsed as HighlightRectangleMessage;
+      onHighlightRectangle(msg.id);
       return;
     }
 
@@ -218,6 +231,7 @@ export function initHostBridge(
   onLinkedRectangles?: (rects: LinkedRectEntry[]) => void,
   onNavigateToRectangle?: (id: string, pdfId: string, page: number) => void,
   onClearRectangleHighlight?: () => void,
+  onHighlightRectangle?: (id: string) => void,
   onPdfUpdated?: (entry: PdfEntry) => void,
   onLinkRectanglesRemoved?: (ids: string[]) => void,
   onPdfNameUpdated?: (id: string, name: string) => void,
@@ -241,6 +255,7 @@ export function initHostBridge(
       onLinkedRectangles,
       onNavigateToRectangle,
       onClearRectangleHighlight,
+      onHighlightRectangle,
       onPdfUpdated,
       onLinkRectanglesRemoved,
       onPdfNameUpdated,
