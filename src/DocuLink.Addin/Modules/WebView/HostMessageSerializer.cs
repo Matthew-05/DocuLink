@@ -158,6 +158,16 @@ namespace DocuLink.Addin.Modules.WebView
             return sb.ToString();
         }
 
+        /// <summary>Returns the JSON payload for a <c>highlight-rectangle</c> message.</summary>
+        public static string BuildHighlightRectangle(string id)
+        {
+            var sb = new StringBuilder();
+            sb.Append("{\"type\":\"highlight-rectangle\"");
+            sb.Append(",\"id\":"); AppendString(sb, id ?? string.Empty);
+            sb.Append('}');
+            return sb.ToString();
+        }
+
         private static void AppendDouble(StringBuilder sb, double value)
         {
             sb.Append(value.ToString("G", System.Globalization.CultureInfo.InvariantCulture));

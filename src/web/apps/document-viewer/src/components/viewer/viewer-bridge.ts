@@ -38,6 +38,7 @@ export function connectViewerToHostBridge(
   onLinkedRectangles?: (rects: LinkedRectEntry[]) => void,
   onNavigateToRectangle?: (id: string, pdfId: string, page: number) => void,
   onClearRectangleHighlight?: () => void,
+  onHighlightRectangle?: (id: string) => void,
   onLinkRectanglesRemoved?: (ids: string[]) => void,
 ): void {
   let indexingCount = 0;
@@ -75,6 +76,7 @@ export function connectViewerToHostBridge(
     onLinkedRectangles,
     onNavigateToRectangle,
     onClearRectangleHighlight,
+    onHighlightRectangle,
     (entry) => {
       selector.upsertEntry(entry);
 
