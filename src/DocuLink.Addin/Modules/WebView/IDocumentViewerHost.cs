@@ -7,6 +7,8 @@ namespace DocuLink.Addin.Modules.WebView
 
         void InvalidateData();
 
+        void NotifyViewerShown();
+
         void SendPdfUpdated(string pdfId);
 
         void SendPdfAdded(string pdfId);

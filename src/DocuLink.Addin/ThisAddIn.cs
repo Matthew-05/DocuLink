@@ -187,7 +187,7 @@ namespace DocuLink.Addin
 
             entry.Pane.Visible = true;
 
-            entry.Host.RefreshDataIfReady();
+            entry.Host.NotifyViewerShown();
 
         }
 
@@ -209,7 +209,7 @@ namespace DocuLink.Addin
 
             _viewerWindow.BringToFront();
 
-            _viewerWindow.RefreshDataIfReady();
+            _viewerWindow.NotifyViewerShown();
 
         }
 
