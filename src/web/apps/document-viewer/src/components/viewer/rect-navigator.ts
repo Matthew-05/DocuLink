@@ -88,8 +88,17 @@ async function _navigate(
       return;
     }
     selector.setActiveId(pdfId);
-    await viewer.loadDocument(entry.url, pdfId, page + 1);
+    await viewer.loadDocument(entry.url, pdfId);
     console.log(`[RectNavigator] Cross-PDF load complete`);
+
+    // Snap to target page immediately so user sees correct placeholder, not page 1,
+    // during the getFitScaleWhenReady polling loop.
+    const earlyPageWrapper = viewer.element.querySelector<HTMLDivElement>(
+      `[data-page="${page + 1}"]`,
+    );
+    console.log(`[RectNavigator] Early scroll: target page ${page + 1}, wrapper found=${!!earlyPageWrapper}, scrollTop before=${viewer.element.scrollTop}`);
+    earlyPageWrapper?.scrollIntoView({ behavior: "instant" as ScrollBehavior });
+    console.log(`[RectNavigator] Early scroll complete, scrollTop after=${viewer.element.scrollTop}`);
   } else {
     console.log(`[RectNavigator] Same-PDF: waiting for load to complete`);
     await viewer.waitForLoad();
