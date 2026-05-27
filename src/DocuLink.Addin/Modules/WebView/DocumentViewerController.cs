@@ -285,10 +285,18 @@ namespace DocuLink.Addin.Modules.WebView
 
             var session = Globals.ThisAddIn.GetStorageSession(wb);
             var rect = session.GetLinks().FirstOrDefault(r => string.Equals(r.Id, rectId, StringComparison.Ordinal));
-            if (rect == null) return;
+            if (rect == null)
+            {
+                Globals.ThisAddIn.SuppressNextSelectionNav = false;
+                return;
+            }
 
             Excel.Range cell = LinkCellResolver.TryResolveCell(wb, rect);
-            if (cell == null) return;
+            if (cell == null)
+            {
+                Globals.ThisAddIn.SuppressNextSelectionNav = false;
+                return;
+            }
 
             try
             {
@@ -301,6 +309,10 @@ namespace DocuLink.Addin.Modules.WebView
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"[DocuLink] HandleLinkRectangleClicked navigate failed: {ex.Message}");
+            }
+            finally
+            {
+                Globals.ThisAddIn.SuppressNextSelectionNav = false;
             }
         }
 
