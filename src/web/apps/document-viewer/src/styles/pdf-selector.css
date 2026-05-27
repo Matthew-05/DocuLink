@@ -1,5 +1,18 @@
 .pdf-selector {
   position: relative;
+  --selector-width: 180px;
+}
+
+@media (max-width: 800px) {
+  .pdf-selector {
+    --selector-width: 140px;
+  }
+}
+
+@media (min-width: 1200px) {
+  .pdf-selector {
+    --selector-width: 240px;
+  }
 }
 
 .pdf-selector__trigger {
@@ -13,7 +26,7 @@
   background: var(--color-bg);
   color: var(--color-text);
   font-size: var(--font-size-sm);
-  max-width: 180px;
+  width: var(--selector-width);
   transition: border-color 0.1s;
 }
 
