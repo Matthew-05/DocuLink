@@ -31,6 +31,7 @@ namespace DocuLink.Addin.Modules.WebView
         private readonly WebView2 _webView = new WebView2();
         private ProgressScope _cacheProgressScope;
         private bool _webViewReady;
+        private bool _dataSentToViewer;
         private string _pendingNavigateId;
         private string _pendingNavigatePdfId;
         private int? _pendingNavigatePage;
@@ -99,6 +100,7 @@ namespace DocuLink.Addin.Modules.WebView
                         SendPdfsToWebView();
                         SendLinkedRectanglesToWebView();
                         FlushPendingNavigateToRectangle();
+                        _dataSentToViewer = true;
                         break;
 
                     case "link-rectangle-created":
@@ -397,9 +399,14 @@ namespace DocuLink.Addin.Modules.WebView
 
         internal void RefreshDataIfReady()
         {
-            if (!_webViewReady) return;
+            if (!_webViewReady || _dataSentToViewer) return;
             SendPdfsToWebView();
             SendLinkedRectanglesToWebView();
+        }
+
+        internal void InvalidateData()
+        {
+            _dataSentToViewer = false;
         }
 
         internal void SendLinkedRectanglesToWebView()

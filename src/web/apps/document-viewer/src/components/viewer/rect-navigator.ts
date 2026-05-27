@@ -25,6 +25,45 @@ export function createRectNavigator(
   };
 }
 
+// Helper to get fit scale, waiting for viewer dimensions to stabilize if needed
+async function getFitScaleWhenReady(viewer: PdfViewer, pageNumber: number): Promise<ZoomLevel> {
+  let lastW = 0;
+  let lastH = 0;
+  let stableCount = 0;
+  const stabilityThreshold = 2; // dimensions must match for 2 frames
+
+  for (let attempts = 0; attempts < 30; attempts++) {
+    const scale = viewer.getPageFitScale(pageNumber);
+    if (scale !== null) {
+      const w = viewer.element.clientWidth;
+      const h = viewer.element.clientHeight;
+
+      // Check if dimensions have stabilized
+      if (w === lastW && h === lastH) {
+        stableCount++;
+        if (stableCount >= stabilityThreshold) {
+          console.log(`[RectNavigator] Fit scale ready: ${scale} (dimensions stable at ${w}×${h})`);
+          return scale;
+        }
+      } else {
+        // Dimensions changed; reset stability counter
+        stableCount = 0;
+        lastW = w;
+        lastH = h;
+        console.log(`[RectNavigator] Layout settling: dimensions now ${w}×${h}`);
+      }
+    }
+    // Wait for layout engine to run
+    await new Promise<void>(resolve => {
+      requestAnimationFrame(() => resolve());
+    });
+  }
+  // Timeout; return best guess
+  const scale = viewer.getPageFitScale(pageNumber);
+  console.log(`[RectNavigator] Fit scale timeout, using ${scale ?? 1.0}`);
+  return scale ?? 1.0;
+}
+
 async function _navigate(
   viewer: PdfViewer,
   selector: PdfSelector,
@@ -86,32 +125,27 @@ async function _navigate(
   }
   console.log(`[RectNavigator] Page wrapper found`);
 
+  // Unified navigation logic (same-PDF and cross-PDF converge here)
+  // Order is critical: zoom → scroll → render → background
+  console.log(`[RectNavigator] Navigating to id=${id}, page=${page + 1}, crossPdf=${crossPdf}`);
+
+  // For same-PDF, check if zoom is needed. For cross-PDF, always zoom to fit.
   if (crossPdf) {
-    console.log(`[RectNavigator] Cross-PDF jump to id=${id}, pdfId=${pdfId}, page=${page + 1}`);
-    const fitScale = viewer.getPageFitScale(page + 1);
-    if (fitScale !== null) {
-      console.log(`[RectNavigator] Applying fit scale: ${fitScale}`);
-      applyZoom(fitScale);
-    } else {
-      console.log(`[RectNavigator] getPageFitScale returned null, skipping zoom`);
-    }
-    pageWrapper.scrollIntoView({ behavior: "instant" as ScrollBehavior });
+    console.log(`[RectNavigator] Cross-PDF: getting fit scale`);
+    const fitScale = await getFitScaleWhenReady(viewer, page + 1);
+    applyZoom(fitScale);
   } else {
-    // Check if the target page has been rendered (has a canvas).
-    // If not, this is first-time viewing, so apply fit-page zoom.
+    // Same-PDF: apply fit zoom if page is unrendered or we're at default zoom level
     const pageCanvas = pageWrapper.querySelector('canvas');
     const isPageUnrendered = !pageCanvas;
+    const isAtDefaultZoom = viewer.getCurrentZoom() === 1.0;
 
-    if (isPageUnrendered) {
-      console.log(`[RectNavigator] Same-PDF jump to id=${id}, page=${page + 1}, page not yet rendered, applying fit zoom`);
-      const fitScale = viewer.getPageFitScale(page + 1);
-      if (fitScale !== null) {
-        console.log(`[RectNavigator] Applying fit scale: ${fitScale}`);
-        applyZoom(fitScale);
-      }
-      pageWrapper.scrollIntoView({ behavior: "instant" as ScrollBehavior });
+    if (isPageUnrendered || isAtDefaultZoom) {
+      console.log(`[RectNavigator] Same-PDF: getting fit scale (unrendered=${isPageUnrendered}, defaultZoom=${isAtDefaultZoom})`);
+      const fitScale = await getFitScaleWhenReady(viewer, page + 1);
+      applyZoom(fitScale);
     } else {
-      // Page is already rendered; only zoom if rect is not fully visible
+      // Page is rendered and we've already zoomed; check if rect is fully visible
       const viewerRect = viewer.element.getBoundingClientRect();
       const targetRect = rectEl.getBoundingClientRect();
       const fullyVisible = targetRect.top    >= viewerRect.top
@@ -120,18 +154,26 @@ async function _navigate(
         && targetRect.right  <= viewerRect.right;
 
       if (!fullyVisible) {
-        console.log(`[RectNavigator] Same-PDF jump to id=${id}, page=${page + 1}, rect not fully visible`);
-        const fitScale = viewer.getPageFitScale(page + 1);
-        if (fitScale !== null) {
-          console.log(`[RectNavigator] Applying fit scale: ${fitScale}`);
-          applyZoom(fitScale);
-        }
-        pageWrapper.scrollIntoView({ behavior: "instant" as ScrollBehavior });
+        console.log(`[RectNavigator] Same-PDF: rect not fully visible, getting fit scale`);
+        const fitScale = await getFitScaleWhenReady(viewer, page + 1);
+        applyZoom(fitScale);
       } else {
-        console.log(`[RectNavigator] Same-PDF jump to id=${id}, page=${page + 1}, rect fully visible, no zoom needed`);
+        console.log(`[RectNavigator] Same-PDF: rect fully visible at current zoom, no zoom needed`);
       }
     }
   }
+
+  // Step 2: Scroll viewport to target page (still showing white placeholder)
+  console.log(`[RectNavigator] Scrolling to page ${page + 1}`);
+  pageWrapper.scrollIntoView({ behavior: "instant" as ScrollBehavior });
+
+  // Step 3: Render target page (user watches it fill in)
+  console.log(`[RectNavigator] Rendering target page ${page + 1}`);
+  await viewer.renderPageNow(page + 1);
+  console.log(`[RectNavigator] Target page rendered, starting background render`);
+
+  // Step 4: Fill in all other pages in document order
+  viewer.startBackgroundRender();
 
   // Update page controller to reflect navigation
   onNavigateToPage?.(page + 1);

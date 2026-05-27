@@ -64,7 +64,7 @@ export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLEleme
   });
 
   selector.onSelect((entry) => {
-    void viewer.loadDocument(entry.url, entry.id);
+    void viewer.loadDocument(entry.url, entry.id).then(() => viewer.startBackgroundRender());
   });
 
   viewer.element.addEventListener(
