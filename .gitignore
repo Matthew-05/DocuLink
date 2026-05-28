@@ -126,12 +126,18 @@ htmlcov/
 # pyenv
 .python-version
 
+# --- AI tool configuration (development-only) ---
+.cursor/
+.claude/
+CLAUDE.md
+
 # --- Local / secrets (never commit) ---
 .env
 .env.*
 !.env.example
 secrets.json
 *.local.json
+src/web/package-lock.json
 
 # --- Misc ---
 *.tmp

@@ -303,7 +303,9 @@
   <!-- Enumerate web source files so MSBuild can skip npm build when nothing changed -->
   <ItemGroup>
     <WebSourceFiles Include="$(WebRootDir)\apps\document-viewer\src\**\*.*" />
+    <WebSourceFiles Include="$(WebRootDir)\apps\document-viewer\build.mjs" />
     <WebSourceFiles Include="$(WebRootDir)\apps\file-manager\src\**\*.*" />
+    <WebSourceFiles Include="$(WebRootDir)\apps\file-manager\build.mjs" />
     <WebSourceFiles Include="$(WebRootDir)\packages\**\src\**\*.*" />
   </ItemGroup>
   <Target Name="BuildWebAssets" BeforeTargets="Build" Inputs="@(WebSourceFiles)" Outputs="$(ViewerDistDir)\index.js;$(ViewerDistDir)\index.css;$(FileManagerDistDir)\index.js;$(FileManagerDistDir)\index.css">
