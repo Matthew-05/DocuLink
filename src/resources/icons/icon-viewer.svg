@@ -1,11 +1,128 @@
-<svg width="32" height="32" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg" fill="none">
-  <rect x="1" y="2" width="30" height="21" rx="3" stroke="#1F1F1F" stroke-width="2" stroke-linejoin="round"/>
-  <rect x="4" y="5" width="24" height="15" rx="1.5" fill="#EEF3FB" stroke="#B0C4DE" stroke-width="0.8"/>
-  <rect x="11" y="6" width="10" height="14" rx="1" fill="#FFFFFF" stroke="#999" stroke-width="1"/>
-  <line x1="13" y1="9"  x2="19" y2="9"  stroke="#CCC" stroke-width="1" stroke-linecap="round"/>
-  <line x1="13" y1="12" x2="19" y2="12" stroke="#CCC" stroke-width="1" stroke-linecap="round"/>
-  <line x1="13" y1="15" x2="19" y2="15" stroke="#CCC" stroke-width="1" stroke-linecap="round"/>
-  <line x1="13" y1="18" x2="17" y2="18" stroke="#CCC" stroke-width="1" stroke-linecap="round"/>
-  <line x1="16" y1="23" x2="16" y2="28" stroke="#1F1F1F" stroke-width="2" stroke-linecap="round"/>
-  <line x1="9"  y1="28" x2="23" y2="28" stroke="#1F1F1F" stroke-width="2" stroke-linecap="round"/>
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   width="32"
+   height="28"
+   viewBox="0 0 32 28"
+   fill="none"
+   version="1.1"
+   id="svg8"
+   sodipodi:docname="icon-viewer (1).svg"
+   inkscape:version="1.4.2 (f4327f4, 2025-05-13)"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <sodipodi:namedview
+     id="namedview8"
+     pagecolor="#ffffff"
+     bordercolor="#000000"
+     borderopacity="0.25"
+     inkscape:showpageshadow="2"
+     inkscape:pageopacity="0.0"
+     inkscape:pagecheckerboard="0"
+     inkscape:deskcolor="#d1d1d1"
+     inkscape:zoom="11.137864"
+     inkscape:cx="35.778854"
+     inkscape:cy="34.342313"
+     inkscape:window-width="2560"
+     inkscape:window-height="1369"
+     inkscape:window-x="-8"
+     inkscape:window-y="-8"
+     inkscape:window-maximized="1"
+     inkscape:current-layer="g7" />
+  <defs
+     id="defs1">
+    <clipPath
+       id="screen">
+      <rect
+         x="4"
+         y="5"
+         width="24"
+         height="15"
+         rx="1.5"
+         id="rect1" />
+    </clipPath>
+  </defs>
+  <path
+     d="m 16,22 v 5"
+     stroke="#1f1f1f"
+     stroke-width="2"
+     stroke-linecap="round"
+     id="path1" />
+  <path
+     d="M 9,27 H 23"
+     stroke="#1f1f1f"
+     stroke-width="2"
+     stroke-linecap="round"
+     id="path2" />
+  <rect
+     x="1"
+     y="1"
+     width="30"
+     height="21"
+     rx="3"
+     fill="#eef3fb"
+     id="rect2" />
+  <rect
+     x="4"
+     y="4"
+     width="24"
+     height="15"
+     rx="1.5"
+     fill="#eef3fb"
+     id="rect3" />
+  <g
+     clip-path="url(#screen)"
+     id="g7"
+     transform="translate(0,-1)">
+    <rect
+       x="9"
+       y="8"
+       width="14"
+       height="19"
+       rx="1"
+       fill="#ffffff"
+       stroke="#999999"
+       stroke-width="1"
+       id="rect4" />
+    <path
+       d="M 11,11 H 21"
+       stroke="#cccccc"
+       stroke-width="1"
+       stroke-linecap="round"
+       id="path4" />
+    <path
+       d="M 11,14 H 21"
+       stroke="#cccccc"
+       stroke-width="1"
+       stroke-linecap="round"
+       id="path5" />
+    <path
+       d="m 11,17.01114 h 6"
+       stroke="#cccccc"
+       stroke-width="1"
+       stroke-linecap="round"
+       id="path7" />
+  </g>
+  <rect
+     x="4"
+     y="4"
+     width="24"
+     height="15"
+     rx="1.5"
+     fill="none"
+     stroke="#b0c4de"
+     stroke-width="0.8"
+     id="rect7" />
+  <rect
+     x="1"
+     y="1"
+     width="30"
+     height="21"
+     rx="3"
+     fill="none"
+     stroke="#1f1f1f"
+     stroke-width="2"
+     stroke-linejoin="round"
+     id="rect8" />
 </svg>
