@@ -42,7 +42,6 @@ async function getFitScaleWhenReady(viewer: PdfViewer, pageNumber: number): Prom
       if (w === lastW && h === lastH) {
         stableCount++;
         if (stableCount >= stabilityThreshold) {
-          console.log(`[RectNavigator] Fit scale ready: ${scale} (dimensions stable at ${w}×${h})`);
           return scale;
         }
       } else {
@@ -50,7 +49,6 @@ async function getFitScaleWhenReady(viewer: PdfViewer, pageNumber: number): Prom
         stableCount = 0;
         lastW = w;
         lastH = h;
-        console.log(`[RectNavigator] Layout settling: dimensions now ${w}×${h}`);
       }
     }
     // Wait for layout engine to run
@@ -60,7 +58,6 @@ async function getFitScaleWhenReady(viewer: PdfViewer, pageNumber: number): Prom
   }
   // Timeout; return best guess
   const scale = viewer.getPageFitScale(pageNumber);
-  console.log(`[RectNavigator] Fit scale timeout, using ${scale ?? 1.0}`);
   return scale ?? 1.0;
 }
 
@@ -74,73 +71,41 @@ async function _navigate(
   page: number,
   onNavigateToPage?: (pageNumber: number) => void,
 ): Promise<void> {
-  console.log(`[RectNavigator] _navigate called: id=${id}, pdfId=${pdfId}, page=${page}`);
-  console.log(`[RectNavigator] Current activePdfId: ${viewer.getActivePdfId()}`);
-
   const crossPdf = viewer.getActivePdfId() !== pdfId;
-  console.log(`[RectNavigator] crossPdf=${crossPdf}`);
 
   if (crossPdf) {
-    console.log(`[RectNavigator] Cross-PDF: loading ${pdfId} at page ${page + 1}`);
     const entry = selector.getEntry(pdfId);
-    if (!entry) {
-      console.log(`[RectNavigator] No entry found for ${pdfId}, aborting`);
-      return;
-    }
+    if (!entry) return;
     selector.setActiveId(pdfId);
     await viewer.loadDocument(entry.url, pdfId);
-    console.log(`[RectNavigator] Cross-PDF load complete`);
 
     // Snap to target page immediately so user sees correct placeholder, not page 1,
     // during the getFitScaleWhenReady polling loop.
     const earlyPageWrapper = viewer.element.querySelector<HTMLDivElement>(
       `[data-page="${page + 1}"]`,
     );
-    console.log(`[RectNavigator] Early scroll: target page ${page + 1}, wrapper found=${!!earlyPageWrapper}, scrollTop before=${viewer.element.scrollTop}`);
     earlyPageWrapper?.scrollIntoView({ behavior: "instant" as ScrollBehavior });
-    console.log(`[RectNavigator] Early scroll complete, scrollTop after=${viewer.element.scrollTop}`);
   } else {
-    console.log(`[RectNavigator] Same-PDF: waiting for load to complete`);
     await viewer.waitForLoad();
-    console.log(`[RectNavigator] Load complete, proceeding to navigate`);
   }
 
-  console.log(`[RectNavigator] Checking if rectangle ${id} exists in renderer`);
-  if (!renderer.hasRectangle(id)) {
-    console.log(`[RectNavigator] Rectangle ${id} not found in renderer, aborting`);
-    return;
-  }
-  console.log(`[RectNavigator] Rectangle found`);
+  if (!renderer.hasRectangle(id)) return;
 
-  console.log(`[RectNavigator] Querying for rect element with data-rect-id="${id}"`);
   const rectEl = viewer.element.querySelector<HTMLElement>(
     `[data-rect-id="${CSS.escape(id)}"]`,
   );
-  if (!rectEl) {
-    console.log(`[RectNavigator] Rect element not found in DOM for id=${id}`);
-    return;
-  }
-  console.log(`[RectNavigator] Rect element found, highlighting`);
+  if (!rectEl) return;
 
   renderer.highlightRectangle(id);
 
-  console.log(`[RectNavigator] Querying for page wrapper with data-page="${page + 1}"`);
   const pageWrapper = viewer.element.querySelector<HTMLDivElement>(
     `[data-page="${page + 1}"]`,
   );
-  if (!pageWrapper) {
-    console.log(`[RectNavigator] Page wrapper not found for page ${page + 1}`);
-    return;
-  }
-  console.log(`[RectNavigator] Page wrapper found`);
+  if (!pageWrapper) return;
 
   // Unified navigation logic (same-PDF and cross-PDF converge here)
   // Order is critical: zoom → scroll → render → background
-  console.log(`[RectNavigator] Navigating to id=${id}, page=${page + 1}, crossPdf=${crossPdf}`);
-
-  // For same-PDF, check if zoom is needed. For cross-PDF, always zoom to fit.
   if (crossPdf) {
-    console.log(`[RectNavigator] Cross-PDF: getting fit scale`);
     const fitScale = await getFitScaleWhenReady(viewer, page + 1);
     applyZoom(fitScale);
   } else {
@@ -150,7 +115,6 @@ async function _navigate(
     const isAtDefaultZoom = viewer.getCurrentZoom() === 1.0;
 
     if (isPageUnrendered || isAtDefaultZoom) {
-      console.log(`[RectNavigator] Same-PDF: getting fit scale (unrendered=${isPageUnrendered}, defaultZoom=${isAtDefaultZoom})`);
       const fitScale = await getFitScaleWhenReady(viewer, page + 1);
       applyZoom(fitScale);
     } else {
@@ -163,23 +127,17 @@ async function _navigate(
         && targetRect.right  <= viewerRect.right;
 
       if (!fullyVisible) {
-        console.log(`[RectNavigator] Same-PDF: rect not fully visible, getting fit scale`);
         const fitScale = await getFitScaleWhenReady(viewer, page + 1);
         applyZoom(fitScale);
-      } else {
-        console.log(`[RectNavigator] Same-PDF: rect fully visible at current zoom, no zoom needed`);
       }
     }
   }
 
   // Step 2: Scroll viewport to target page (still showing white placeholder)
-  console.log(`[RectNavigator] Scrolling to page ${page + 1}`);
   pageWrapper.scrollIntoView({ behavior: "instant" as ScrollBehavior });
 
   // Step 3: Render target page (user watches it fill in)
-  console.log(`[RectNavigator] Rendering target page ${page + 1}`);
   await viewer.renderPageNow(page + 1);
-  console.log(`[RectNavigator] Target page rendered, starting background render`);
 
   // Step 4: Fill in all other pages in document order
   viewer.startBackgroundRender();
