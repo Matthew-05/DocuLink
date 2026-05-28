@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using DocuLink.Addin;
 using System.Reflection;
 using System.Runtime.InteropServices;
@@ -186,6 +187,69 @@ namespace DocuLink.Addin.Ribbon
         public void Ribbon_Load(IRibbonUI ribbonUi)
         {
             _ribbonUi = ribbonUi;
+        }
+
+        public System.Drawing.Bitmap GetViewerMenuImage(IRibbonControl control)
+        {
+            return LoadEmbeddedSvgAsIcon("icon-viewer.svg");
+        }
+
+        public System.Drawing.Bitmap GetAddPdfImage(IRibbonControl control)
+        {
+            return LoadEmbeddedSvgAsIcon("icon-add-document.svg");
+        }
+
+        public System.Drawing.Bitmap GetDeleteLinksImage(IRibbonControl control)
+        {
+            return LoadEmbeddedSvgAsIcon("icon-delete-links.svg");
+        }
+
+        public System.Drawing.Bitmap GetManageFilesImage(IRibbonControl control)
+        {
+            return LoadEmbeddedSvgAsIcon("icon-manage-files.svg");
+        }
+
+        private static System.Drawing.Bitmap LoadEmbeddedSvgAsIcon(string iconName)
+        {
+            Assembly assembly = typeof(DocuLinkRibbon).Assembly;
+
+            string resourceName = assembly.GetManifestResourceNames()
+                .FirstOrDefault(n => n.EndsWith(iconName, StringComparison.OrdinalIgnoreCase));
+
+            if (resourceName != null)
+            {
+                using (var stream = assembly.GetManifestResourceStream(resourceName))
+                {
+                    if (stream != null)
+                    {
+                        using (var reader = new StreamReader(stream))
+                        {
+                            string svgText = reader.ReadToEnd();
+                            return RenderSvgAsIcon(svgText);
+                        }
+                    }
+                }
+            }
+
+            return CreatePlaceholderIcon();
+        }
+
+        private static System.Drawing.Bitmap RenderSvgAsIcon(string svgText)
+        {
+            var doc = Svg.SvgDocument.FromSvg<Svg.SvgDocument>(svgText);
+            return doc.Draw(32, 32);
+        }
+
+        private static System.Drawing.Bitmap CreatePlaceholderIcon()
+        {
+            var bitmap = new System.Drawing.Bitmap(32, 32);
+            using (var graphics = System.Drawing.Graphics.FromImage(bitmap))
+            {
+                graphics.Clear(System.Drawing.Color.Transparent);
+                using (var pen = new System.Drawing.Pen(System.Drawing.Color.LightGray, 1))
+                    graphics.DrawRectangle(pen, 2, 2, 28, 28);
+            }
+            return bitmap;
         }
     }
 }

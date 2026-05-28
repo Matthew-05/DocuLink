@@ -183,6 +183,9 @@
     <PackageReference Include="Microsoft.Web.WebView2">
       <Version>1.0.3912.50</Version>
     </PackageReference>
+    <PackageReference Include="Svg">
+      <Version>3.4.7</Version>
+    </PackageReference>
   </ItemGroup>
   <!--
     This section defines the user source files that are part of the project.
@@ -210,6 +213,10 @@
       <DependentUpon>ThisAddIn.cs</DependentUpon>
     </None>
     <EmbeddedResource Include="Ribbon\DocuLinkRibbon.xml" />
+    <EmbeddedResource Include="..\resources\icons\icon-add-document.svg" />
+    <EmbeddedResource Include="..\resources\icons\icon-delete-links.svg" />
+    <EmbeddedResource Include="..\resources\icons\icon-manage-files.svg" />
+    <EmbeddedResource Include="..\resources\icons\icon-viewer.svg" />
     <AppDesigner Include="Properties\" />
   </ItemGroup>
   <PropertyGroup>

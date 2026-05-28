@@ -7,7 +7,7 @@
           <menu id="DocuLink.MenuViewer"
                 label="Viewer"
                 size="large"
-                imageMso="WebPagePreview">
+                getImage="GetViewerMenuImage">
             <button id="DocuLink.BtnTaskPane"
                     label="Open in Task Pane"
                     onAction="OnShowTaskPane" />
@@ -22,15 +22,17 @@
           <button id="DocuLink.BtnAddPdf"
                   label="Add PDF"
                   size="large"
+                  getImage="GetAddPdfImage"
                   onAction="OnAddPdfDocuments" />
           <button id="DocuLink.BtnDeleteLinks"
                   label="Delete Links"
                   size="large"
-                  imageMso="ClearFormats"
+                  getImage="GetDeleteLinksImage"
                   onAction="OnDeleteLinksInSelection" />
           <button id="DocuLink.BtnManageFiles"
                   label="Manage Files"
                   size="large"
+                  getImage="GetManageFilesImage"
                   onAction="OnManageFiles" />
         </group>
       </tab>
