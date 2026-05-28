@@ -34,6 +34,7 @@ export class FolderPanel {
     addBtn.className = "icon-btn";
     addBtn.title = "New folder";
     addBtn.textContent = "+";
+    addBtn.tabIndex = -1;
     addBtn.addEventListener("click", () => this._showNewFolderRow());
 
     header.appendChild(title);
