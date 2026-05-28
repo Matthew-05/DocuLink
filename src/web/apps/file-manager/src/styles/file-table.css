@@ -74,7 +74,7 @@
   transition: background 0.1s;
 }
 
-.file-table tbody tr:hover {
+.file-table tbody tr:not(.file-table__empty-row):hover {
   background: var(--color-surface);
 }
 

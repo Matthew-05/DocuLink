@@ -157,9 +157,10 @@ export class FileTable {
 
     if (visible.length === 0) {
       const empty = document.createElement("tr");
+      empty.className = "file-table__empty-row";
       empty.innerHTML = this._isLoading
         ? `<td colspan="7" class="file-table__empty">DocuLink Initializing…</td>`
-        : `<td colspan="7" class="file-table__empty">No files here yet. Drop PDFs to add them.</td>`;
+        : `<td colspan="7" class="file-table__empty">Add files to get started.</td>`;
       this._tbody.appendChild(empty);
       return;
     }
@@ -173,21 +174,6 @@ export class FileTable {
     const tr = document.createElement("tr");
     tr.dataset["id"] = file.id;
     if (this._selectedIds.has(file.id)) tr.classList.add("is-selected");
-
-    // Row-level click → toggle selection (ignore clicks on interactive children)
-    tr.addEventListener("click", (e) => {
-      const target = e.target as HTMLElement;
-      if (
-        target.tagName === "BUTTON" ||
-        target.tagName === "INPUT" ||
-        target.closest("button") ||
-        target.closest("input")
-      ) return;
-      const nowChecked = !this._selectedIds.has(file.id);
-      cb.checked = nowChecked;
-      this._onRowCheck(file.id, nowChecked);
-      tr.classList.toggle("is-selected", nowChecked);
-    });
 
     // Row-level right-click → context menu
     tr.addEventListener("contextmenu", (e) => {
