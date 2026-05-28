@@ -1,3 +1,9 @@
+<div align="center">
+
+<img src="src/resources/branding/doculink-icon.svg" alt="DocuLink Icon" width="134" height="154">
+
+</div>
+
 # DocuLink
 
 DocuLink is an Excel add-in that bridges the gap between static PDFs and dynamic Excel data. It enables seamless PDF embedding, high-precision OCR, and deep-linking between spreadsheet cells and document regions—providing an open-source, locally-hosted alternative to enterprise document-auditing suites.
