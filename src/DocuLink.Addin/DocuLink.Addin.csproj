@@ -195,88 +195,20 @@
     can be found.
   -->
   <ItemGroup>
-    <Compile Include="Properties\AssemblyInfo.cs">
-      <SubType>Code</SubType>
-    </Compile>
+    <Compile Include="**\*.cs" Exclude="obj\**\*.cs" />
     <EmbeddedResource Include="Properties\Resources.resx">
       <Generator>ResXFileCodeGenerator</Generator>
       <LastGenOutput>Resources.Designer.cs</LastGenOutput>
       <SubType>Designer</SubType>
     </EmbeddedResource>
-    <Compile Include="Properties\Resources.Designer.cs">
-      <AutoGen>True</AutoGen>
-      <DependentUpon>Resources.resx</DependentUpon>
-    </Compile>
     <None Include="DocuLink.Addin_TemporaryKey.pfx" />
     <None Include="Properties\Settings.settings">
       <Generator>SettingsSingleFileGenerator</Generator>
       <LastGenOutput>Settings.Designer.cs</LastGenOutput>
     </None>
-    <Compile Include="Properties\Settings.Designer.cs">
-      <AutoGen>True</AutoGen>
-      <DependentUpon>Settings.settings</DependentUpon>
-    </Compile>
-    <Compile Include="ThisAddIn.cs">
-      <SubType>Code</SubType>
-    </Compile>
-    <Compile Include="WebViewEagerLoader.cs" />
     <None Include="ThisAddIn.Designer.xml">
       <DependentUpon>ThisAddIn.cs</DependentUpon>
     </None>
-    <Compile Include="ThisAddIn.Designer.cs">
-      <DependentUpon>ThisAddIn.Designer.xml</DependentUpon>
-    </Compile>
-    <Compile Include="Modules\DocuLinkLog.cs" />
-    <Compile Include="Modules\CustomXml\DocuLinkCustomXmlPartStore.cs" />
-    <Compile Include="Modules\CustomXml\DocuLinkXml.cs" />
-    <Compile Include="Modules\CustomXml\Models\DocuLinkContent.cs" />
-    <Compile Include="Modules\CustomXml\Models\DocuLinkStorage.cs" />
-    <Compile Include="Modules\CustomXml\WorkbookStorageSession.cs" />
-    <Compile Include="Modules\CustomXml\Models\LinkedCell.cs" />
-    <Compile Include="Modules\CustomXml\Models\LinkedRectangle.cs" />
-    <Compile Include="Modules\CustomXml\Models\PdfDocument.cs" />
-    <Compile Include="Modules\CustomXml\Models\PdfMetadata.cs" />
-    <Compile Include="Modules\CustomXml\Models\PdfFolder.cs" />
-    <Compile Include="Modules\CustomXml\Models\PdfRectangle.cs" />
-    <Compile Include="Modules\CustomXml\Models\RectangleCoordinateSpace.cs" />
-    <Compile Include="Modules\CustomXml\Serialization\DocuLinkContentSerializer.cs" />
-    <Compile Include="Modules\CustomXml\Serialization\DocuLinkLinksSerializer.cs" />
-    <Compile Include="Modules\CustomXml\Serialization\DocuLinkPdfBinarySerializer.cs" />
-    <Compile Include="Modules\Services\AddPdfDocumentService.cs" />
-    <Compile Include="Modules\Services\CellFormatter.cs" />
-    <Compile Include="Modules\Services\CreateLinkService.cs" />
-    <Compile Include="Modules\Services\DeleteLinkService.cs" />
-    <Compile Include="Modules\Services\LinkCellResolver.cs" />
-    <Compile Include="Modules\Services\UpdateLinkService.cs" />
-    <Compile Include="Modules\Services\LinkCellTracker.cs" />
-    <Compile Include="Modules\Services\ManageFilesService.cs" />
-    <Compile Include="Modules\Services\PdfStatus.cs" />
-    <Compile Include="Modules\Services\PdfTextLayerDetector.cs" />
-    <Compile Include="Modules\Services\OcrService.cs" />
-    <Compile Include="Modules\UI\ProgressDialog.cs">
-      <SubType>Form</SubType>
-    </Compile>
-    <Compile Include="Modules\UI\LinkTextPromptDialog.cs">
-      <SubType>Form</SubType>
-    </Compile>
-    <Compile Include="Modules\UI\ProgressScope.cs" />
-    <Compile Include="Modules\WebView\DocumentViewerController.cs" />
-    <Compile Include="Modules\WebView\FileManagerHost.cs">
-      <SubType>Form</SubType>
-    </Compile>
-    <Compile Include="Modules\WebView\IDocumentViewerHost.cs" />
-    <Compile Include="Modules\WebView\FileManagerMessageParser.cs" />
-    <Compile Include="Modules\WebView\FileManagerMessageSerializer.cs" />
-    <Compile Include="Modules\WebView\HostMessageParser.cs" />
-    <Compile Include="Modules\WebView\HostMessageSerializer.cs" />
-    <Compile Include="Modules\WebView\WebMessageParser.cs" />
-    <Compile Include="Modules\WebView\TaskPaneHost.cs">
-      <SubType>UserControl</SubType>
-    </Compile>
-    <Compile Include="Modules\WebView\ViewerWindowHost.cs">
-      <SubType>Form</SubType>
-    </Compile>
-    <Compile Include="Ribbon\DocuLinkRibbon.cs" />
     <EmbeddedResource Include="Ribbon\DocuLinkRibbon.xml" />
     <AppDesigner Include="Properties\" />
   </ItemGroup>

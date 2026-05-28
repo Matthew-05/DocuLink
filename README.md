@@ -47,8 +47,6 @@ Build output lands in `src/web/apps/document-viewer/dist/` and `src/web/apps/fil
 
 Open `src/DocuLink.Addin/DocuLink.Addin.sln` in Visual Studio and build. The VSTO add-in registers itself with Excel on first debug run.
 
-> **Note:** If you add a new `.cs` file, manually add a `<Compile Include="..."/>` entry to `DocuLink.Addin.csproj`. The project uses explicit (not SDK-style glob) compile items.
-
 ### Python OCR worker
 
 ```powershell
