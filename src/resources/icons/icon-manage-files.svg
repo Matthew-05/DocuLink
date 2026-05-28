@@ -1,0 +1,8 @@
+<svg width="32" height="32" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg" fill="none">
+  <!-- Back folder -->
+  <path d="M6,5 L6,26 L30,26 L30,9 L18,9 L15,5 Z" fill="rgba(122,103,247,0.15)" stroke="rgba(122,103,247,0.5)" stroke-width="1.5" stroke-linejoin="round"/>
+  <!-- Mid folder -->
+  <path d="M3,8 L3,27 L27,27 L27,12 L15,12 L12,8 Z" fill="rgba(122,103,247,0.3)" stroke="rgba(122,103,247,0.7)" stroke-width="1.5" stroke-linejoin="round"/>
+  <!-- Front folder -->
+  <path d="M1,11 L1,30 L25,30 L25,15 L13,15 L10,11 Z" fill="white" stroke="#1F1F1F" stroke-width="2" stroke-linejoin="round"/>
+</svg>
