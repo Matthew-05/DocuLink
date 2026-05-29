@@ -130,6 +130,7 @@ htmlcov/
 .cursor/
 .claude/
 CLAUDE.md
+AGENTS.md
 
 # --- Local / secrets (never commit) ---
 .env

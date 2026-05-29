@@ -35,6 +35,8 @@ namespace DocuLink.Addin.Modules.Services
             if (string.IsNullOrWhiteSpace(id)) throw new ArgumentException("id must be non-empty.", nameof(id));
             if (string.IsNullOrWhiteSpace(newName)) throw new ArgumentException("newName must be non-empty.", nameof(newName));
 
+            WorkbookProtectionGuard.ThrowIfStructureProtected(workbook);
+
             var store = new DocuLinkCustomXmlPartStore(workbook);
             DocuLinkContent content = store.LoadContent();
 
@@ -59,6 +61,8 @@ namespace DocuLink.Addin.Modules.Services
             if (workbook == null) throw new ArgumentNullException(nameof(workbook));
             if (string.IsNullOrWhiteSpace(id)) throw new ArgumentException("id must be non-empty.", nameof(id));
 
+            WorkbookProtectionGuard.ThrowIfStructureProtected(workbook);
+
             var store = new DocuLinkCustomXmlPartStore(workbook);
             DocuLinkContent content = store.LoadContent();
             List<PdfMetadata> pdfs = content.Pdfs
@@ -82,6 +86,8 @@ namespace DocuLink.Addin.Modules.Services
         {
             if (workbook == null) throw new ArgumentNullException(nameof(workbook));
             if (string.IsNullOrWhiteSpace(id)) throw new ArgumentException("id must be non-empty.", nameof(id));
+
+            WorkbookProtectionGuard.ThrowIfStructureProtected(workbook);
 
             var store = new DocuLinkCustomXmlPartStore(workbook);
             DocuLinkContent content = store.LoadContent();
@@ -109,6 +115,8 @@ namespace DocuLink.Addin.Modules.Services
             if (string.IsNullOrWhiteSpace(id)) throw new ArgumentException("id must be non-empty.", nameof(id));
             if (newBase64 == null) throw new ArgumentNullException(nameof(newBase64));
 
+            WorkbookProtectionGuard.ThrowIfStructureProtected(workbook);
+
             var store = new DocuLinkCustomXmlPartStore(workbook);
             if (!store.TryGetMetadata(id, out PdfMetadata existing))
                 throw new InvalidOperationException("PDF not found: " + id);
@@ -126,6 +134,8 @@ namespace DocuLink.Addin.Modules.Services
         {
             if (workbook == null) throw new ArgumentNullException(nameof(workbook));
             if (string.IsNullOrWhiteSpace(id)) throw new ArgumentException("id must be non-empty.", nameof(id));
+
+            WorkbookProtectionGuard.ThrowIfStructureProtected(workbook);
 
             var store = new DocuLinkCustomXmlPartStore(workbook);
             if (!store.TryGetMetadata(id, out PdfMetadata existing))
@@ -146,6 +156,8 @@ namespace DocuLink.Addin.Modules.Services
             if (workbook == null) throw new ArgumentNullException(nameof(workbook));
             if (string.IsNullOrWhiteSpace(name)) throw new ArgumentException("name must be non-empty.", nameof(name));
 
+            WorkbookProtectionGuard.ThrowIfStructureProtected(workbook);
+
             string id = Guid.NewGuid().ToString("D");
             var store = new DocuLinkCustomXmlPartStore(workbook);
             store.UpsertFolder(new PdfFolder(id, name.Trim()));
@@ -157,6 +169,8 @@ namespace DocuLink.Addin.Modules.Services
             if (workbook == null) throw new ArgumentNullException(nameof(workbook));
             if (string.IsNullOrWhiteSpace(id)) throw new ArgumentException("id must be non-empty.", nameof(id));
             if (string.IsNullOrWhiteSpace(newName)) throw new ArgumentException("newName must be non-empty.", nameof(newName));
+
+            WorkbookProtectionGuard.ThrowIfStructureProtected(workbook);
 
             var store = new DocuLinkCustomXmlPartStore(workbook);
             DocuLinkContent content = store.LoadContent();
@@ -171,6 +185,8 @@ namespace DocuLink.Addin.Modules.Services
         {
             if (workbook == null) throw new ArgumentNullException(nameof(workbook));
             if (string.IsNullOrWhiteSpace(id)) throw new ArgumentException("id must be non-empty.", nameof(id));
+
+            WorkbookProtectionGuard.ThrowIfStructureProtected(workbook);
 
             var store = new DocuLinkCustomXmlPartStore(workbook);
             store.RemoveFolder(id);

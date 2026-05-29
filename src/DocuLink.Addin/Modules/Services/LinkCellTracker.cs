@@ -53,6 +53,8 @@ namespace DocuLink.Addin.Modules.Services
             if (cell == null) throw new ArgumentNullException(nameof(cell));
             if (trackIndex <= 0) throw new ArgumentOutOfRangeException(nameof(trackIndex));
 
+            WorkbookProtectionGuard.ThrowIfStructureProtected(workbook);
+
             Excel.XmlMap map = EnsureMap(workbook, trackIndex);
             cell.XPath.SetValue(map, LinkXPath, Type.Missing, false);
         }
@@ -63,6 +65,9 @@ namespace DocuLink.Addin.Modules.Services
         /// </summary>
         public static void UnbindCell(Excel.Workbook workbook, Excel.Range cell, int trackIndex)
         {
+            if (workbook != null)
+                WorkbookProtectionGuard.ThrowIfStructureProtected(workbook);
+
             if (cell != null)
             {
                 try { cell.XPath.Clear(); }
@@ -111,6 +116,7 @@ namespace DocuLink.Addin.Modules.Services
         public static void SyncAllPositions(Excel.Workbook workbook)
         {
             if (workbook == null) return;
+            WorkbookProtectionGuard.ThrowIfStructureProtected(workbook);
 
             WorkbookStorageSession session = Globals.ThisAddIn.GetStorageSession(workbook);
             IList<LinkedRectangle> links = session.GetLinks();

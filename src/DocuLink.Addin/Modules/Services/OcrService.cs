@@ -58,6 +58,7 @@ namespace DocuLink.Addin.Modules.Services
         {
             if (pdfIds == null || pdfIds.Count == 0) return;
             if (workbook == null) throw new ArgumentNullException(nameof(workbook));
+            WorkbookProtectionGuard.ThrowIfStructureProtected(workbook);
 
             string workerExe = GetWorkerExePath();
             if (!File.Exists(workerExe))

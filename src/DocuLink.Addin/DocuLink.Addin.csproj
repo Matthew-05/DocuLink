@@ -226,6 +226,7 @@
     <Compile Include="Modules\Services\PdfTextLayerDetector.cs" />
     <Compile Include="Modules\Services\RotatePageService.cs" />
     <Compile Include="Modules\Services\UpdateLinkService.cs" />
+    <Compile Include="Modules\Services\WorkbookProtectionGuard.cs" />
     <Compile Include="Modules\UI\LinkTextPromptDialog.cs" />
     <Compile Include="Modules\UI\ProgressDialog.cs" />
     <Compile Include="Modules\UI\ProgressScope.cs" />
