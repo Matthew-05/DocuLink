@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Drawing;
 using System.IO;
 using System.Linq;
 using System.Reflection;
@@ -28,11 +29,16 @@ namespace DocuLink.Addin.Modules.WebView
 
         private readonly Control _invokeTarget;
         private readonly string _loadFailureSurfaceName;
+        private readonly Panel _surface = new Panel();
+        private readonly Label _startupPlaceholder = new Label();
         private readonly WebView2 _webView = new WebView2();
         private ProgressScope _cacheProgressScope;
+        private Task _initTask;
+        private bool _webShellReady;
         private bool _webViewReady;
         private bool _dataSentToViewer;
         private bool _viewerShown;
+        private bool _contentReady;
         private string _pendingNavigateId;
         private string _pendingNavigatePdfId;
         private int? _pendingNavigatePage;
@@ -42,11 +48,35 @@ namespace DocuLink.Addin.Modules.WebView
             _invokeTarget = invokeTarget ?? throw new ArgumentNullException(nameof(invokeTarget));
             _loadFailureSurfaceName = loadFailureSurfaceName ?? "viewer";
 
+            Color background = Color.FromArgb(244, 244, 249);
+
+            _surface.Dock = DockStyle.Fill;
+            _surface.BackColor = background;
+
             _webView.Dock = DockStyle.Fill;
-            _ = InitAsync();
+            _webView.DefaultBackgroundColor = background;
+
+            _startupPlaceholder.Dock = DockStyle.Fill;
+            _startupPlaceholder.BackColor = background;
+            _startupPlaceholder.ForeColor = Color.FromArgb(92, 92, 112);
+            _startupPlaceholder.Font = new Font("Segoe UI", 9F, FontStyle.Regular, GraphicsUnit.Point);
+            _startupPlaceholder.Text = "DocuLink Initializing...";
+            _startupPlaceholder.TextAlign = ContentAlignment.MiddleCenter;
+
+            _surface.Controls.Add(_webView);
+            _surface.Controls.Add(_startupPlaceholder);
+            _startupPlaceholder.BringToFront();
         }
 
+        internal Control Surface => _surface;
+
         internal WebView2 WebView => _webView;
+
+        internal void Start()
+        {
+            if (_initTask != null) return;
+            _initTask = InitAsync();
+        }
 
         private async Task InitAsync()
         {
@@ -83,7 +113,34 @@ namespace DocuLink.Addin.Modules.WebView
                     "DocuLink",
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Error);
+
+                ShowStartupFailure(ex.Message);
             }
+        }
+
+        private void RevealWebView()
+        {
+            if (_surface.InvokeRequired)
+            {
+                _surface.BeginInvoke(new Action(RevealWebView));
+                return;
+            }
+
+            _startupPlaceholder.Visible = false;
+            _webView.BringToFront();
+        }
+
+        private void ShowStartupFailure(string message)
+        {
+            if (_surface.InvokeRequired)
+            {
+                _surface.BeginInvoke(new Action(() => ShowStartupFailure(message)));
+                return;
+            }
+
+            _startupPlaceholder.Text = $"DocuLink failed to load.\n\n{message}";
+            _startupPlaceholder.Visible = true;
+            _startupPlaceholder.BringToFront();
         }
 
         private void OnWebMessageReceived(object sender, CoreWebView2WebMessageReceivedEventArgs e)
@@ -96,16 +153,29 @@ namespace DocuLink.Addin.Modules.WebView
 
                 switch (HostMessageParser.GetMessageType(raw))
                 {
+                    case "viewer-shell-ready":
+                        _webShellReady = true;
+                        break;
+
                     case "viewer-ready":
+                        if (!_webShellReady)
+                        {
+                            _webShellReady = true;
+                        }
                         _webViewReady = true;
-                        bool hasPendingNavigate = _pendingNavigatePage != null;
-                        if ((hasPendingNavigate || _viewerShown) && !_dataSentToViewer)
+                        if (!_dataSentToViewer)
                         {
                             SendPdfsToWebView();
                             _dataSentToViewer = true;
                         }
                         SendLinkedRectanglesToWebView();
                         FlushPendingNavigateToRectangle();
+                        break;
+
+                    case "viewer-content-ready":
+                        _contentReady = true;
+                        if (_viewerShown)
+                            RevealWebView();
                         break;
 
                     case "link-rectangle-created":
@@ -502,12 +572,15 @@ namespace DocuLink.Addin.Modules.WebView
         internal void InvalidateData()
         {
             _dataSentToViewer = false;
+            _contentReady = false;
         }
 
         internal void NotifyViewerShown()
         {
             _viewerShown = true;
             RefreshDataIfReady();
+            if (_contentReady)
+                RevealWebView();
         }
 
         internal void SendLinkedRectanglesToWebView()
@@ -559,11 +632,10 @@ namespace DocuLink.Addin.Modules.WebView
             {
                 Excel.Application app = Globals.ThisAddIn.Application;
                 Excel.Workbook workbook = app?.ActiveWorkbook;
-                if (workbook == null)
-                    return;
-
-                var store = new DocuLinkCustomXmlPartStore(workbook);
-                string json = HostMessageSerializer.BuildPdfsLoaded(store.LoadAllPdfsWithBinary());
+                IList<PdfDocument> pdfs = workbook == null
+                    ? new List<PdfDocument>()
+                    : new DocuLinkCustomXmlPartStore(workbook).LoadAllPdfsWithBinary();
+                string json = HostMessageSerializer.BuildPdfsLoaded(pdfs);
                 _webView.CoreWebView2.PostWebMessageAsString(json);
             }
             catch (Exception ex)

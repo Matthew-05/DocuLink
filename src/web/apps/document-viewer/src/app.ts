@@ -5,5 +5,5 @@ export function mountApp(root: HTMLElement): void {
   root.className = "document-viewer";
   const viewer = new PdfViewer();
   const { toolbarElement } = initializeViewer(viewer);
-  root.append(toolbarElement, viewer.element);
+  root.replaceChildren(toolbarElement, viewer.element);
 }

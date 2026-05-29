@@ -11,7 +11,8 @@ namespace DocuLink.Addin.Modules.WebView
         {
             Dock = DockStyle.Fill;
             _controller = new DocumentViewerController(this, "task pane");
-            Controls.Add(_controller.WebView);
+            Controls.Add(_controller.Surface);
+            _controller.Start();
         }
 
         public void SendClearRectangleHighlight() => _controller.SendClearRectangleHighlight();

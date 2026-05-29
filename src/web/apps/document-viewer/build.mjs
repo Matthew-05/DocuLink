@@ -1,8 +1,9 @@
 import * as esbuild from "esbuild";
-import { copyFileSync, mkdirSync, writeFileSync } from "fs";
+import { copyFileSync, mkdirSync, rmSync, writeFileSync } from "fs";
 
 const isProd = process.argv.includes("--prod");
 
+rmSync("dist", { recursive: true, force: true });
 mkdirSync("dist", { recursive: true });
 
 copyFileSync(
@@ -23,7 +24,7 @@ writeFileSync(
   </head>
   <body>
     <div id="app"></div>
-    <script src="index.js"></script>
+    <script type="module" src="index.js"></script>
   </body>
 </html>
 `
@@ -38,8 +39,11 @@ const sharedOptions = {
 await esbuild.build({
   ...sharedOptions,
   entryPoints: ["src/main.ts"],
-  outfile: "dist/index.js",
-  format: "iife",
+  outdir: "dist",
+  entryNames: "index",
+  chunkNames: "chunks/[name]-[hash]",
+  format: "esm",
+  splitting: true,
   platform: "browser",
 });
 

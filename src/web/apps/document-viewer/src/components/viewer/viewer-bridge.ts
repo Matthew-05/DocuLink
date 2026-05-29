@@ -1,4 +1,4 @@
-import { initHostBridge } from "../../host-bridge.js";
+import { initHostBridge, sendViewerContentReady } from "../../host-bridge.js";
 import type { TextContentCache } from "../../services/text-content-cache.js";
 import type { PdfEntry, LinkedRectEntry } from "../../types/index.js";
 import type { PdfSelector } from "../toolbar/pdf-selector.js";
@@ -54,25 +54,33 @@ export function connectViewerToHostBridge(
     if (indexingCount === 0) onIndexingStateChange(false);
   };
 
-  const reloadEntry = (entry: PdfEntry): void => {
+  const reloadEntry = async (entry: PdfEntry): Promise<void> => {
     selector.setActiveId(entry.id);
-    void viewer.loadDocument(entry.url, entry.id, entry.pageRotations).then(() => viewer.startBackgroundRender());
+    await viewer.loadDocument(entry.url, entry.id, entry.pageRotations);
+    await viewer.renderPageNow(1);
+    viewer.startBackgroundRender();
   };
 
   initHostBridge(
     (entries) => {
-      selector.setEntries(entries);
+      void (async () => {
+        try {
+          selector.setEntries(entries);
 
-      startIndexing();
-      void indexAllPdfs(cache, entries)
-        .finally(endIndexing);
+          startIndexing();
+          void indexAllPdfs(cache, entries)
+            .finally(endIndexing);
 
-      const target = pickEntryToLoad(entries, viewer.getActivePdfId());
-      if (target) {
-        reloadEntry(target);
-      } else {
-        viewer.showNoPdfsState();
-      }
+          const target = pickEntryToLoad(entries, viewer.getActivePdfId());
+          if (target) {
+            await reloadEntry(target);
+          } else {
+            viewer.showNoPdfsState();
+          }
+        } finally {
+          sendViewerContentReady();
+        }
+      })();
     },
     onLinkedRectangles,
     onNavigateToRectangle,
@@ -88,7 +96,7 @@ export function connectViewerToHostBridge(
       })().finally(endIndexing);
 
       if (viewer.getActivePdfId() === entry.id) {
-        reloadEntry(entry);
+        void reloadEntry(entry);
       }
     },
     onLinkRectanglesRemoved,
@@ -100,7 +108,7 @@ export function connectViewerToHostBridge(
       selector.removeEntry(id);
       if (viewer.getActivePdfId() === id) {
         const next = selector.getEntries()[0];
-        if (next) reloadEntry(next);
+        if (next) void reloadEntry(next);
         else viewer.showNoPdfsState();
       }
     },
