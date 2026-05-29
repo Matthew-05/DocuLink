@@ -19,6 +19,8 @@ namespace DocuLink.Addin.Modules.Services
             if (string.IsNullOrWhiteSpace(rectId) || workbook == null)
                 return false;
 
+            WorkbookProtectionGuard.ThrowIfStructureProtected(workbook);
+
             using (Globals.ThisAddIn.EnterSelectionNavSuppress())
             {
                 return DeleteLinkCore(rectId, workbook);
@@ -61,6 +63,8 @@ namespace DocuLink.Addin.Modules.Services
         {
             if (selection == null || workbook == null)
                 return Array.Empty<string>();
+
+            WorkbookProtectionGuard.ThrowIfStructureProtected(workbook);
 
             WorkbookStorageSession session = Globals.ThisAddIn.GetStorageSession(workbook);
             IList<LinkedRectangle> links = session.GetLinks();

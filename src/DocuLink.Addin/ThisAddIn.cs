@@ -720,6 +720,9 @@ namespace DocuLink.Addin
 
             {
 
+                if (WorkbookProtectionGuard.IsStructureProtected(wb))
+                    return;
+
                 LinkCellTracker.SyncAllPositions(wb);
 
             }

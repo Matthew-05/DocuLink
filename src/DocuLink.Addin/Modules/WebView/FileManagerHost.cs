@@ -135,6 +135,8 @@ namespace DocuLink.Addin.Modules.WebView
                 System.Diagnostics.Debug.WriteLine("[DocuLink] OS drop ignored: no active workbook.");
                 return;
             }
+            if (!RequireWritable(wb))
+                return;
 
             var folderIdCache = new Dictionary<string, string>(StringComparer.Ordinal);
             var addedIds = new List<string>();
@@ -315,6 +317,7 @@ namespace DocuLink.Addin.Modules.WebView
 
             Excel.Workbook wb = GetActiveWorkbook();
             if (wb == null) return;
+            if (!RequireWritable(wb)) return;
 
             bool anyComplete = false;
 
@@ -343,6 +346,7 @@ namespace DocuLink.Addin.Modules.WebView
         {
             Excel.Workbook wb = GetActiveWorkbook();
             if (wb == null) return;
+            if (!RequireWritable(wb)) return;
 
             // Cache resolved folder ids so that a dropped directory only creates one folder
             // even if it contains many files.
@@ -401,6 +405,7 @@ namespace DocuLink.Addin.Modules.WebView
         {
             Excel.Workbook wb = GetActiveWorkbook();
             if (wb == null) return;
+            if (!RequireWritable(wb)) return;
 
             var sw = System.Diagnostics.Stopwatch.StartNew();
             DocuLinkContent content = _service.RenamePdf(wb, req.Id, req.NewName);
@@ -419,6 +424,7 @@ namespace DocuLink.Addin.Modules.WebView
         {
             Excel.Workbook wb = GetActiveWorkbook();
             if (wb == null) return;
+            if (!RequireWritable(wb)) return;
             _service.RemovePdf(wb, req.Id);
             SendFilesToWebView();
             Globals.ThisAddIn.NotifyViewerPdfRemoved(req.Id);
@@ -428,6 +434,7 @@ namespace DocuLink.Addin.Modules.WebView
         {
             Excel.Workbook wb = GetActiveWorkbook();
             if (wb == null) return;
+            if (!RequireWritable(wb)) return;
             DocuLinkContent content = _service.MoveFile(wb, req.Id, req.FolderId);
             SendFilesToWebView(content);
         }
@@ -436,6 +443,7 @@ namespace DocuLink.Addin.Modules.WebView
         {
             Excel.Workbook wb = GetActiveWorkbook();
             if (wb == null) return;
+            if (!RequireWritable(wb)) return;
             _service.AddFolder(wb, req.Name);
             SendFilesToWebView();
         }
@@ -444,6 +452,7 @@ namespace DocuLink.Addin.Modules.WebView
         {
             Excel.Workbook wb = GetActiveWorkbook();
             if (wb == null) return;
+            if (!RequireWritable(wb)) return;
             _service.RenameFolder(wb, req.Id, req.NewName);
             SendFilesToWebView();
         }
@@ -452,6 +461,7 @@ namespace DocuLink.Addin.Modules.WebView
         {
             Excel.Workbook wb = GetActiveWorkbook();
             if (wb == null) return;
+            if (!RequireWritable(wb)) return;
             _service.RemoveFolder(wb, req.Id);
             SendFilesToWebView();
         }
@@ -508,6 +518,11 @@ namespace DocuLink.Addin.Modules.WebView
         private static Excel.Workbook GetActiveWorkbook()
         {
             return Globals.ThisAddIn.Application?.ActiveWorkbook;
+        }
+
+        private bool RequireWritable(Excel.Workbook workbook)
+        {
+            return WorkbookProtectionGuard.TryRequireWritable(workbook, this);
         }
 
         protected override void OnFormClosing(FormClosingEventArgs e)

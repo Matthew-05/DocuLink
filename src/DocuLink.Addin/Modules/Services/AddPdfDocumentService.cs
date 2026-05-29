@@ -17,6 +17,8 @@ namespace DocuLink.Addin.Modules.Services
             if (string.IsNullOrWhiteSpace(pdfFilePath))
                 throw new ArgumentException("PDF path must be non-empty.", nameof(pdfFilePath));
 
+            WorkbookProtectionGuard.ThrowIfStructureProtected(workbook);
+
             byte[] bytes = File.ReadAllBytes(pdfFilePath);
             string base64 = Convert.ToBase64String(bytes);
 
@@ -42,6 +44,8 @@ namespace DocuLink.Addin.Modules.Services
                 throw new ArgumentException("PDF name must be non-empty.", nameof(name));
             if (base64 == null)
                 throw new ArgumentNullException(nameof(base64));
+
+            WorkbookProtectionGuard.ThrowIfStructureProtected(workbook);
 
             long fileSizeBytes = 0;
             try { fileSizeBytes = Convert.FromBase64String(base64).LongLength; } catch { }

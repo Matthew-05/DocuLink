@@ -22,6 +22,8 @@ namespace DocuLink.Addin.Modules.Services
             if (string.IsNullOrWhiteSpace(rectId) || workbook == null)
                 return false;
 
+            WorkbookProtectionGuard.ThrowIfStructureProtected(workbook);
+
             try
             {
                 WorkbookStorageSession session = Globals.ThisAddIn.GetStorageSession(workbook);

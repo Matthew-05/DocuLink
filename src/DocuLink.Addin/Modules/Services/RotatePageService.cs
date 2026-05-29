@@ -25,6 +25,8 @@ namespace DocuLink.Addin.Modules.Services
             if (workbook == null)
                 throw new ArgumentNullException(nameof(workbook));
 
+            WorkbookProtectionGuard.ThrowIfStructureProtected(workbook);
+
             // ── 1. Update page rotation in content XML ────────────────────────
             var store = new DocuLinkCustomXmlPartStore(workbook);
             DocuLinkContent content = store.LoadContent();

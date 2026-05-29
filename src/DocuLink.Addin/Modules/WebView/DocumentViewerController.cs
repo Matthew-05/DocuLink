@@ -161,6 +161,9 @@ namespace DocuLink.Addin.Modules.WebView
             using (DocuLinkLog.Time("ExecuteLinkRectangleCreated total"))
             {
                 DocuLinkLog.Trace("ENTER");
+                IWin32Window owner = _invokeTarget.FindForm() ?? _invokeTarget;
+                if (!WorkbookProtectionGuard.TryRequireWritable(wb, owner))
+                    return;
 
                 try
                 {
@@ -173,7 +176,6 @@ namespace DocuLink.Addin.Modules.WebView
                 string text = payload.Text;
                 if (string.IsNullOrWhiteSpace(text))
                 {
-                    IWin32Window owner = _invokeTarget.FindForm() ?? _invokeTarget;
                     if (!LinkTextPromptDialog.TryPrompt(owner, out text))
                     {
                         DocuLinkLog.Trace("text prompt cancelled");
@@ -250,10 +252,13 @@ namespace DocuLink.Addin.Modules.WebView
             Excel.Workbook wb = Globals.ThisAddIn.Application?.ActiveWorkbook;
             if (wb == null) return;
 
+            IWin32Window owner = _invokeTarget.FindForm() ?? _invokeTarget;
+            if (!WorkbookProtectionGuard.TryRequireWritable(wb, owner))
+                return;
+
             string text = payload.Text;
             if (string.IsNullOrWhiteSpace(text))
             {
-                IWin32Window owner = _invokeTarget.FindForm() ?? _invokeTarget;
                 if (!LinkTextPromptDialog.TryPrompt(owner, out text))
                 {
                     SendLinkedRectanglesToWebView();
@@ -335,6 +340,10 @@ namespace DocuLink.Addin.Modules.WebView
             Excel.Workbook wb = Globals.ThisAddIn.Application?.ActiveWorkbook;
             if (wb == null) return;
 
+            IWin32Window owner = _invokeTarget.FindForm() ?? _invokeTarget;
+            if (!WorkbookProtectionGuard.TryRequireWritable(wb, owner))
+                return;
+
             using (Globals.ThisAddIn.EnterSelectionNavSuppress())
             {
                 if (!new DeleteLinkService().DeleteLink(rectId, wb))
@@ -353,6 +362,10 @@ namespace DocuLink.Addin.Modules.WebView
 
             Excel.Workbook wb = Globals.ThisAddIn.Application?.ActiveWorkbook;
             if (wb == null) return;
+
+            IWin32Window owner = _invokeTarget.FindForm() ?? _invokeTarget;
+            if (!WorkbookProtectionGuard.TryRequireWritable(wb, owner))
+                return;
 
             _invokeTarget.BeginInvoke(new Action(() => ExecuteRotatePage(payload, wb)));
         }

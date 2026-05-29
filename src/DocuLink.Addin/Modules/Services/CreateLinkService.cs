@@ -29,6 +29,7 @@ namespace DocuLink.Addin.Modules.Services
             Excel.Workbook workbook)
         {
             if (workbook == null) throw new ArgumentNullException(nameof(workbook));
+            WorkbookProtectionGuard.ThrowIfStructureProtected(workbook);
 
             Excel.Application app = Globals.ThisAddIn.Application;
             var selection = app?.Selection as Excel.Range;

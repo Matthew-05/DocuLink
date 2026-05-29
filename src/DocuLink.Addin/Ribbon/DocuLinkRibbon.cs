@@ -64,6 +64,9 @@ namespace DocuLink.Addin.Ribbon
                 return;
             }
 
+            if (!WorkbookProtectionGuard.TryRequireWritable(app.ActiveWorkbook))
+                return;
+
             var selection = app.Selection as Excel.Range;
             if (selection == null)
             {
@@ -120,6 +123,9 @@ namespace DocuLink.Addin.Ribbon
                     icon: MessageBoxIcon.Information);
                 return;
             }
+
+            if (!WorkbookProtectionGuard.TryRequireWritable(app.ActiveWorkbook))
+                return;
 
             using (var dialog = new OpenFileDialog())
             {
