@@ -295,6 +295,13 @@ namespace DocuLink.Addin
 
 
 
+        internal void NotifyFileManagerLinksChanged()
+        {
+            _fileManagerWindow?.RefreshDataIfReady();
+        }
+
+
+
         internal TaskPaneHost TaskPaneHost => FindEntryForActiveWorkbook()?.Host;
 
 

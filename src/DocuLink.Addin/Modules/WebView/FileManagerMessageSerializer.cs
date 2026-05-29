@@ -14,7 +14,10 @@ namespace DocuLink.Addin.Modules.WebView
     /// </summary>
     internal static class FileManagerMessageSerializer
     {
-        public static string BuildFilesLoaded(IList<PdfFolder> folders, IList<PdfMetadata> pdfs)
+        public static string BuildFilesLoaded(
+            IList<PdfFolder> folders,
+            IList<PdfMetadata> pdfs,
+            IReadOnlyDictionary<string, int> linkCounts = null)
         {
             var sb = new StringBuilder();
             sb.Append("{\"type\":\"files-loaded\",\"folders\":[");
@@ -50,6 +53,8 @@ namespace DocuLink.Addin.Modules.WebView
                 sb.Append(",\"status\":"); AppendString(sb, !string.IsNullOrWhiteSpace(p.OcrStatus) ? p.OcrStatus : PdfStatus.None);
                 sb.Append(",\"fileSizeBytes\":"); sb.Append(p.FileSizeBytes.ToString(CultureInfo.InvariantCulture));
                 sb.Append(",\"dateAdded\":"); AppendString(sb, dateAdded);
+                int lc = linkCounts != null && linkCounts.TryGetValue(p.Id, out int cnt) ? cnt : 0;
+                sb.Append(",\"linkCount\":"); sb.Append(lc.ToString(CultureInfo.InvariantCulture));
                 sb.Append('}');
             }
 

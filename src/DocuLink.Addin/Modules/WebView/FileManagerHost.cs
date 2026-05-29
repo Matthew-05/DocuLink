@@ -481,7 +481,22 @@ namespace DocuLink.Addin.Modules.WebView
                     content = store.LoadContent();
                 }
 
-                string json = FileManagerMessageSerializer.BuildFilesLoaded(content.Folders, content.Pdfs);
+                IReadOnlyDictionary<string, int> linkCounts = null;
+                try
+                {
+                    Excel.Workbook wb = GetActiveWorkbook();
+                    if (wb != null)
+                    {
+                        var links = new WorkbookStorageSession(wb).GetLinks();
+                        var counts = new Dictionary<string, int>(StringComparer.Ordinal);
+                        foreach (var link in links)
+                            counts[link.PdfId] = counts.TryGetValue(link.PdfId, out int n) ? n + 1 : 1;
+                        linkCounts = counts;
+                    }
+                }
+                catch { /* non-fatal; link counts default to 0 */ }
+
+                string json = FileManagerMessageSerializer.BuildFilesLoaded(content.Folders, content.Pdfs, linkCounts);
                 _webView.CoreWebView2?.PostWebMessageAsString(json);
             }
             catch (Exception ex)

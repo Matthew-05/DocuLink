@@ -99,14 +99,28 @@
 }
 
 .pdf-selector__item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   padding: 8px 12px;
   font-size: var(--font-size-sm);
   color: var(--color-text);
   cursor: pointer;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
   transition: background 0.1s;
+}
+
+.pdf-selector__name {
+  flex: 1;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.pdf-selector__link-count {
+  flex-shrink: 0;
+  opacity: 0.5;
+  font-size: 0.78em;
+  white-space: nowrap;
 }
 
 .pdf-selector__item:hover {

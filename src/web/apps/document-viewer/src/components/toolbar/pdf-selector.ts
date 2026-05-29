@@ -103,6 +103,13 @@ export class PdfSelector {
     this._renderList(this._searchInput.value);
   }
 
+  updateLinkCounts(counts: Record<string, number>): void {
+    for (const entry of this._entries) {
+      entry.linkCount = counts[entry.id] ?? 0;
+    }
+    this._renderList(this._searchInput.value);
+  }
+
   /** Removes an entry by id. Clears the active selection if it matches. */
   removeEntry(id: string): void {
     this._entries = this._entries.filter((e) => e.id !== id);
@@ -169,8 +176,18 @@ export class PdfSelector {
       if (entry.id === this._activeId) {
         li.classList.add("pdf-selector__item--active");
       }
-      li.textContent = entry.name;
       li.title = entry.name;
+
+      const nameSpan = document.createElement("span");
+      nameSpan.className = "pdf-selector__name";
+      nameSpan.textContent = entry.name;
+
+      const n = entry.linkCount ?? 0;
+      const countSpan = document.createElement("span");
+      countSpan.className = "pdf-selector__link-count";
+      countSpan.textContent = n === 1 ? "1 link" : `${n} links`;
+
+      li.append(nameSpan, countSpan);
       li.addEventListener("click", (e) => {
         e.stopPropagation();
         this._select(entry);
