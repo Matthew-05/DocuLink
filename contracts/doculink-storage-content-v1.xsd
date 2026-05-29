@@ -38,12 +38,26 @@
   </xs:complexType>
 
   <xs:complexType name="PdfType">
+    <xs:sequence>
+      <xs:element name="PageRotations" type="dl:PageRotationsType" minOccurs="0" maxOccurs="1" />
+    </xs:sequence>
     <xs:attribute name="id"            type="xs:string"   use="required" />
     <xs:attribute name="name"          type="xs:string"   use="required" />
     <xs:attribute name="folderId"      type="xs:string"   use="optional" />
     <xs:attribute name="dateAdded"     type="xs:dateTime" use="optional" />
     <xs:attribute name="fileSizeBytes" type="xs:long"     use="optional" />
     <xs:attribute name="ocrStatus"     type="xs:string"   use="optional" />
+  </xs:complexType>
+
+  <xs:complexType name="PageRotationsType">
+    <xs:sequence>
+      <xs:element name="Page" type="dl:PageRotationType" minOccurs="0" maxOccurs="unbounded" />
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="PageRotationType">
+    <xs:attribute name="index"    type="xs:unsignedInt" use="required" />
+    <xs:attribute name="rotation" type="xs:unsignedInt" use="required" />
   </xs:complexType>
 
 </xs:schema>

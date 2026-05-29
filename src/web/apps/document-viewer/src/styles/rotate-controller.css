@@ -1,0 +1,20 @@
+.rotate-controller {
+  display: flex;
+  gap: 0;
+}
+
+.rotate-controller__btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-sm);
+  color: var(--color-text);
+  font-size: var(--font-size-sm);
+  transition: background 0.1s;
+}
+
+.rotate-controller__btn:hover {
+  background: var(--color-surface-hover);
+}

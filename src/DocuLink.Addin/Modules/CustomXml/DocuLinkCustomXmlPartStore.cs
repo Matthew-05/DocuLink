@@ -104,8 +104,9 @@ namespace DocuLink.Addin.Modules.CustomXml
             pdf = new PdfDocument(metadata.Id, metadata.Name, base64 ?? string.Empty,
                 metadata.FolderId, metadata.DateAdded, metadata.FileSizeBytes)
             {
-                OcrStatus = metadata.OcrStatus,
+                OcrStatus     = metadata.OcrStatus,
                 GeometryBase64 = geometryBase64,
+                PageRotations  = metadata.PageRotations,
             };
             return true;
         }
@@ -120,8 +121,9 @@ namespace DocuLink.Addin.Modules.CustomXml
                 result.Add(new PdfDocument(m.Id, m.Name, base64 ?? string.Empty,
                     m.FolderId, m.DateAdded, m.FileSizeBytes)
                 {
-                    OcrStatus = m.OcrStatus,
+                    OcrStatus      = m.OcrStatus,
                     GeometryBase64 = geometryBase64,
+                    PageRotations  = m.PageRotations,
                 });
             }
             return result;
@@ -133,7 +135,8 @@ namespace DocuLink.Addin.Modules.CustomXml
 
             var metadata = new PdfMetadata(pdf.Id, pdf.Name, pdf.FolderId, pdf.DateAdded, pdf.FileSizeBytes)
             {
-                OcrStatus = pdf.OcrStatus,
+                OcrStatus     = pdf.OcrStatus,
+                PageRotations = pdf.PageRotations,
             };
             UpsertMetadata(metadata);
             SavePdfBinary(pdf.Id, pdf.Base64, pdf.GeometryBase64);
@@ -222,7 +225,8 @@ namespace DocuLink.Addin.Modules.CustomXml
                     return p;
                 return new PdfMetadata(p.Id, p.Name, null, p.DateAdded, p.FileSizeBytes)
                 {
-                    OcrStatus = p.OcrStatus,
+                    OcrStatus     = p.OcrStatus,
+                    PageRotations = p.PageRotations,
                 };
             }).ToList();
 

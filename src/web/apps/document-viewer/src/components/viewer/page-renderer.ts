@@ -21,10 +21,11 @@ export async function renderPage(
   doc: pdfjsLib.PDFDocumentProxy,
   pageNumber: number,
   wrapper: HTMLDivElement,
-  scale: ZoomLevel
+  scale: ZoomLevel,
+  rotation: number = 0,
 ): Promise<PageBaseDimensions> {
   const page = await doc.getPage(pageNumber);
-  const viewport = page.getViewport({ scale });
+  const viewport = page.getViewport({ scale, rotation });
 
   const canvas = document.createElement("canvas");
   canvas.className = "viewer__canvas";

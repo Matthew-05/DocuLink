@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 
 namespace DocuLink.Addin.Modules.CustomXml.Models
 {
@@ -29,5 +30,11 @@ namespace DocuLink.Addin.Modules.CustomXml.Models
         public long FileSizeBytes { get; set; }
 
         public string OcrStatus { get; set; } = "none";
+
+        /// <summary>
+        /// Per-page clockwise rotation in degrees (0, 90, 180, 270).
+        /// Only non-zero pages are stored. Null or empty means all pages at 0°.
+        /// </summary>
+        public Dictionary<int, int> PageRotations { get; set; }
     }
 }

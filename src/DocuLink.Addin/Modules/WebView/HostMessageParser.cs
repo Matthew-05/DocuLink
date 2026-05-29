@@ -126,6 +126,35 @@ namespace DocuLink.Addin.Modules.WebView
                 return null;
             }
         }
+
+    /// <summary>
+    /// Parses a <c>rotate-page</c> message into a <see cref="RotatePagePayload"/>.
+    /// Returns <c>null</c> on failure.
+    /// </summary>
+    public static RotatePagePayload ParseRotatePage(string json)
+    {
+        if (string.IsNullOrWhiteSpace(json))
+            return null;
+
+        try
+        {
+            var obj = WebMessageParser.Serializer.Deserialize<Dictionary<string, object>>(json);
+            if (obj == null) return null;
+
+            string pdfId     = obj.TryGetValue("pdfId",     out object pidVal) ? pidVal as string : null;
+            int    page      = obj.TryGetValue("page",      out object pgVal)  ? Convert.ToInt32(pgVal) : 0;
+            string direction = obj.TryGetValue("direction", out object dirVal) ? dirVal as string : null;
+
+            if (string.IsNullOrWhiteSpace(pdfId) || string.IsNullOrWhiteSpace(direction))
+                return null;
+
+            return new RotatePagePayload { PdfId = pdfId, Page = page, Direction = direction };
+        }
+        catch
+        {
+            return null;
+        }
+    }
     }
 
     /// <summary>Deserialized payload for a <c>link-rectangle-created</c> message.</summary>
@@ -138,6 +167,14 @@ namespace DocuLink.Addin.Modules.WebView
         public double Width  { get; set; }
         public double Height { get; set; }
         public string Text   { get; set; }
+    }
+
+    /// <summary>Deserialized payload for a <c>rotate-page</c> message.</summary>
+    internal sealed class RotatePagePayload
+    {
+        public string PdfId     { get; set; }
+        public int    Page      { get; set; }
+        public string Direction { get; set; }
     }
 
     /// <summary>Deserialized payload for a <c>link-rectangle-updated</c> message.</summary>

@@ -6,6 +6,8 @@ export interface PdfEntry {
   /** Gzip-compressed text-geometry-v1 JSON, base64-encoded. */
   geometryBase64?: string;
   linkCount?: number;
+  /** Per-page clockwise rotation in degrees (0, 90, 180, 270). Absent entries default to 0. */
+  pageRotations?: Record<number, number>;
 }
 
 export type ZoomLevel = number; // scale factor, e.g. 1.0 = 100%

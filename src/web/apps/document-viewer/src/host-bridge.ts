@@ -5,6 +5,7 @@ interface PdfPayload {
   name: string;
   base64: string;
   geometryBase64?: string;
+  pageRotations?: Record<string, number>;
 }
 
 interface PdfsLoadedMessage {
@@ -62,6 +63,12 @@ interface HighlightRectangleMessage {
   id: string;
 }
 
+interface PageRotationsUpdatedMessage {
+  type: "page-rotations-updated";
+  pdfId: string;
+  rotations: Record<string, number>;
+}
+
 /** Tracks object URLs by PDF id so single-document updates can revoke safely. */
 const _urlsByPdfId = new Map<string, string>();
 
@@ -93,11 +100,22 @@ function toPdfEntry(pdf: PdfPayload): PdfEntry {
   revokePdfUrl(pdf.id);
   const url = base64ToObjectUrl(pdf.base64);
   _urlsByPdfId.set(pdf.id, url);
+
+  let pageRotations: Record<number, number> | undefined;
+  if (pdf.pageRotations) {
+    const entries = Object.entries(pdf.pageRotations).filter(([, v]) => v !== 0);
+    if (entries.length > 0) {
+      pageRotations = {};
+      for (const [k, v] of entries) pageRotations[parseInt(k, 10)] = v;
+    }
+  }
+
   return {
     id:   pdf.id,
     name: pdf.name || pdf.id,
     url,
     geometryBase64: pdf.geometryBase64,
+    pageRotations,
   };
 }
 
@@ -112,6 +130,7 @@ function handleMessage(
   onLinkRectanglesRemoved?: (ids: string[]) => void,
   onPdfNameUpdated?: (id: string, name: string) => void,
   onPdfRemoved?: (id: string) => void,
+  onPageRotationsUpdated?: (pdfId: string, rotations: Record<number, number>) => void,
 ): void {
   try {
     const parsed: unknown =
@@ -200,6 +219,15 @@ function handleMessage(
       onPdfRemoved?.(msg.id);
       return;
     }
+
+    if (type === "page-rotations-updated") {
+      if (!onPageRotationsUpdated) return;
+      const msg = parsed as PageRotationsUpdatedMessage;
+      const rotations: Record<number, number> = {};
+      for (const [k, v] of Object.entries(msg.rotations)) rotations[parseInt(k, 10)] = v;
+      onPageRotationsUpdated(msg.pdfId, rotations);
+      return;
+    }
   } catch {
     // Malformed JSON or unexpected shape — silently ignore.
   }
@@ -236,6 +264,7 @@ export function initHostBridge(
   onLinkRectanglesRemoved?: (ids: string[]) => void,
   onPdfNameUpdated?: (id: string, name: string) => void,
   onPdfRemoved?: (id: string) => void,
+  onPageRotationsUpdated?: (pdfId: string, rotations: Record<number, number>) => void,
 ): void {
   const webview = (
     window as unknown as { chrome?: { webview?: WebView2Bridge } }
@@ -260,6 +289,7 @@ export function initHostBridge(
       onLinkRectanglesRemoved,
       onPdfNameUpdated,
       onPdfRemoved,
+      onPageRotationsUpdated,
     );
   });
 
@@ -293,6 +323,10 @@ export function sendLinkRectangleUpdated(payload: LinkRectUpdatedPayload): void 
     rect:  payload.rect,
     text:  payload.text,
   });
+}
+
+export function sendRotatePage(pdfId: string, page: number, direction: "cw" | "ccw"): void {
+  postToHost({ type: "rotate-page", pdfId, page, direction });
 }
 
 export function sendCacheBuildStarted(): void {

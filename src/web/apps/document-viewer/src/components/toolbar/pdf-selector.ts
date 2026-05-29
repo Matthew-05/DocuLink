@@ -110,6 +110,19 @@ export class PdfSelector {
     this._renderList(this._searchInput.value);
   }
 
+  /** Merges updated page rotations into the matching entry so future loadDocument calls use them. */
+  updatePdfRotations(pdfId: string, rotations: Record<number, number>): void {
+    const entry = this._entries.find((e) => e.id === pdfId);
+    if (!entry) return;
+    if (!entry.pageRotations) entry.pageRotations = {};
+    for (const [k, v] of Object.entries(rotations)) {
+      const idx = Number(k);
+      if (v === 0) delete entry.pageRotations[idx];
+      else entry.pageRotations[idx] = v;
+    }
+    if (Object.keys(entry.pageRotations).length === 0) entry.pageRotations = undefined;
+  }
+
   /** Removes an entry by id. Clears the active selection if it matches. */
   removeEntry(id: string): void {
     this._entries = this._entries.filter((e) => e.id !== id);
