@@ -211,16 +211,24 @@ export class PdfViewer {
         const entry = this._pageEntries[i - 1];
         if (!entry) continue;
         if (entry.renderedScale === capturedScale) continue;
-        await renderPage(doc, i, entry.wrapper, capturedScale, entry.rotation);
+        await renderPage(
+          doc,
+          i,
+          entry.wrapper,
+          capturedScale,
+          entry.rotation,
+          () => renderGen === this._renderGeneration && generation === this._loadGeneration,
+        );
+        if (renderGen !== this._renderGeneration || generation !== this._loadGeneration) return;
         entry.renderedScale = capturedScale;
       }
     });
   }
 
   async renderPageNow(pageNumber: number): Promise<void> {
-    ++this._renderGeneration;
     const doc = this._doc;
     if (!doc) return;
+    const renderGen = ++this._renderGeneration;
 
     await new Promise<void>((resolve) => {
       this._renderingQueue = this._renderingQueue.then(async () => {
@@ -233,7 +241,18 @@ export class PdfViewer {
           resolve();
           return;
         }
-        await renderPage(doc, pageNumber, entry.wrapper, this._scale, entry.rotation);
+        await renderPage(
+          doc,
+          pageNumber,
+          entry.wrapper,
+          this._scale,
+          entry.rotation,
+          () => renderGen === this._renderGeneration && this._doc === doc,
+        );
+        if (renderGen !== this._renderGeneration || this._doc !== doc) {
+          resolve();
+          return;
+        }
         entry.renderedScale = this._scale;
         resolve();
       });
@@ -243,12 +262,22 @@ export class PdfViewer {
   private async _renderAll(): Promise<void> {
     const doc = this._doc;
     if (!doc) return;
+    const renderGen = this._renderGeneration;
 
     for (let i = 0; i < this._pageEntries.length; i++) {
       const entry = this._pageEntries[i];
+      if (renderGen !== this._renderGeneration) return;
       if (!entry || this._doc !== doc) continue;
       if (entry.renderedScale === this._scale) continue;
-      await renderPage(doc, i + 1, entry.wrapper, this._scale, entry.rotation);
+      await renderPage(
+        doc,
+        i + 1,
+        entry.wrapper,
+        this._scale,
+        entry.rotation,
+        () => renderGen === this._renderGeneration && this._doc === doc,
+      );
+      if (renderGen !== this._renderGeneration || this._doc !== doc) return;
       entry.renderedScale = this._scale;
     }
   }
@@ -260,23 +289,46 @@ export class PdfViewer {
     const doc = this._doc;
     if (!entry || !doc) return;
 
+    ++this._renderGeneration;
+    const capturedRenderGen = this._renderGeneration;
+    const previousRotation = entry.rotation;
+    const previousWidth = entry.baseWidth;
+    const previousHeight = entry.baseHeight;
+    const rotationDelta = normalizeRotation(rotation - previousRotation);
+    const previewWidth = rotationDelta === 90 || rotationDelta === 270 ? previousHeight : previousWidth;
+    const previewHeight = rotationDelta === 90 || rotationDelta === 270 ? previousWidth : previousHeight;
+
+    this._applyCssRotationPreview(entry, rotationDelta, previousWidth, previousHeight);
+    entry.rotation = rotation;
+    entry.baseWidth = previewWidth;
+    entry.baseHeight = previewHeight;
+    entry.renderedScale = null;
+    entry.wrapper.style.width = `${previewWidth * this._scale}px`;
+    entry.wrapper.style.height = `${previewHeight * this._scale}px`;
+
     const loadGen = this._loadGeneration;
     void doc.getPage(pageIndex + 1).then((page) => {
       if (this._loadGeneration !== loadGen) { page.cleanup(); return; }
       const vp = page.getViewport({ scale: 1.0, rotation });
       page.cleanup();
-      entry.rotation      = rotation;
-      entry.baseWidth     = vp.width;
-      entry.baseHeight    = vp.height;
-      entry.renderedScale = null;
-      entry.wrapper.style.width  = `${vp.width  * this._scale}px`;
+      if (this._renderGeneration !== capturedRenderGen) return;
+
+      entry.baseWidth = vp.width;
+      entry.baseHeight = vp.height;
+      entry.wrapper.style.width = `${vp.width * this._scale}px`;
       entry.wrapper.style.height = `${vp.height * this._scale}px`;
 
-      ++this._renderGeneration;
-      const capturedRenderGen = this._renderGeneration;
       this._renderingQueue = this._renderingQueue.then(async () => {
         if (this._renderGeneration !== capturedRenderGen) return;
-        const dims = await renderPage(doc, pageIndex + 1, entry.wrapper, this._scale, rotation);
+        const dims = await renderPage(
+          doc,
+          pageIndex + 1,
+          entry.wrapper,
+          this._scale,
+          rotation,
+          () => this._renderGeneration === capturedRenderGen && this._doc === doc,
+        );
+        if (this._renderGeneration !== capturedRenderGen) return;
         entry.baseWidth     = dims.baseWidth;
         entry.baseHeight    = dims.baseHeight;
         entry.renderedScale = this._scale;
@@ -308,4 +360,25 @@ export class PdfViewer {
       this._zoomDebounce = null;
     }
   }
+
+  private _applyCssRotationPreview(
+    entry: PageEntry,
+    rotationDelta: number,
+    previousWidth: number,
+    previousHeight: number,
+  ): void {
+    const canvas = entry.wrapper.querySelector<HTMLCanvasElement>("canvas");
+    if (!canvas || rotationDelta === 0) return;
+
+    const width = previousWidth * this._scale;
+    const height = previousHeight * this._scale;
+    canvas.classList.add("viewer__canvas--rotation-preview");
+    canvas.style.width = `${width}px`;
+    canvas.style.height = `${height}px`;
+    canvas.style.transform = `translate(-50%, -50%) rotate(${rotationDelta}deg)`;
+  }
+}
+
+function normalizeRotation(rotation: number): number {
+  return ((rotation % 360) + 360) % 360;
 }

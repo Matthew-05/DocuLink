@@ -23,6 +23,7 @@ export async function renderPage(
   wrapper: HTMLDivElement,
   scale: ZoomLevel,
   rotation: number = 0,
+  shouldCommit: () => boolean = () => true,
 ): Promise<PageBaseDimensions> {
   const page = await doc.getPage(pageNumber);
   const viewport = page.getViewport({ scale, rotation });
@@ -51,6 +52,10 @@ export async function renderPage(
     throw e;
   }
   page.cleanup();
+
+  if (!shouldCommit()) {
+    return { baseWidth: viewport.width / scale, baseHeight: viewport.height / scale };
+  }
 
   // Update wrapper layout dimensions to match the new viewport.
   wrapper.style.width = `${viewport.width}px`;
