@@ -1,4 +1,6 @@
-/* Two-column app shell */
+/* Two-column app shell.
+   Minimum supported width: 600px (sidebar 260px + content 340px).
+   See DropzoneLayout constants in FileManagerHost.cs for layout synchronization. */
 
 #app {
   display: grid;
@@ -8,6 +10,7 @@
   overflow: hidden;
   user-select: none;
   cursor: default;
+  min-width: 600px;
 }
 
 #app input[type="text"] {

@@ -32,7 +32,7 @@ namespace DocuLink.Addin.Modules.WebView
         private readonly Panel _surface = new Panel();
         private readonly Label _startupPlaceholder = new Label();
         private readonly WebView2 _webView = new WebView2();
-        private ProgressScope _cacheProgressScope;
+        private ThreadedProgressController _cacheProgress;
         private Task _initTask;
         private bool _webShellReady;
         private bool _webViewReady;
@@ -199,13 +199,14 @@ namespace DocuLink.Addin.Modules.WebView
                         break;
 
                     case "cache-build-started":
-                        _cacheProgressScope?.Dispose();
-                        _cacheProgressScope = new ProgressScope("Building document index\u2026");
+                        _cacheProgress?.Dispose();
+                        _cacheProgress = ThreadedProgressController.Show("Preparing document viewer...");
+                        _cacheProgress.Report("Preparing document viewer", "Building document index...", 0, 0);
                         break;
 
                     case "cache-build-complete":
-                        _cacheProgressScope?.Dispose();
-                        _cacheProgressScope = null;
+                        _cacheProgress?.Dispose();
+                        _cacheProgress = null;
                         break;
                 }
             }

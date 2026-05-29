@@ -88,6 +88,10 @@ export function sendAddFiles(files: AddFilePayload[]): void {
   send({ type: "add-files", files });
 }
 
+export function sendBrowsePdfFiles(): void {
+  send({ type: "browse-pdf-files" });
+}
+
 export function sendRenameFile(id: string, newName: string): void {
   console.time("[DocuLink] rename round-trip");
   send({ type: "rename-file", id, newName });

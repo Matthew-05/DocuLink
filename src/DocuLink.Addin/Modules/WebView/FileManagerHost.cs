@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.Drawing;
+using System.Drawing.Drawing2D;
 using System.IO;
 using System.Linq;
 using System.Reflection;
@@ -15,18 +17,33 @@ using Excel = Microsoft.Office.Interop.Excel;
 
 namespace DocuLink.Addin.Modules.WebView
 {
+    /// <summary>
+    /// Layout constants for native dropzone panel positioning and sizing.
+    /// MUST match corresponding CSS values in src/web/apps/file-manager/src/styles/:
+    /// - SidebarWidth (260) ↔ grid-template-columns: 260px 1fr (layout.css:5)
+    /// - DropZoneHeight (122) ↔ .native-dropzone-spacer { height: 122px; } (folder-panel.css:5)
+    /// - Gap (12) ↔ margin-top/bottom: 12px (folder-panel.css:6-7)
+    /// </summary>
+    internal static class DropzoneLayout
+    {
+        public const int SidebarWidth = 260;
+        public const int Gap = 12;
+        public const int DropZoneHeight = 122;
+        public const int MinWidth = 160;
+    }
+
     /// <summary>Hosts the file-manager web UI in a standalone non-modal window.</summary>
     /// <remarks>
     /// Explorer → WebView2 file drops often do not surface HTML5 drop events inside Office/WinForms;
-    /// Chromium may navigate to file:/// URLs instead. This host cancels navigation for those
-    /// file URIs and imports paths via <see cref="ManageFilesService"/> (WinForms
-    /// <see cref="Control.AllowDrop"/> on <see cref="WebView2"/> is unavailable in SDK versions
-    /// where that property is read-only). Multi-file Explorer drops rely on sequential
-    /// file-navigation cancels where the runtime emits them.
+    /// Chromium may navigate to file:/// URLs instead. This host disables WebView2 external
+    /// drops so WinForms can receive real <see cref="DataFormats.FileDrop"/> paths and imports
+    /// them via <see cref="PdfImportService"/>. The navigation-cancellation handler (CoreWebView2_NavigationStarting)
+    /// remains active to catch any file:/// URLs that slip through as an extra safeguard.
     /// </remarks>
     public sealed class FileManagerHost : Form
     {
         private readonly WebView2 _webView = new WebView2();
+        private readonly NativeDropZonePanel _nativeDropZone = new NativeDropZonePanel();
         private readonly ManageFilesService _service = new ManageFilesService();
         private OcrService _ocrService;
 
@@ -49,9 +66,26 @@ namespace DocuLink.Addin.Modules.WebView
             Height = 620;
             MinimumSize = new System.Drawing.Size(700, 480);
             StartPosition = FormStartPosition.CenterScreen;
+            AllowDrop = true;
 
             _webView.Dock = DockStyle.Fill;
+            _webView.DragEnter += NativeFileDrop_DragEnter;
+            _webView.DragOver += NativeFileDrop_DragEnter;
+            _webView.DragDrop += NativeFileDrop_DragDrop;
             Controls.Add(_webView);
+
+            _nativeDropZone.AllowDrop = true;
+            _nativeDropZone.Click += (sender, args) => ShowPdfFilePicker();
+            _nativeDropZone.DragEnter += NativeFileDrop_DragEnter;
+            _nativeDropZone.DragOver += NativeFileDrop_DragEnter;
+            _nativeDropZone.DragLeave += NativeFileDrop_DragLeave;
+            _nativeDropZone.DragDrop += NativeFileDrop_DragDrop;
+            Controls.Add(_nativeDropZone);
+
+            DragEnter += NativeFileDrop_DragEnter;
+            DragOver += NativeFileDrop_DragEnter;
+            DragLeave += NativeFileDrop_DragLeave;
+            DragDrop += NativeFileDrop_DragDrop;
 
             _ = InitAsync();
         }
@@ -69,6 +103,7 @@ namespace DocuLink.Addin.Modules.WebView
                     userDataFolder: userDataFolder);
 
                 await _webView.EnsureCoreWebView2Async(environment);
+                _webView.AllowExternalDrop = false;
 
                 string uiPath = GetWebUiPath();
                 if (!Directory.Exists(uiPath))
@@ -84,6 +119,7 @@ namespace DocuLink.Addin.Modules.WebView
 
                 _webView.CoreWebView2.WebMessageReceived += OnWebMessageReceived;
                 _webView.CoreWebView2.NavigationStarting += CoreWebView2_NavigationStarting;
+                _webView.CoreWebView2.NavigationCompleted += (sender, args) => PositionNativeDropZone();
 
                 _webView.CoreWebView2.Navigate("https://doculink.local/file-manager/index.html");
             }
@@ -123,6 +159,55 @@ namespace DocuLink.Addin.Modules.WebView
             ProcessOsPaths(new[] { localPath });
         }
 
+        private void NativeFileDrop_DragEnter(object sender, DragEventArgs e)
+        {
+            if (GetDroppedPaths(e.Data).Length == 0)
+            {
+                e.Effect = DragDropEffects.None;
+                return;
+            }
+
+            e.Effect = DragDropEffects.Copy;
+            _nativeDropZone.SetDragOver(true);
+        }
+
+        private void NativeFileDrop_DragLeave(object sender, EventArgs e)
+        {
+            _nativeDropZone.SetDragOver(false);
+        }
+
+        private void NativeFileDrop_DragDrop(object sender, DragEventArgs e)
+        {
+            _nativeDropZone.SetDragOver(false);
+
+            string[] paths = GetDroppedPaths(e.Data);
+            if (paths.Length == 0)
+                return;
+
+            BeginInvoke(new Action(() => ProcessOsPaths(paths)));
+        }
+
+        private static string[] GetDroppedPaths(IDataObject data)
+        {
+            if (data == null || !data.GetDataPresent(DataFormats.FileDrop))
+                return Array.Empty<string>();
+
+            return data.GetData(DataFormats.FileDrop) as string[] ?? Array.Empty<string>();
+        }
+
+        private void PositionNativeDropZone()
+        {
+            int width = Math.Max(DropzoneLayout.MinWidth, Math.Min(DropzoneLayout.SidebarWidth - DropzoneLayout.Gap * 2, ClientSize.Width - DropzoneLayout.Gap * 2));
+            width = Math.Min(width, Math.Max(0, ClientSize.Width - DropzoneLayout.Gap * 2));
+
+            _nativeDropZone.SetBounds(
+                DropzoneLayout.Gap,
+                ClientSize.Height - DropzoneLayout.Gap - DropzoneLayout.DropZoneHeight,
+                width,
+                DropzoneLayout.DropZoneHeight);
+            _nativeDropZone.BringToFront();
+        }
+
         /// <summary>Imports PDFs (or folders of PDFs) dropped from the OS. De-duplicates rapid double delivery (NavigationStarting + DragDrop).</summary>
         private void ProcessOsPaths(string[] paths)
         {
@@ -139,10 +224,13 @@ namespace DocuLink.Addin.Modules.WebView
                 return;
 
             var folderIdCache = new Dictionary<string, string>(StringComparer.Ordinal);
-            var addedIds = new List<string>();
+            var requests = new List<PdfPathImportRequest>();
+            PdfImportResult importResult;
 
-            using (new ProgressScope("Importing documents\u2026"))
+            using (var progress = ThreadedProgressController.Show("Importing documents..."))
             {
+                progress.Report("Collecting PDFs", null, 0, 0);
+
                 foreach (string raw in paths)
                 {
                     if (string.IsNullOrWhiteSpace(raw))
@@ -165,11 +253,10 @@ namespace DocuLink.Addin.Modules.WebView
                     {
                         FileAttributes attr = File.GetAttributes(path);
                         if ((attr & FileAttributes.Directory) == FileAttributes.Directory)
-                            ImportDirectoryOfPdfs(wb, path, folderIdCache, addedIds);
+                            AddDirectoryPdfRequests(wb, path, folderIdCache, requests);
                         else if (path.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase))
                         {
-                            string newId = _service.AddPdfFromFilePath(wb, path, _selectedFolderId);
-                            addedIds.Add(newId);
+                            requests.Add(new PdfPathImportRequest(path, _selectedFolderId));
                         }
                     }
                     catch (Exception ex)
@@ -177,17 +264,29 @@ namespace DocuLink.Addin.Modules.WebView
                         System.Diagnostics.Debug.WriteLine($"[DocuLink] OS import failed for '{path}': {ex.Message}");
                     }
                 }
-            }
 
-            if (addedIds.Count > 0)
-            {
-                SendFilesToWebView();
-                foreach (string id in addedIds)
-                    Globals.ThisAddIn.NotifyViewerPdfAdded(id);
+                importResult = new PdfImportService().ImportFilePaths(wb, requests, progress);
+
+                if (importResult.AddedIds.Count > 0)
+                {
+                    progress.Report(
+                        "Refreshing DocuLink",
+                        "Updating file list and viewer data...",
+                        importResult.AddedIds.Count,
+                        importResult.AddedIds.Count);
+
+                    SendFilesToWebView();
+                    foreach (string id in importResult.AddedIds)
+                        Globals.ThisAddIn.NotifyViewerPdfAdded(id);
+                }
             }
         }
 
-        private void ImportDirectoryOfPdfs(Excel.Workbook wb, string dirPath, Dictionary<string, string> folderIdCache, List<string> addedIds)
+        private void AddDirectoryPdfRequests(
+            Excel.Workbook wb,
+            string dirPath,
+            Dictionary<string, string> folderIdCache,
+            List<PdfPathImportRequest> requests)
         {
             string folderName;
             try
@@ -217,15 +316,7 @@ namespace DocuLink.Addin.Modules.WebView
                 if (ShouldSkipDuplicateOsImport(full))
                     continue;
 
-                try
-                {
-                    string newId = _service.AddPdfFromFilePath(wb, full, folderId);
-                    addedIds.Add(newId);
-                }
-                catch (Exception ex)
-                {
-                    System.Diagnostics.Debug.WriteLine($"[DocuLink] OS import failed for '{full}': {ex.Message}");
-                }
+                requests.Add(new PdfPathImportRequest(full, folderId));
             }
         }
 
@@ -274,6 +365,10 @@ namespace DocuLink.Addin.Modules.WebView
 
                     case "add-files":
                         HandleAddFiles(FileManagerMessageParser.ParseAddFiles(raw));
+                        break;
+
+                    case "browse-pdf-files":
+                        ShowPdfFilePicker();
                         break;
 
                     case "rename-file":
@@ -351,28 +446,59 @@ namespace DocuLink.Addin.Modules.WebView
             // Cache resolved folder ids so that a dropped directory only creates one folder
             // even if it contains many files.
             var resolvedFolderIds = new Dictionary<string, string>(StringComparer.Ordinal);
-            var addedIds = new List<string>();
+            var requests = new List<PdfBase64ImportRequest>();
+            PdfImportResult importResult;
 
-            using (new ProgressScope("Importing documents\u2026"))
+            using (var progress = ThreadedProgressController.Show("Importing documents..."))
             {
                 foreach (var file in req.Files)
                 {
                     try
                     {
                         string folderId = ResolveFolderId(wb, file.FolderId, resolvedFolderIds);
-                        string newId = _service.AddPdf(wb, file.Name, file.Base64, folderId);
-                        addedIds.Add(newId);
+                        requests.Add(new PdfBase64ImportRequest(file.Name, file.Base64, folderId));
                     }
                     catch (Exception ex)
                     {
                         System.Diagnostics.Debug.WriteLine($"[DocuLink] AddPdf failed for '{file.Name}': {ex.Message}");
                     }
                 }
+
+                importResult = new PdfImportService().ImportBase64(wb, requests, progress);
+
+                progress.Report(
+                    "Refreshing DocuLink",
+                    "Updating file list and viewer data...",
+                    importResult.AddedIds.Count,
+                    importResult.AddedIds.Count);
+
+                SendFilesToWebView();
+                foreach (string id in importResult.AddedIds)
+                    Globals.ThisAddIn.NotifyViewerPdfAdded(id);
+            }
+        }
+
+        private void ShowPdfFilePicker()
+        {
+            Excel.Workbook wb = GetActiveWorkbook();
+            if (wb == null) return;
+            if (!RequireWritable(wb)) return;
+
+            string[] selectedPaths;
+            using (var dialog = new OpenFileDialog())
+            {
+                dialog.Title = "Add PDFs to workbook";
+                dialog.Filter = "PDF files (*.pdf)|*.pdf|All files (*.*)|*.*";
+                dialog.Multiselect = true;
+                dialog.CheckFileExists = true;
+
+                if (dialog.ShowDialog(this) != DialogResult.OK || dialog.FileNames == null || dialog.FileNames.Length == 0)
+                    return;
+
+                selectedPaths = dialog.FileNames.ToArray();
             }
 
-            SendFilesToWebView();
-            foreach (string id in addedIds)
-                Globals.ThisAddIn.NotifyViewerPdfAdded(id);
+            BeginInvoke(new Action(() => ProcessOsPaths(selectedPaths)));
         }
 
         /// <summary>
@@ -489,6 +615,11 @@ namespace DocuLink.Addin.Modules.WebView
                     if (wb == null) return;
                     var store = new DocuLinkCustomXmlPartStore(wb);
                     content = store.LoadContent();
+                    if (content == null)
+                    {
+                        System.Diagnostics.Debug.WriteLine("[DocuLink] Failed to load workbook content");
+                        return;
+                    }
                 }
 
                 IReadOnlyDictionary<string, int> linkCounts = null;
@@ -537,6 +668,12 @@ namespace DocuLink.Addin.Modules.WebView
             base.OnFormClosing(e);
         }
 
+        protected override void OnResize(EventArgs e)
+        {
+            base.OnResize(e);
+            PositionNativeDropZone();
+        }
+
         private void SendResetUiToWebView()
         {
             if (!_webViewReady) return;
@@ -559,6 +696,92 @@ namespace DocuLink.Addin.Modules.WebView
             string addinDir = Path.GetDirectoryName(new Uri(codeBase).LocalPath)
                 ?? AppDomain.CurrentDomain.BaseDirectory;
             return Path.Combine(addinDir, "webui");
+        }
+
+        /// <summary>
+        /// Native Windows Forms panel for drag-drop file interaction.
+        /// Color tokens MUST match src/web/shared/base.css design system:
+        ///   - ForeColor (31,41,55) = --color-text-primary
+        ///   - BackColor (255,255,255) = --color-surface
+        ///   - fillColor drag-over (238,242,255) = --color-surface-light
+        ///   - borderColor drag-over (124,106,247) = --color-accent
+        ///   - borderColor rest (212,212,224) = --color-border
+        ///   - mutedBrush (92,92,112) = --color-text-muted
+        /// If design tokens change, both CSS and these hardcoded values must be updated together.
+        /// </summary>
+        private sealed class NativeDropZonePanel : Panel
+        {
+            private bool _dragOver;
+
+            public NativeDropZonePanel()
+            {
+                DoubleBuffered = true;
+                BackColor = Color.White;
+                ForeColor = Color.FromArgb(31, 41, 55);
+                Cursor = Cursors.Hand;
+            }
+
+            public void SetDragOver(bool dragOver)
+            {
+                if (_dragOver == dragOver)
+                    return;
+
+                _dragOver = dragOver;
+                Invalidate();
+            }
+
+            protected override void OnPaint(PaintEventArgs e)
+            {
+                base.OnPaint(e);
+
+                e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+
+                var bounds = ClientRectangle;
+                bounds.Inflate(-1, -1);
+
+                Color fillColor = _dragOver ? Color.FromArgb(238, 242, 255) : Color.White;
+                Color borderColor = _dragOver ? Color.FromArgb(124, 106, 247) : Color.FromArgb(212, 212, 224);
+
+                using (var fill = new SolidBrush(fillColor))
+                using (var border = new Pen(borderColor, 2f))
+                using (var textBrush = new SolidBrush(ForeColor))
+                using (var mutedBrush = new SolidBrush(Color.FromArgb(92, 92, 112)))
+                using (var iconFont = new Font(Font.FontFamily, 20f, FontStyle.Regular))
+                using (var titleFont = new Font(Font.FontFamily, 12f, FontStyle.Bold))
+                using (var bodyFont = new Font(Font.FontFamily, 11f, FontStyle.Regular))
+                {
+                    border.DashStyle = DashStyle.Dash;
+                    e.Graphics.FillRectangle(fill, bounds);
+                    e.Graphics.DrawRectangle(border, bounds);
+
+                    var icon = "PDF";
+                    var title = "Drop PDFs or folders here";
+                    var body = "or click to browse";
+                    var iconSize = e.Graphics.MeasureString(icon, iconFont);
+                    var titleSize = e.Graphics.MeasureString(title, titleFont);
+                    var bodySize = e.Graphics.MeasureString(body, bodyFont);
+                    float centerY = bounds.Top + bounds.Height / 2f;
+
+                    e.Graphics.DrawString(
+                        icon,
+                        iconFont,
+                        mutedBrush,
+                        bounds.Left + (bounds.Width - iconSize.Width) / 2f,
+                        centerY - iconSize.Height - titleSize.Height / 2f - 4f);
+                    e.Graphics.DrawString(
+                        title,
+                        titleFont,
+                        textBrush,
+                        bounds.Left + (bounds.Width - titleSize.Width) / 2f,
+                        centerY - titleSize.Height / 2f + 1f);
+                    e.Graphics.DrawString(
+                        body,
+                        bodyFont,
+                        mutedBrush,
+                        bounds.Left + (bounds.Width - bodySize.Width) / 2f,
+                        centerY + titleSize.Height / 2f + 7f);
+                }
+            }
         }
     }
 }

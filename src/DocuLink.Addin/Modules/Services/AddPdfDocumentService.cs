@@ -34,6 +34,34 @@ namespace DocuLink.Addin.Modules.Services
             return pdfId;
         }
 
+        public string AddPreparedPdf(
+            Excel.Workbook workbook,
+            string name,
+            string base64,
+            string ocrStatus,
+            long fileSizeBytes,
+            string folderId = null)
+        {
+            if (workbook == null)
+                throw new ArgumentNullException(nameof(workbook));
+            if (string.IsNullOrWhiteSpace(name))
+                throw new ArgumentException("PDF name must be non-empty.", nameof(name));
+            if (base64 == null)
+                throw new ArgumentNullException(nameof(base64));
+
+            WorkbookProtectionGuard.ThrowIfStructureProtected(workbook);
+
+            string pdfId = Guid.NewGuid().ToString("D");
+            var pdf = new PdfDocument(pdfId, name, base64, folderId, DateTime.UtcNow, fileSizeBytes)
+            {
+                OcrStatus = string.IsNullOrWhiteSpace(ocrStatus) ? PdfStatus.None : ocrStatus,
+            };
+
+            var store = new DocuLinkCustomXmlPartStore(workbook);
+            store.UpsertPdf(pdf);
+            return pdfId;
+        }
+
         /// <summary>Embeds PDF bytes provided as a base64 string without reading from disk.</summary>
         /// <returns>The GUID of the newly stored PDF.</returns>
         public string AddEmbeddedPdfFromBase64(Excel.Workbook workbook, string name, string base64, string folderId = null)
