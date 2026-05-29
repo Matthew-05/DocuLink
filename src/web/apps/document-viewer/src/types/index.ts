@@ -5,6 +5,7 @@ export interface PdfEntry {
   url: string;
   /** Gzip-compressed text-geometry-v1 JSON, base64-encoded. */
   geometryBase64?: string;
+  linkCount?: number;
 }
 
 export type ZoomLevel = number; // scale factor, e.g. 1.0 = 100%

@@ -19,7 +19,7 @@ import {
   sendCacheBuildStarted,
   sendCacheBuildComplete,
 } from "../../host-bridge.js";
-import type { SearchMatch } from "../../types/index.js";
+import type { SearchMatch, LinkedRectEntry } from "../../types/index.js";
 import type { PdfViewer } from "./pdf-viewer.js";
 
 interface DocuLinkDebugApi {
@@ -115,6 +115,14 @@ export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLEleme
   viewer.element.addEventListener("scroll", updatePageFromScroll, { passive: true });
 
   // ── Text cache & rect-draw overlay ────────────────────────────────────────
+
+  let _currentRects: LinkedRectEntry[] = [];
+
+  const computeLinkCounts = (rects: LinkedRectEntry[]): Record<string, number> => {
+    const counts: Record<string, number> = {};
+    for (const r of rects) counts[r.pdfId] = (counts[r.pdfId] ?? 0) + 1;
+    return counts;
+  };
 
   const cache           = new TextContentCache();
   const renderer        = new RectRenderer(viewer);
@@ -271,7 +279,9 @@ export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLEleme
     },
     (rects) => {
       contextMenu.hide();
+      _currentRects = rects;
       renderer.setRectangles(rects);
+      selector.updateLinkCounts(computeLinkCounts(rects));
     },
     navigate,
     () => { renderer.clearHighlight(); },
@@ -279,6 +289,9 @@ export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLEleme
     (ids) => {
       contextMenu.hide();
       renderer.removeRectangles(ids);
+      const removed = new Set(ids);
+      _currentRects = _currentRects.filter((r) => !removed.has(r.id));
+      selector.updateLinkCounts(computeLinkCounts(_currentRects));
     },
   );
 

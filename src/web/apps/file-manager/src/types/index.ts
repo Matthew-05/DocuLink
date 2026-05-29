@@ -10,6 +10,7 @@ export interface FileEntry {
   status: string;
   fileSizeBytes: number;
   dateAdded: string;
+  linkCount: number;
 }
 
 export interface AppState {

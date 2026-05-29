@@ -213,6 +213,8 @@ namespace DocuLink.Addin.Modules.WebView
                     DocuLinkLog.Trace("SendHighlightRectangle done");
                 }
 
+                Globals.ThisAddIn.NotifyFileManagerLinksChanged();
+
                 DocuLinkLog.Trace("restoring focus to Excel");
                 try
                 {
@@ -336,6 +338,8 @@ namespace DocuLink.Addin.Modules.WebView
 
                 SendLinkRectanglesRemoved(new[] { rectId });
             }
+
+            Globals.ThisAddIn.NotifyFileManagerLinksChanged();
         }
 
         internal void SendLinkRectanglesRemoved(IList<string> ids)

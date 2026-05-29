@@ -35,6 +35,7 @@ export class FileTable {
       <tr>
         <th class="col-check"><input type="checkbox" class="select-all-cb" title="Select all" /></th>
         <th class="col-name">File Name</th>
+        <th class="col-links">Links</th>
         <th class="col-status">Status</th>
         <th class="col-size">Size</th>
         <th class="col-date">Date Added</th>
@@ -159,8 +160,8 @@ export class FileTable {
       const empty = document.createElement("tr");
       empty.className = "file-table__empty-row";
       empty.innerHTML = this._isLoading
-        ? `<td colspan="7" class="file-table__empty">DocuLink Initializing…</td>`
-        : `<td colspan="7" class="file-table__empty">Add files to get started.</td>`;
+        ? `<td colspan="8" class="file-table__empty">DocuLink Initializing…</td>`
+        : `<td colspan="8" class="file-table__empty">Add files to get started.</td>`;
       this._tbody.appendChild(empty);
       return;
     }
@@ -209,6 +210,11 @@ export class FileTable {
     });
     nameTd.appendChild(nameSpan);
 
+    // Links cell
+    const linksTd = document.createElement("td");
+    linksTd.className = "col-links";
+    linksTd.textContent = String(file.linkCount ?? 0);
+
     // Status cell
     const statusTd = document.createElement("td");
     statusTd.className = "col-status";
@@ -252,6 +258,7 @@ export class FileTable {
 
     tr.appendChild(checkTd);
     tr.appendChild(nameTd);
+    tr.appendChild(linksTd);
     tr.appendChild(statusTd);
     tr.appendChild(sizeTd);
     tr.appendChild(dateTd);
