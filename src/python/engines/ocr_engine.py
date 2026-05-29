@@ -78,6 +78,8 @@ def configure_tesseract() -> None:
 def ocr_pdf_bytes(
     pdf_bytes: bytes,
     language: str = "eng",
+    auto_rotate_pages: bool = True,
+    rotate_pages_threshold: float = 2.0,
     progress_callback: "callable[[str], None] | None" = None,
 ) -> bytes:
     """
@@ -85,6 +87,10 @@ def ocr_pdf_bytes(
     invisible text layer added.
 
     Pages that already contain selectable text are skipped (skip_text=True).
+    When enabled, ocrmypdf uses Tesseract orientation detection to rotate pages
+    that appear sideways or upside down before writing the output PDF. The
+    default OCRmyPDF threshold is conservative, so use a lower value to avoid
+    silently leaving clearly rotated scans uncorrected.
     Raises ocrmypdf.exceptions.OcrmypdfException on failure.
     """
     with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as src_f:
@@ -103,6 +109,8 @@ def ocr_pdf_bytes(
             dst_path,
             language=language,
             skip_text=True,
+            rotate_pages=auto_rotate_pages,
+            rotate_pages_threshold=rotate_pages_threshold,
             progress_bar=False,
             rasterizer="ghostscript",
             output_type="pdf",
