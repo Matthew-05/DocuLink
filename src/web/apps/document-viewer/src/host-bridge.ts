@@ -336,3 +336,7 @@ export function sendCacheBuildStarted(): void {
 export function sendCacheBuildComplete(): void {
   postToHost({ type: "cache-build-complete" });
 }
+
+export function sendViewerContentReady(): void {
+  postToHost({ type: "viewer-content-ready" });
+}

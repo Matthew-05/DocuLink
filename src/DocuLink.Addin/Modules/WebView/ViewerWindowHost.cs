@@ -17,7 +17,8 @@ namespace DocuLink.Addin.Modules.WebView
             StartPosition = FormStartPosition.CenterScreen;
 
             _controller = new DocumentViewerController(this, "document viewer");
-            Controls.Add(_controller.WebView);
+            Controls.Add(_controller.Surface);
+            _controller.Start();
         }
 
         public void SendClearRectangleHighlight() => _controller.SendClearRectangleHighlight();

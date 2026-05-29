@@ -19,6 +19,32 @@
       ]
     },
 
+    "ViewerShellReadyMessage": {
+      "description": "Sent once by the document-viewer web app after its lightweight startup shell has mounted. The host may use this for diagnostics, but waits for ViewerContentReadyMessage before revealing the WebView.",
+      "type": "object",
+      "required": ["type"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "const": "viewer-shell-ready" }
+      },
+      "examples": [
+        { "type": "viewer-shell-ready" }
+      ]
+    },
+
+    "ViewerContentReadyMessage": {
+      "description": "Sent by the document-viewer web app after it has handled the initial PDF list and mounted the first visible content state. The host reveals the WebView after this message so startup transitions once from native placeholder to ready viewer.",
+      "type": "object",
+      "required": ["type"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "const": "viewer-content-ready" }
+      },
+      "examples": [
+        { "type": "viewer-content-ready" }
+      ]
+    },
+
     "PdfPayload": {
       "description": "A single PDF document embedded in the workbook.",
       "type": "object",
@@ -610,6 +636,8 @@
 
   "oneOf": [
     { "$ref": "#/definitions/ViewerReadyMessage" },
+    { "$ref": "#/definitions/ViewerShellReadyMessage" },
+    { "$ref": "#/definitions/ViewerContentReadyMessage" },
     { "$ref": "#/definitions/PdfsLoadedMessage" },
     { "$ref": "#/definitions/PdfUpdatedMessage" },
     { "$ref": "#/definitions/PdfAddedMessage" },
