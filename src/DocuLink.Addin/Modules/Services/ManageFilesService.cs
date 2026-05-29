@@ -74,12 +74,7 @@ namespace DocuLink.Addin.Modules.Services
 
             store.SaveContent(new DocuLinkContent(content.Version, content.Folders, pdfs));
             store.DeletePdfBinary(id);
-
-            WorkbookStorageSession session = Globals.ThisAddIn.GetStorageSession(workbook);
-            var remainingLinks = session.GetLinks()
-                .Where(r => !string.Equals(r.PdfId, id, StringComparison.Ordinal))
-                .ToList();
-            session.SetLinks(remainingLinks);
+            new DeleteLinkService().DeleteLinksForPdf(id, workbook);
         }
 
         public DocuLinkContent MoveFile(Excel.Workbook workbook, string id, string folderId)

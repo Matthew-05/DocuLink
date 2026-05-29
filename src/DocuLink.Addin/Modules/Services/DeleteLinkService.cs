@@ -97,66 +97,41 @@ namespace DocuLink.Addin.Modules.Services
 
             using (Globals.ThisAddIn.EnterSelectionNavSuppress())
             {
-                var cellsToClear = new List<Excel.Range>();
-                var unbindTargets = new List<(Excel.Range cell, int trackIndex)>();
+                return DeleteLinksByIdCore(
+                    workbook,
+                    session,
+                    links,
+                    idsToDelete,
+                    "DeleteLinksInSelection");
+            }
+        }
 
-                foreach (string id in idsToDelete)
-                {
-                    LinkedRectangle rect = links.FirstOrDefault(
-                        r => string.Equals(r.Id, id, StringComparison.Ordinal));
-                    if (rect == null)
-                        continue;
+        public IList<string> DeleteLinksForPdf(string pdfId, Excel.Workbook workbook)
+        {
+            if (string.IsNullOrWhiteSpace(pdfId) || workbook == null)
+                return Array.Empty<string>();
 
-                    Excel.Range cell = LinkCellResolver.TryResolveCell(workbook, rect);
-                    if (cell != null)
-                        cellsToClear.Add(cell);
+            WorkbookProtectionGuard.ThrowIfStructureProtected(workbook);
 
-                    unbindTargets.Add((cell, rect.LinkedCell.TrackIndex));
-                }
+            WorkbookStorageSession session = Globals.ThisAddIn.GetStorageSession(workbook);
+            IList<LinkedRectangle> links = session.GetLinks();
+            var idsToDelete = new HashSet<string>(
+                links
+                    .Where(r => string.Equals(r.PdfId, pdfId, StringComparison.Ordinal))
+                    .Select(r => r.Id),
+                StringComparer.Ordinal);
 
-                Excel.Application app = Globals.ThisAddIn.Application;
-                bool prevEnableEvents = app?.EnableEvents ?? true;
+            if (idsToDelete.Count == 0)
+                return Array.Empty<string>();
 
-                try
-                {
-                    if (app != null)
-                        app.EnableEvents = false;
-
-                    try
-                    {
-                        CellFormatter.ClearLinkStyles(cellsToClear, app);
-                    }
-                    catch (COMException ex)
-                    {
-                        System.Diagnostics.Debug.WriteLine(
-                            $"[DocuLink] DeleteLinksInSelection batch clear failed: {ex.Message}");
-                    }
-
-                    foreach ((Excel.Range cell, int trackIndex) in unbindTargets)
-                    {
-                        try { LinkCellTracker.UnbindCell(workbook, cell, trackIndex); }
-                        catch (COMException ex)
-                        {
-                            System.Diagnostics.Debug.WriteLine(
-                                $"[DocuLink] DeleteLinksInSelection UnbindCell failed: {ex.Message}");
-                        }
-                    }
-                }
-                finally
-                {
-                    if (app != null)
-                        app.EnableEvents = prevEnableEvents;
-                }
-
-                var remaining = links
-                    .Where(r => !idsToDelete.Contains(r.Id))
-                    .ToList();
-
-                if (remaining.Count == links.Count)
-                    return Array.Empty<string>();
-
-                session.SetLinks(remaining);
-                return idsToDelete.ToList();
+            using (Globals.ThisAddIn.EnterSelectionNavSuppress())
+            {
+                return DeleteLinksByIdCore(
+                    workbook,
+                    session,
+                    links,
+                    idsToDelete,
+                    "DeleteLinksForPdf");
             }
         }
 
@@ -192,6 +167,80 @@ namespace DocuLink.Addin.Modules.Services
                     }
                 }
             }
+        }
+
+        private static IList<string> DeleteLinksByIdCore(
+            Excel.Workbook workbook,
+            WorkbookStorageSession session,
+            IList<LinkedRectangle> links,
+            HashSet<string> idsToDelete,
+            string operationName)
+        {
+            var cellsToClear = new List<Excel.Range>();
+            var unbindTargets = new List<(Excel.Range cell, int trackIndex)>();
+            var deletedIds = new List<string>();
+
+            foreach (string id in idsToDelete)
+            {
+                LinkedRectangle rect = links.FirstOrDefault(
+                    r => string.Equals(r.Id, id, StringComparison.Ordinal));
+                if (rect == null)
+                    continue;
+
+                Excel.Range cell = LinkCellResolver.TryResolveCell(workbook, rect);
+                if (cell != null)
+                    cellsToClear.Add(cell);
+
+                unbindTargets.Add((cell, rect.LinkedCell.TrackIndex));
+                deletedIds.Add(id);
+            }
+
+            if (deletedIds.Count == 0)
+                return Array.Empty<string>();
+
+            Excel.Application app = Globals.ThisAddIn.Application;
+            bool prevEnableEvents = app?.EnableEvents ?? true;
+
+            try
+            {
+                if (app != null)
+                    app.EnableEvents = false;
+
+                try
+                {
+                    CellFormatter.ClearLinkStyles(cellsToClear, app);
+                }
+                catch (COMException ex)
+                {
+                    System.Diagnostics.Debug.WriteLine(
+                        $"[DocuLink] {operationName} batch clear failed: {ex.Message}");
+                }
+
+                foreach ((Excel.Range cell, int trackIndex) in unbindTargets)
+                {
+                    try { LinkCellTracker.UnbindCell(workbook, cell, trackIndex); }
+                    catch (COMException ex)
+                    {
+                        System.Diagnostics.Debug.WriteLine(
+                            $"[DocuLink] {operationName} UnbindCell failed: {ex.Message}");
+                    }
+                }
+            }
+            finally
+            {
+                if (app != null)
+                    app.EnableEvents = prevEnableEvents;
+            }
+
+            var remaining = links
+                .Where(r => !idsToDelete.Contains(r.Id))
+                .ToList();
+
+            if (remaining.Count == links.Count)
+                return Array.Empty<string>();
+
+            session.SetLinks(remaining);
+            return deletedIds;
         }
     }
 }
