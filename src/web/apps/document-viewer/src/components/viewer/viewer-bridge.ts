@@ -40,6 +40,7 @@ export function connectViewerToHostBridge(
   onClearRectangleHighlight?: () => void,
   onHighlightRectangle?: (id: string) => void,
   onLinkRectanglesRemoved?: (ids: string[]) => void,
+  onPageRotationsUpdated?: (pdfId: string, rotations: Record<number, number>) => void,
 ): void {
   let indexingCount = 0;
 
@@ -55,7 +56,7 @@ export function connectViewerToHostBridge(
 
   const reloadEntry = (entry: PdfEntry): void => {
     selector.setActiveId(entry.id);
-    void viewer.loadDocument(entry.url, entry.id).then(() => viewer.startBackgroundRender());
+    void viewer.loadDocument(entry.url, entry.id, entry.pageRotations).then(() => viewer.startBackgroundRender());
   };
 
   initHostBridge(
@@ -103,5 +104,6 @@ export function connectViewerToHostBridge(
         else viewer.showNoPdfsState();
       }
     },
+    onPageRotationsUpdated,
   );
 }

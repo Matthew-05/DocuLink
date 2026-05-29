@@ -77,7 +77,7 @@ async function _navigate(
     const entry = selector.getEntry(pdfId);
     if (!entry) return;
     selector.setActiveId(pdfId);
-    await viewer.loadDocument(entry.url, pdfId);
+    await viewer.loadDocument(entry.url, pdfId, entry.pageRotations);
 
     // Snap to target page immediately so user sees correct placeholder, not page 1,
     // during the getFitScaleWhenReady polling loop.

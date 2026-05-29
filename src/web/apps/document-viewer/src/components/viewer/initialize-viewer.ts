@@ -18,6 +18,7 @@ import {
   sendLinkRectangleDeleted,
   sendCacheBuildStarted,
   sendCacheBuildComplete,
+  sendRotatePage,
 } from "../../host-bridge.js";
 import type { SearchMatch, LinkedRectEntry } from "../../types/index.js";
 import type { PdfViewer } from "./pdf-viewer.js";
@@ -34,7 +35,7 @@ interface DocuLinkDebugApi {
  * Returns the toolbar element for the caller to mount in the DOM.
  */
 export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLElement } {
-  const { element: toolbarElement, zoom, page, selector, search } = createToolbar();
+  const { element: toolbarElement, zoom, page, selector, search, rotate } = createToolbar();
 
   viewer.onLoaded((total) => {
     page.setTotal(total);
@@ -64,7 +65,19 @@ export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLEleme
   });
 
   selector.onSelect((entry) => {
-    void viewer.loadDocument(entry.url, entry.id).then(() => viewer.startBackgroundRender());
+    void viewer.loadDocument(entry.url, entry.id, entry.pageRotations).then(() => viewer.startBackgroundRender());
+  });
+
+  rotate.onRotateCcw(() => {
+    const pdfId = viewer.getActivePdfId();
+    if (!pdfId) return;
+    sendRotatePage(pdfId, currentPage - 1, "ccw");
+  });
+
+  rotate.onRotateCw(() => {
+    const pdfId = viewer.getActivePdfId();
+    if (!pdfId) return;
+    sendRotatePage(pdfId, currentPage - 1, "cw");
   });
 
   viewer.element.addEventListener(
@@ -292,6 +305,14 @@ export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLEleme
       const removed = new Set(ids);
       _currentRects = _currentRects.filter((r) => !removed.has(r.id));
       selector.updateLinkCounts(computeLinkCounts(_currentRects));
+    },
+    (pdfId, rotations) => {
+      selector.updatePdfRotations(pdfId, rotations);
+      if (pdfId === viewer.getActivePdfId()) {
+        for (const [k, v] of Object.entries(rotations)) {
+          viewer.setPageRotation(Number(k), v);
+        }
+      }
     },
   );
 

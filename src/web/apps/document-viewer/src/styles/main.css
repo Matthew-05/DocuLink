@@ -6,6 +6,7 @@
 @import "./search-bar.css";
 @import "./search-results-panel.css";
 @import "./viewer.css";
+@import "./rotate-controller.css";
 @import "./rect-draw.css";
 @import "./rect-context-menu.css";
 @import "./char-bbox-debug.css";

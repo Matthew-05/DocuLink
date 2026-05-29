@@ -56,5 +56,14 @@ namespace DocuLink.Addin.Modules.CustomXml
         public const string Base64ElementName = "Base64";
 
         public const string GeometryBase64ElementName = "GeometryBase64";
+
+        // Page rotation storage
+        public const string PageRotationsElementName = "PageRotations";
+
+        public const string PageRotationElementName = "Page";
+
+        public const string PageIndexAttribute = "index";
+
+        public const string RotationAttribute = "rotation";
     }
 }

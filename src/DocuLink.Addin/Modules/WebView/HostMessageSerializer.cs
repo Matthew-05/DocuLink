@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using System.Text;
 using DocuLink.Addin.Modules.CustomXml.Models;
 
@@ -29,6 +30,7 @@ namespace DocuLink.Addin.Modules.WebView
                 {
                     sb.Append(",\"geometryBase64\":"); AppendString(sb, pdf.GeometryBase64);
                 }
+                AppendPageRotations(sb, pdf.PageRotations);
                 sb.Append('}');
             }
 
@@ -48,6 +50,7 @@ namespace DocuLink.Addin.Modules.WebView
             {
                 sb.Append(",\"geometryBase64\":"); AppendString(sb, pdf.GeometryBase64);
             }
+            AppendPageRotations(sb, pdf.PageRotations);
             sb.Append("}}");
             return sb.ToString();
         }
@@ -64,6 +67,7 @@ namespace DocuLink.Addin.Modules.WebView
             {
                 sb.Append(",\"geometryBase64\":"); AppendString(sb, pdf.GeometryBase64);
             }
+            AppendPageRotations(sb, pdf.PageRotations);
             sb.Append("}}");
             return sb.ToString();
         }
@@ -166,6 +170,43 @@ namespace DocuLink.Addin.Modules.WebView
             sb.Append(",\"id\":"); AppendString(sb, id ?? string.Empty);
             sb.Append('}');
             return sb.ToString();
+        }
+
+        /// <summary>Returns the JSON payload for a <c>page-rotations-updated</c> message.</summary>
+        public static string BuildPageRotationsUpdated(string pdfId, Dictionary<int, int> rotations)
+        {
+            var sb = new StringBuilder();
+            sb.Append("{\"type\":\"page-rotations-updated\"");
+            sb.Append(",\"pdfId\":"); AppendString(sb, pdfId ?? string.Empty);
+            sb.Append(",\"rotations\":{");
+            bool first = true;
+            if (rotations != null)
+            {
+                foreach (var kvp in rotations.OrderBy(k => k.Key))
+                {
+                    if (!first) sb.Append(',');
+                    first = false;
+                    sb.Append('"'); sb.Append(kvp.Key); sb.Append("\":");
+                    sb.Append(kvp.Value);
+                }
+            }
+            sb.Append("}}");
+            return sb.ToString();
+        }
+
+        private static void AppendPageRotations(StringBuilder sb, Dictionary<int, int> pageRotations)
+        {
+            if (pageRotations == null || pageRotations.Count == 0) return;
+            var nonZero = pageRotations.Where(kvp => kvp.Value != 0).ToList();
+            if (nonZero.Count == 0) return;
+            sb.Append(",\"pageRotations\":{");
+            for (int i = 0; i < nonZero.Count; i++)
+            {
+                if (i > 0) sb.Append(',');
+                sb.Append('"'); sb.Append(nonZero[i].Key); sb.Append("\":");
+                sb.Append(nonZero[i].Value);
+            }
+            sb.Append('}');
         }
 
         private static void AppendDouble(StringBuilder sb, double value)

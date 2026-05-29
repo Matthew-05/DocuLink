@@ -28,7 +28,12 @@
         "id":              { "type": "string", "description": "GUID that uniquely identifies this PDF within the workbook." },
         "name":            { "type": "string", "description": "Display name (typically the original filename)." },
         "base64":          { "type": "string", "description": "Base-64 encoded PDF bytes." },
-        "geometryBase64":  { "type": "string", "description": "Optional gzip-compressed text-geometry-v1 JSON, base64-encoded." }
+        "geometryBase64":  { "type": "string", "description": "Optional gzip-compressed text-geometry-v1 JSON, base64-encoded." },
+        "pageRotations":   {
+          "type": "object",
+          "description": "Optional map of 0-based page index to clockwise rotation in degrees (0, 90, 180, 270). Omitted entries default to 0.",
+          "additionalProperties": { "type": "integer", "enum": [0, 90, 180, 270] }
+        }
       }
     },
 
@@ -544,6 +549,41 @@
       ]
     },
 
+    "RotatePageMessage": {
+      "description": "Sent by the document-viewer when the user clicks a rotate button. The host rotates the stored page rotation, transforms any link rectangles on that page, and responds with a PageRotationsUpdatedMessage followed by a LinkedRectanglesLoadedMessage.",
+      "type": "object",
+      "required": ["type", "pdfId", "page", "direction"],
+      "additionalProperties": false,
+      "properties": {
+        "type":      { "const": "rotate-page" },
+        "pdfId":     { "type": "string", "description": "GUID of the PDF containing the page to rotate." },
+        "page":      { "type": "integer", "minimum": 0, "description": "0-based page index." },
+        "direction": { "type": "string", "enum": ["cw", "ccw"], "description": "Rotation direction: cw = 90° clockwise, ccw = 90° counter-clockwise." }
+      },
+      "examples": [
+        { "type": "rotate-page", "pdfId": "3fa85f64-5717-4562-b3fc-2c963f66afa6", "page": 0, "direction": "cw" }
+      ]
+    },
+
+    "PageRotationsUpdatedMessage": {
+      "description": "Sent by the C# host after a page is rotated. The viewer should update its rotation state and re-render the affected page.",
+      "type": "object",
+      "required": ["type", "pdfId", "rotations"],
+      "additionalProperties": false,
+      "properties": {
+        "type":      { "const": "page-rotations-updated" },
+        "pdfId":     { "type": "string", "description": "GUID of the PDF whose rotations changed." },
+        "rotations": {
+          "type": "object",
+          "description": "Map of 0-based page index to new clockwise rotation in degrees.",
+          "additionalProperties": { "type": "integer", "enum": [0, 90, 180, 270] }
+        }
+      },
+      "examples": [
+        { "type": "page-rotations-updated", "pdfId": "3fa85f64-5717-4562-b3fc-2c963f66afa6", "rotations": { "0": 90 } }
+      ]
+    },
+
     "OcrStatusMessage": {
       "description": "Sent by the C# host to the file-manager to report per-PDF OCR/Enhance progress. Transient values queued/processing/error are used during jobs; persisted status becomes ocr on success.",
       "type": "object",
@@ -598,6 +638,8 @@
     { "$ref": "#/definitions/HighlightRectangleMessage" },
     { "$ref": "#/definitions/ResetUiMessage" },
     { "$ref": "#/definitions/OcrPdfsMessage" },
-    { "$ref": "#/definitions/OcrStatusMessage" }
+    { "$ref": "#/definitions/OcrStatusMessage" },
+    { "$ref": "#/definitions/RotatePageMessage" },
+    { "$ref": "#/definitions/PageRotationsUpdatedMessage" }
   ]
 }

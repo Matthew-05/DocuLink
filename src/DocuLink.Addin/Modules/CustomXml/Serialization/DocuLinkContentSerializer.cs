@@ -133,9 +133,26 @@ namespace DocuLink.Addin.Modules.CustomXml.Serialization
 
             string ocrStatus = pdfElement.Attribute(DocuLinkXml.OcrStatusAttribute)?.Value ?? PdfStatus.None;
 
+            Dictionary<int, int> pageRotations = null;
+            XElement rotationsEl = pdfElement.Element(DocuLinkXml.ContentNs + DocuLinkXml.PageRotationsElementName);
+            if (rotationsEl != null)
+            {
+                foreach (XElement pageEl in rotationsEl.Elements(DocuLinkXml.ContentNs + DocuLinkXml.PageRotationElementName))
+                {
+                    string indexStr    = pageEl.Attribute(DocuLinkXml.PageIndexAttribute)?.Value;
+                    string rotationStr = pageEl.Attribute(DocuLinkXml.RotationAttribute)?.Value;
+                    if (int.TryParse(indexStr, out int pageIdx) && int.TryParse(rotationStr, out int rot) && rot != 0)
+                    {
+                        if (pageRotations == null) pageRotations = new Dictionary<int, int>();
+                        pageRotations[pageIdx] = rot;
+                    }
+                }
+            }
+
             return new PdfMetadata(idAttribute.Value.Trim(), name, folderId, dateAdded, fileSizeBytes)
             {
-                OcrStatus = ocrStatus,
+                OcrStatus     = ocrStatus,
+                PageRotations = pageRotations,
             };
         }
 
@@ -163,6 +180,21 @@ namespace DocuLink.Addin.Modules.CustomXml.Serialization
 
             if (!string.IsNullOrWhiteSpace(pdf.OcrStatus) && pdf.OcrStatus != PdfStatus.None)
                 element.Add(new XAttribute(DocuLinkXml.OcrStatusAttribute, pdf.OcrStatus));
+
+            if (pdf.PageRotations != null && pdf.PageRotations.Count > 0)
+            {
+                var rotationsElement = new XElement(DocuLinkXml.ContentNs + DocuLinkXml.PageRotationsElementName);
+                foreach (var kvp in pdf.PageRotations)
+                {
+                    if (kvp.Value == 0) continue;
+                    rotationsElement.Add(new XElement(
+                        DocuLinkXml.ContentNs + DocuLinkXml.PageRotationElementName,
+                        new XAttribute(DocuLinkXml.PageIndexAttribute, kvp.Key),
+                        new XAttribute(DocuLinkXml.RotationAttribute,  kvp.Value)));
+                }
+                if (rotationsElement.HasElements)
+                    element.Add(rotationsElement);
+            }
 
             return element;
         }

@@ -124,6 +124,10 @@ namespace DocuLink.Addin.Modules.WebView
                         HandleLinkRectangleDeleted(raw);
                         break;
 
+                    case "rotate-page":
+                        HandleRotatePage(raw);
+                        break;
+
                     case "cache-build-started":
                         _cacheProgressScope?.Dispose();
                         _cacheProgressScope = new ProgressScope("Building document index\u2026");
@@ -340,6 +344,49 @@ namespace DocuLink.Addin.Modules.WebView
             }
 
             Globals.ThisAddIn.NotifyFileManagerLinksChanged();
+        }
+
+        private void HandleRotatePage(string json)
+        {
+            var payload = HostMessageParser.ParseRotatePage(json);
+            if (payload == null) return;
+
+            Excel.Workbook wb = Globals.ThisAddIn.Application?.ActiveWorkbook;
+            if (wb == null) return;
+
+            _invokeTarget.BeginInvoke(new Action(() => ExecuteRotatePage(payload, wb)));
+        }
+
+        private void ExecuteRotatePage(RotatePagePayload payload, Excel.Workbook wb)
+        {
+            try
+            {
+                var (newRotations, allRects) = new RotatePageService().RotatePage(
+                    payload.PdfId, payload.Page, payload.Direction, wb);
+
+                SendPageRotationsUpdated(payload.PdfId, newRotations);
+                SendLinkedRectanglesToWebView(allRects);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[DocuLink] ExecuteRotatePage failed: {ex.Message}");
+            }
+        }
+
+        internal void SendPageRotationsUpdated(string pdfId, Dictionary<int, int> rotations)
+        {
+            if (!_webViewReady || string.IsNullOrWhiteSpace(pdfId))
+                return;
+
+            try
+            {
+                string json = HostMessageSerializer.BuildPageRotationsUpdated(pdfId, rotations);
+                _webView.CoreWebView2.PostWebMessageAsString(json);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[DocuLink] SendPageRotationsUpdated failed: {ex.Message}");
+            }
         }
 
         internal void SendLinkRectanglesRemoved(IList<string> ids)

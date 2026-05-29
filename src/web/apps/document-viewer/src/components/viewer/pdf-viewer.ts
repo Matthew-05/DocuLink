@@ -10,6 +10,7 @@ interface PageEntry {
   baseWidth: number;
   baseHeight: number;
   renderedScale: ZoomLevel | null;
+  rotation: number;
 }
 
 export class PdfViewer {
@@ -19,6 +20,7 @@ export class PdfViewer {
   private _activePdfId: string | null = null;
   private _scale: ZoomLevel = 1.0;
   private _pageEntries: PageEntry[] = [];
+  private _pageRotations = new Map<number, number>();
   private _renderingQueue: Promise<void> = Promise.resolve();
   private _zoomDebounce: ReturnType<typeof setTimeout> | null = null;
   private _loadGeneration = 0;
@@ -76,11 +78,22 @@ export class PdfViewer {
     ).map((wrapper, i) => ({ pageNumber: i + 1, wrapper }));
   }
 
-  async loadDocument(url: string, pdfId?: string): Promise<void> {
+  async loadDocument(
+    url: string,
+    pdfId?: string,
+    pageRotations?: Record<number, number>,
+  ): Promise<void> {
     const generation = ++this._loadGeneration;
     this._cancelZoomDebounce();
     this._activePdfId = pdfId ?? null;
     this._pageEntries = [];
+    this._pageRotations.clear();
+    if (pageRotations) {
+      for (const [k, v] of Object.entries(pageRotations)) {
+        const n = Number(k);
+        if (v !== 0) this._pageRotations.set(n, v);
+      }
+    }
     this.element.replaceChildren();
 
     let resolveLoad!: () => void;
@@ -104,15 +117,16 @@ export class PdfViewer {
       return;
     }
 
-    const dims = pages.map(page => {
-      const vp = page.getViewport({ scale: 1.0 });
+    const dims = pages.map((page, i) => {
+      const rotation = this._pageRotations.get(i) ?? 0;
+      const vp = page.getViewport({ scale: 1.0, rotation });
       page.cleanup();
-      return { baseWidth: vp.width, baseHeight: vp.height };
+      return { baseWidth: vp.width, baseHeight: vp.height, rotation };
     });
 
     // Create all wrappers with correct dimensions and populate _pageEntries fully.
     // renderedScale is initialized to null — all pages are unrendered.
-    this._createPageWrappers(doc.numPages, dims);
+    this._createPageWrappers(doc.numPages, dims as Array<{ baseWidth: number; baseHeight: number; rotation: number }>);
 
     for (const cb of this._onLoadedCallbacks) {
       cb(doc.numPages);
@@ -197,7 +211,7 @@ export class PdfViewer {
         const entry = this._pageEntries[i - 1];
         if (!entry) continue;
         if (entry.renderedScale === capturedScale) continue;
-        await renderPage(doc, i, entry.wrapper, capturedScale);
+        await renderPage(doc, i, entry.wrapper, capturedScale, entry.rotation);
         entry.renderedScale = capturedScale;
       }
     });
@@ -219,7 +233,7 @@ export class PdfViewer {
           resolve();
           return;
         }
-        await renderPage(doc, pageNumber, entry.wrapper, this._scale);
+        await renderPage(doc, pageNumber, entry.wrapper, this._scale, entry.rotation);
         entry.renderedScale = this._scale;
         resolve();
       });
@@ -234,25 +248,57 @@ export class PdfViewer {
       const entry = this._pageEntries[i];
       if (!entry || this._doc !== doc) continue;
       if (entry.renderedScale === this._scale) continue;
-      await renderPage(doc, i + 1, entry.wrapper, this._scale);
+      await renderPage(doc, i + 1, entry.wrapper, this._scale, entry.rotation);
       entry.renderedScale = this._scale;
     }
   }
 
+  /** Updates the stored rotation for one page and triggers a re-render. */
+  setPageRotation(pageIndex: number, rotation: number): void {
+    this._pageRotations.set(pageIndex, rotation);
+    const entry = this._pageEntries[pageIndex];
+    const doc = this._doc;
+    if (!entry || !doc) return;
+
+    const loadGen = this._loadGeneration;
+    void doc.getPage(pageIndex + 1).then((page) => {
+      if (this._loadGeneration !== loadGen) { page.cleanup(); return; }
+      const vp = page.getViewport({ scale: 1.0, rotation });
+      page.cleanup();
+      entry.rotation      = rotation;
+      entry.baseWidth     = vp.width;
+      entry.baseHeight    = vp.height;
+      entry.renderedScale = null;
+      entry.wrapper.style.width  = `${vp.width  * this._scale}px`;
+      entry.wrapper.style.height = `${vp.height * this._scale}px`;
+
+      ++this._renderGeneration;
+      const capturedRenderGen = this._renderGeneration;
+      this._renderingQueue = this._renderingQueue.then(async () => {
+        if (this._renderGeneration !== capturedRenderGen) return;
+        const dims = await renderPage(doc, pageIndex + 1, entry.wrapper, this._scale, rotation);
+        entry.baseWidth     = dims.baseWidth;
+        entry.baseHeight    = dims.baseHeight;
+        entry.renderedScale = this._scale;
+      });
+    });
+  }
+
   private _createPageWrappers(
     total: number,
-    dims: Array<{ baseWidth: number; baseHeight: number }>,
+    dims: Array<{ baseWidth: number; baseHeight: number; rotation: number }>,
   ): void {
     this.element.replaceChildren();
 
     for (let i = 0; i < total; i++) {
+      const { baseWidth, baseHeight, rotation } = dims[i]!;
       const div = document.createElement("div");
       div.className = "viewer__page";
       div.dataset["page"] = String(i + 1);
-      div.style.width = `${dims[i]!.baseWidth * this._scale}px`;
-      div.style.height = `${dims[i]!.baseHeight * this._scale}px`;
+      div.style.width  = `${baseWidth  * this._scale}px`;
+      div.style.height = `${baseHeight * this._scale}px`;
       this.element.appendChild(div);
-      this._pageEntries[i] = { wrapper: div, renderedScale: null, ...dims[i]! };
+      this._pageEntries[i] = { wrapper: div, renderedScale: null, baseWidth, baseHeight, rotation };
     }
   }
 
