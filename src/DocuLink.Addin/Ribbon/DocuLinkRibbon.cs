@@ -86,11 +86,8 @@ namespace DocuLink.Addin.Ribbon
                 {
                     app.EnableEvents = false;
 
-                    using (new ProgressScope("Deleting links\u2026"))
-                    {
-                        deletedIds = new DeleteLinkService().DeleteLinksInSelection(
-                            selection, app.ActiveWorkbook);
-                    }
+                    deletedIds = new DeleteLinkService().DeleteLinksInSelection(
+                        selection, app.ActiveWorkbook);
 
                     if (deletedIds.Count > 0)
                         Globals.ThisAddIn.GetActiveViewerHost()?.SendLinkRectanglesRemoved(deletedIds);
@@ -137,33 +134,35 @@ namespace DocuLink.Addin.Ribbon
                 if (dialog.ShowDialog() != DialogResult.OK || dialog.FileNames == null || dialog.FileNames.Length == 0)
                     return;
 
-                var service = new AddPdfDocumentService();
-                var addedIds = new System.Collections.Generic.List<string>();
-                var errors = new List<string>();
+                var requests = dialog.FileNames
+                    .Select(path => new PdfPathImportRequest(path))
+                    .ToList();
 
-                foreach (string path in dialog.FileNames)
+                PdfImportResult result;
+                using (var progress = ThreadedProgressController.Show("Importing documents..."))
                 {
-                    try
+                    result = new PdfImportService().ImportFilePaths(app.ActiveWorkbook, requests, progress);
+
+                    if (result.AddedIds.Count > 0)
                     {
-                        string newId = service.AddEmbeddedPdf(app.ActiveWorkbook, path);
-                        addedIds.Add(newId);
-                    }
-                    catch (Exception ex)
-                    {
-                        errors.Add($"{Path.GetFileName(path)}: {ex.Message}");
+                        progress.Report(
+                            "Refreshing DocuLink",
+                            "Updating viewer data...",
+                            result.AddedIds.Count,
+                            result.AddedIds.Count);
+
+                        foreach (string id in result.AddedIds)
+                            Globals.ThisAddIn.NotifyViewerPdfAdded(id);
                     }
                 }
 
-                foreach (string id in addedIds)
-                    Globals.ThisAddIn.NotifyViewerPdfAdded(id);
-
-                if (errors.Count > 0)
+                if (result.Errors.Count > 0)
                 {
                     var message = new StringBuilder();
-                    if (addedIds.Count > 0)
-                        message.AppendLine($"Added {addedIds.Count} PDF(s).").AppendLine();
+                    if (result.AddedIds.Count > 0)
+                        message.AppendLine($"Added {result.AddedIds.Count} PDF(s).").AppendLine();
                     message.AppendLine("Some files could not be added:");
-                    message.AppendLine(string.Join(Environment.NewLine, errors));
+                    message.AppendLine(string.Join(Environment.NewLine, result.Errors));
                     MessageBox.Show(message.ToString(), "DocuLink", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 }
             }

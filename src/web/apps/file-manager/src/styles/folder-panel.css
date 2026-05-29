@@ -1,3 +1,16 @@
+/* Native dropzone spacer — reserves space for C# NativeDropZonePanel.
+   Dimensions MUST match DropzoneLayout constants in FileManagerHost.cs:
+   - height: 122px ↔ DropzoneLayout.DropZoneHeight
+   - margin-top/bottom: 12px ↔ DropzoneLayout.Gap
+   If these values change, update both CSS and C# constants together. */
+
+.native-dropzone-spacer {
+  flex-shrink: 0;
+  height: 122px;
+  margin-top: 12px;
+  margin-bottom: 12px;
+}
+
 /* Folder panel — left-column folder list, inline inputs, and confirmations */
 
 .folder-panel {

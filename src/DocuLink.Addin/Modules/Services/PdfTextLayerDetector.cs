@@ -21,7 +21,22 @@ namespace DocuLink.Addin.Modules.Services
             try
             {
                 byte[] bytes = Convert.FromBase64String(base64);
-                return ContainsExtractableText(bytes) ? "text" : "none";
+                return ClassifyFromBytes(bytes);
+            }
+            catch
+            {
+                return "none";
+            }
+        }
+
+        public static string ClassifyFromBytes(byte[] pdf)
+        {
+            if (pdf == null || pdf.Length == 0)
+                return "none";
+
+            try
+            {
+                return ContainsExtractableText(pdf) ? "text" : "none";
             }
             catch
             {

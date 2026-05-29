@@ -1,7 +1,6 @@
 import type { FileEntry, FolderEntry } from "./types/index.js";
 import { initHostBridge, sendSelectedFolder, sendRemoveFile, sendMoveFile, sendOcrPdfs } from "./host-bridge.js";
 import { FolderPanel } from "./components/folder-panel/folder-panel.js";
-import { Dropzone } from "./components/dropzone/dropzone.js";
 import { FileTable } from "./components/file-table/file-table.js";
 import { TableToolbar } from "./components/table-toolbar/table-toolbar.js";
 import { wireFileManagerUiReset } from "./reset-ui.js";
@@ -50,12 +49,14 @@ export function mountApp(root: HTMLElement): void {
     onSelectionChange(folderId: string | null) {
       selectedFolderId = folderId;
       sendSelectedFolder(folderId);
-      dropzone.setActiveFolderId(folderId);
       fileTable.update(currentFiles, selectedFolderId);
     },
   });
 
-  const dropzone = new Dropzone(leftCol);
+  // Spacer to reserve space for native C# dropzone panel at the bottom
+  const dropzoneSpacer = document.createElement("div");
+  dropzoneSpacer.className = "native-dropzone-spacer";
+  leftCol.appendChild(dropzoneSpacer);
 
   let currentFiles: FileEntry[] = [];
 
@@ -92,10 +93,7 @@ export function mountApp(root: HTMLElement): void {
     folderPanel,
     fileTable,
     toolbar,
-    dropzone,
     setSelectedFolderId: (folderId) => { selectedFolderId = folderId; },
     getCurrentFiles: () => currentFiles,
   });
-
-  sendSelectedFolder(null);
 }
