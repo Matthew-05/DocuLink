@@ -3,6 +3,8 @@ import type { PdfViewer } from "./pdf-viewer.js";
 import type { PdfSelector } from "../toolbar/pdf-selector.js";
 import type { RectRenderer } from "./rect-renderer.js";
 
+const FULLY_VISIBLE_TOLERANCE_PX = 1;
+
 /**
  * Returns a handler that navigates the viewer to a specific link rectangle.
  *
@@ -103,38 +105,30 @@ async function _navigate(
   );
   if (!pageWrapper) return;
 
+  const rectFullyVisible = isElementFullyVisibleInViewer(rectEl, viewer.element);
+  const targetPageNeedsInitialRender = pageWrapper.querySelector("canvas") === null;
+  let shouldScrollToTargetPage = crossPdf || targetPageNeedsInitialRender || !rectFullyVisible;
+
   // Unified navigation logic (same-PDF and cross-PDF converge here)
   // Order is critical: zoom → scroll → render → background
   if (crossPdf) {
     const fitScale = await getFitScaleWhenReady(viewer, page + 1);
     applyZoom(fitScale);
   } else {
-    // Same-PDF: apply fit zoom if page is unrendered or we're at default zoom level
-    const pageCanvas = pageWrapper.querySelector('canvas');
-    const isPageUnrendered = !pageCanvas;
-    const isAtDefaultZoom = viewer.getCurrentZoom() === 1.0;
-
-    if (isPageUnrendered || isAtDefaultZoom) {
+    if (targetPageNeedsInitialRender || !rectFullyVisible) {
       const fitScale = await getFitScaleWhenReady(viewer, page + 1);
       applyZoom(fitScale);
-    } else {
-      // Page is rendered and we've already zoomed; check if rect is fully visible
-      const viewerRect = viewer.element.getBoundingClientRect();
-      const targetRect = rectEl.getBoundingClientRect();
-      const fullyVisible = targetRect.top    >= viewerRect.top
-        && targetRect.bottom <= viewerRect.bottom
-        && targetRect.left   >= viewerRect.left
-        && targetRect.right  <= viewerRect.right;
 
-      if (!fullyVisible) {
-        const fitScale = await getFitScaleWhenReady(viewer, page + 1);
-        applyZoom(fitScale);
+      if (rectFullyVisible && !isElementFullyVisibleInViewer(rectEl, viewer.element)) {
+        shouldScrollToTargetPage = true;
       }
     }
   }
 
-  // Step 2: Scroll viewport to target page (still showing white placeholder)
-  pageWrapper.scrollIntoView({ behavior: "instant" as ScrollBehavior });
+  // Step 2: Scroll viewport to target page only when the target was not already visible.
+  if (shouldScrollToTargetPage) {
+    pageWrapper.scrollIntoView({ behavior: "instant" as ScrollBehavior });
+  }
 
   // Step 3: Render target page (user watches it fill in)
   await viewer.renderPageNow(page + 1);
@@ -145,3 +139,14 @@ async function _navigate(
   // Update page controller to reflect navigation
   onNavigateToPage?.(page + 1);
 }
+
+function isElementFullyVisibleInViewer(target: HTMLElement, viewer: HTMLElement): boolean {
+  const viewerRect = viewer.getBoundingClientRect();
+  const targetRect = target.getBoundingClientRect();
+
+  return targetRect.top    >= viewerRect.top    - FULLY_VISIBLE_TOLERANCE_PX
+    && targetRect.bottom <= viewerRect.bottom + FULLY_VISIBLE_TOLERANCE_PX
+    && targetRect.left   >= viewerRect.left   - FULLY_VISIBLE_TOLERANCE_PX
+    && targetRect.right  <= viewerRect.right  + FULLY_VISIBLE_TOLERANCE_PX;
+}
+
