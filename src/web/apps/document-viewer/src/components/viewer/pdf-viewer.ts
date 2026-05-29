@@ -341,6 +341,8 @@ export class PdfViewer {
     dims: Array<{ baseWidth: number; baseHeight: number; rotation: number }>,
   ): void {
     this.element.replaceChildren();
+    const documentElement = document.createElement("div");
+    documentElement.className = "viewer__document";
 
     for (let i = 0; i < total; i++) {
       const { baseWidth, baseHeight, rotation } = dims[i]!;
@@ -349,9 +351,11 @@ export class PdfViewer {
       div.dataset["page"] = String(i + 1);
       div.style.width  = `${baseWidth  * this._scale}px`;
       div.style.height = `${baseHeight * this._scale}px`;
-      this.element.appendChild(div);
+      documentElement.appendChild(div);
       this._pageEntries[i] = { wrapper: div, renderedScale: null, baseWidth, baseHeight, rotation };
     }
+
+    this.element.appendChild(documentElement);
   }
 
   private _cancelZoomDebounce(): void {

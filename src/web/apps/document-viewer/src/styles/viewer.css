@@ -2,19 +2,22 @@
   flex: 1;
   overflow-y: auto;
   overflow-x: auto;
+  background: var(--color-bg);
+}
+
+.viewer__document {
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
+  align-items: center;
   gap: 12px;
+  width: max-content;
+  min-width: 100%;
   padding: 16px 0;
-  background: var(--color-bg);
 }
 
 .viewer__page {
   position: relative;
   flex-shrink: 0;
-  margin-left: auto;
-  margin-right: auto;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
   background: #fff;
   overflow: hidden;
