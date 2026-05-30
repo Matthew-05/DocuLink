@@ -163,13 +163,16 @@ namespace DocuLink.Addin.Modules.WebView
                             _webShellReady = true;
                         }
                         _webViewReady = true;
-                        if (!_dataSentToViewer)
+                        if (_viewerShown)
                         {
-                            SendPdfsToWebView();
-                            _dataSentToViewer = true;
+                            if (!_dataSentToViewer)
+                            {
+                                SendPdfsToWebView();
+                                _dataSentToViewer = true;
+                            }
+                            SendLinkedRectanglesToWebView();
+                            FlushPendingNavigateToRectangle();
                         }
-                        SendLinkedRectanglesToWebView();
-                        FlushPendingNavigateToRectangle();
                         break;
 
                     case "viewer-content-ready":
@@ -196,12 +199,6 @@ namespace DocuLink.Addin.Modules.WebView
 
                     case "rotate-page":
                         HandleRotatePage(raw);
-                        break;
-
-                    case "cache-build-started":
-                        _cacheProgress?.Dispose();
-                        _cacheProgress = ThreadedProgressController.Show("Preparing document viewer...");
-                        _cacheProgress.Report("Preparing document viewer", "Building document index...", 0, 0);
                         break;
 
                     case "cache-build-complete":
@@ -567,7 +564,9 @@ namespace DocuLink.Addin.Modules.WebView
         {
             if (!_webViewReady || _dataSentToViewer) return;
             SendPdfsToWebView();
+            _dataSentToViewer = true;
             SendLinkedRectanglesToWebView();
+            FlushPendingNavigateToRectangle();
         }
 
         internal void InvalidateData()
@@ -578,6 +577,12 @@ namespace DocuLink.Addin.Modules.WebView
 
         internal void NotifyViewerShown()
         {
+            if (!_viewerShown)
+            {
+                _cacheProgress?.Dispose();
+                _cacheProgress = ThreadedProgressController.Show("Preparing document viewer...");
+                _cacheProgress.Report("Preparing document viewer", "Building document index...", 0, 0);
+            }
             _viewerShown = true;
             RefreshDataIfReady();
             if (_contentReady)
