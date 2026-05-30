@@ -90,18 +90,8 @@ namespace DocuLink.Addin.Modules.UI
 
             _detailLabel.Text = detail ?? string.Empty;
 
-            if (total > 0)
-            {
-                _bar.Style = ProgressBarStyle.Continuous;
-                _bar.Minimum = 0;
-                _bar.Maximum = total;
-                _bar.Value = Math.Max(0, Math.Min(current, total));
-            }
-            else
-            {
-                _bar.Style = ProgressBarStyle.Marquee;
-                _bar.MarqueeAnimationSpeed = 30;
-            }
+            _bar.Style = ProgressBarStyle.Marquee;
+            _bar.MarqueeAnimationSpeed = 30;
         }
 
         /// <summary>Closes the dialog from code, bypassing the close guard.</summary>
