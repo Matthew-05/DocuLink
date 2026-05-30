@@ -712,6 +712,7 @@ namespace DocuLink.Addin.Modules.WebView
         private sealed class NativeDropZonePanel : Panel
         {
             private bool _dragOver;
+            private bool _hoverOver;
 
             public NativeDropZonePanel()
             {
@@ -719,6 +720,8 @@ namespace DocuLink.Addin.Modules.WebView
                 BackColor = Color.White;
                 ForeColor = Color.FromArgb(31, 41, 55);
                 Cursor = Cursors.Hand;
+                MouseEnter += (s, e) => { _hoverOver = true; Invalidate(); };
+                MouseLeave += (s, e) => { _hoverOver = false; Invalidate(); };
             }
 
             public void SetDragOver(bool dragOver)
@@ -740,13 +743,14 @@ namespace DocuLink.Addin.Modules.WebView
                 bounds.Inflate(-1, -1);
 
                 Color fillColor = _dragOver ? Color.FromArgb(238, 242, 255) : Color.White;
-                Color borderColor = _dragOver ? Color.FromArgb(124, 106, 247) : Color.FromArgb(212, 212, 224);
+                Color borderColor = _dragOver
+                    ? Color.FromArgb(124, 106, 247)
+                    : _hoverOver ? Color.FromArgb(180, 168, 252) : Color.FromArgb(212, 212, 224);
 
                 using (var fill = new SolidBrush(fillColor))
                 using (var border = new Pen(borderColor, 2f))
                 using (var textBrush = new SolidBrush(ForeColor))
                 using (var mutedBrush = new SolidBrush(Color.FromArgb(92, 92, 112)))
-                using (var iconFont = new Font(Font.FontFamily, 20f, FontStyle.Regular))
                 using (var titleFont = new Font(Font.FontFamily, 12f, FontStyle.Bold))
                 using (var bodyFont = new Font(Font.FontFamily, 11f, FontStyle.Regular))
                 {
@@ -754,32 +758,52 @@ namespace DocuLink.Addin.Modules.WebView
                     e.Graphics.FillRectangle(fill, bounds);
                     e.Graphics.DrawRectangle(border, bounds);
 
-                    var icon = "PDF";
                     var title = "Drop PDFs or folders here";
                     var body = "or click to browse";
-                    var iconSize = e.Graphics.MeasureString(icon, iconFont);
                     var titleSize = e.Graphics.MeasureString(title, titleFont);
                     var bodySize = e.Graphics.MeasureString(body, bodyFont);
-                    float centerY = bounds.Top + bounds.Height / 2f;
 
-                    e.Graphics.DrawString(
-                        icon,
-                        iconFont,
-                        mutedBrush,
-                        bounds.Left + (bounds.Width - iconSize.Width) / 2f,
-                        centerY - iconSize.Height - titleSize.Height / 2f - 4f);
+                    // Stack: icon → title → body, centered as a unit
+                    const float iconH = 24f;
+                    const float iconGap = 6f;
+                    const float textGap = 5f;
+                    float totalHeight = iconH + iconGap + titleSize.Height + textGap + bodySize.Height;
+                    float stackTop = bounds.Top + (bounds.Height - totalHeight) / 2f;
+
+                    float iconY = stackTop;
+                    float titleY = stackTop + iconH + iconGap;
+                    float bodyY = titleY + titleSize.Height + textGap;
+
+                    Color iconColor = (_hoverOver && !_dragOver) ? Color.FromArgb(124, 106, 247) : Color.FromArgb(92, 92, 112);
+                    float penWidth = (_hoverOver && !_dragOver) ? 2f : 1.5f;
+
+                    using (var pen = new Pen(iconColor, penWidth))
+                    using (var iconBrush = new SolidBrush(iconColor))
+                    {
+                        float iconX = bounds.Left + (bounds.Width - iconH) / 2f;
+                        // Document rectangle
+                        e.Graphics.DrawRectangle(pen, iconX + 3, iconY, iconH - 6, iconH);
+                        // Folded corner
+                        var cornerPoints = new[]
+                        {
+                            new PointF(iconX + iconH - 6, iconY),
+                            new PointF(iconX + iconH, iconY + 6),
+                            new PointF(iconX + iconH - 6, iconY + 6)
+                        };
+                        e.Graphics.FillPolygon(iconBrush, cornerPoints);
+                    }
                     e.Graphics.DrawString(
                         title,
                         titleFont,
                         textBrush,
                         bounds.Left + (bounds.Width - titleSize.Width) / 2f,
-                        centerY - titleSize.Height / 2f + 1f);
+                        titleY);
                     e.Graphics.DrawString(
                         body,
                         bodyFont,
                         mutedBrush,
                         bounds.Left + (bounds.Width - bodySize.Width) / 2f,
-                        centerY + titleSize.Height / 2f + 7f);
+                        bodyY);
                 }
             }
         }
