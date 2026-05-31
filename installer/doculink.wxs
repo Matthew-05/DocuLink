@@ -14,7 +14,8 @@
   <Product Id="{1F4C363C-18FE-4A4D-AA46-AF8DFB16F090}"
            Name="DocuLink"
            Language="1033"
-           Version="1.0.0"
+           Manufacturer="Matthew Tryon"
+           Version="$(var.ProductVersion)"
            UpgradeCode="{0B175035-7BD2-428F-AC4D-4FA1CF677172}">
 
     <!-- Per-user install; no elevation required. -->

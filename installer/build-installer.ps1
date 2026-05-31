@@ -26,9 +26,15 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
-$RepoRoot    = Split-Path $PSScriptRoot -Parent
+$RepoRoot     = Split-Path $PSScriptRoot -Parent
 $InstallerDir = $PSScriptRoot
-$Version     = "1.0.0"
+
+# ── Version prompt ────────────────────────────────────────────────────────────
+Write-Host ""
+$Version = Read-Host "Enter version number for this release (e.g. 1.2.0)"
+if (-not $Version) { Write-Error "Version is required."; exit 1 }
+if ($Version -notmatch '^\d+\.\d+\.\d+$') { Write-Error "Version must be in x.y.z format."; exit 1 }
+Write-Host "  Building version: $Version" -ForegroundColor Green
 
 # ── Helper: fail with a clear message ────────────────────────────────────────
 function Fail([string]$msg) {
@@ -112,7 +118,7 @@ Write-Host "  worker.exe built OK"
 # ── Step 3: C# add-in Release build ──────────────────────────────────────────
 Step "Building C# add-in (Release)"
 
-& $MSBuild $AddinProj /t:Rebuild /p:Configuration=Release /p:Platform=AnyCPU /nologo /v:minimal
+& $MSBuild $AddinProj /t:Rebuild /p:Configuration=Release /p:Platform=AnyCPU /p:AppVersion=$Version /nologo /v:minimal
 if ($LASTEXITCODE -ne 0) { Fail "MSBuild failed (exit $LASTEXITCODE)." }
 
 $addinDll = Join-Path $ReleaseDir "DocuLink.Addin.dll"
@@ -142,6 +148,7 @@ Step "Compiling WiX sources"
 & $Candle `
     -nologo `
     "-dSourceDir=$ReleaseDir" `
+    "-dProductVersion=$Version" `
     -ext WixUIExtension `
     -out "$ObjDir\" `
     $MainWxs $FilesWxs
