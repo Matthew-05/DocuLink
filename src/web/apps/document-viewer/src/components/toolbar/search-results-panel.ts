@@ -79,13 +79,13 @@ export class SearchResultsPanel {
 
     const pageLabel = document.createElement("span");
     pageLabel.className = "search-results-panel__page";
-    pageLabel.textContent = `p. ${pageIndex + 1}`;
+    pageLabel.textContent = `${pageIndex + 1}`;
 
     const context = document.createElement("span");
     context.className = "search-results-panel__context";
     context.append(this._buildContextFragment(match));
 
-    item.append(pageLabel, context);
+    item.append(context, pageLabel);
     item.addEventListener("click", () => {
       for (const cb of this._callbacks) cb(match);
     });
