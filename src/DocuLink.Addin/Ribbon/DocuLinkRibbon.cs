@@ -21,7 +21,17 @@ namespace DocuLink.Addin.Ribbon
         private IRibbonUI _ribbonUi;
         public string GetCustomUI(string ribbonID)
         {
-            return LoadRibbonXmlFromResources();
+            try
+            {
+                var xml = LoadRibbonXmlFromResources();
+                Modules.DocuLinkLog.Trace($"GetCustomUI OK — ribbonID={ribbonID}, xmlLen={xml?.Length}");
+                return xml;
+            }
+            catch (Exception ex)
+            {
+                Modules.DocuLinkLog.Trace($"GetCustomUI EXCEPTION: {ex}");
+                throw;
+            }
         }
 
         public void OnShowTaskPane(IRibbonControl control)
@@ -49,6 +59,12 @@ namespace DocuLink.Addin.Ribbon
         public void OnManageFiles(IRibbonControl control)
         {
             Globals.ThisAddIn.ShowManageFilesWindow();
+        }
+
+        public void OnOpenSettings(IRibbonControl control)
+        {
+            using (var dialog = new SettingsDialog())
+                dialog.ShowDialog();
         }
 
         public void OnDeleteLinksInSelection(IRibbonControl control)
@@ -212,6 +228,11 @@ namespace DocuLink.Addin.Ribbon
         public System.Drawing.Bitmap GetManageFilesImage(IRibbonControl control)
         {
             return LoadEmbeddedSvgAsIcon("icon-manage-files.svg");
+        }
+
+        public System.Drawing.Bitmap GetSettingsImage(IRibbonControl control)
+        {
+            return LoadEmbeddedSvgAsIcon("icon-settings.svg");
         }
 
         private static System.Drawing.Bitmap LoadEmbeddedSvgAsIcon(string iconName)

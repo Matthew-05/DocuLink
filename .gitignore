@@ -140,6 +140,10 @@ secrets.json
 *.local.json
 src/web/package-lock.json
 
+# --- Generated source files ---
+# Written by generate-version.ps1 before each C# build
+src/DocuLink.Addin/Properties/GeneratedVersion.cs
+
 # --- Installer build artifacts ---
 # Generated at build time; not committed
 installer/obj/

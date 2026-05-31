@@ -35,6 +35,13 @@
                   getImage="GetManageFilesImage"
                   onAction="OnManageFiles" />
         </group>
+        <group id="DocuLink.Group.Help" label=" ">
+          <button id="DocuLink.BtnSettings"
+                  label="Settings"
+                  size="normal"
+                  getImage="GetSettingsImage"
+                  onAction="OnOpenSettings" />
+        </group>
       </tab>
     </tabs>
   </ribbon>
