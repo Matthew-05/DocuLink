@@ -140,6 +140,12 @@ secrets.json
 *.local.json
 src/web/package-lock.json
 
+# --- Installer build artifacts ---
+# Generated at build time; not committed
+installer/obj/
+installer/Output/
+installer/doculink-files.wxs
+
 # --- Misc ---
 *.tmp
 *.temp
