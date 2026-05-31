@@ -38,7 +38,7 @@
         <group id="DocuLink.Group.Help" label=" ">
           <button id="DocuLink.BtnSettings"
                   label="Settings"
-                  size="normal"
+                  size="large"
                   getImage="GetSettingsImage"
                   onAction="OnOpenSettings" />
         </group>
