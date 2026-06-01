@@ -80,6 +80,13 @@ try {
 
 # ── Version ───────────────────────────────────────────────────────────────────
 Write-Host ""
+$latestTag = gh release list --repo Matthew-05/DocuLink --limit 1 --json tagName --jq ".[0].tagName" 2>$null
+if ($latestTag) {
+    Write-Host "  Latest release : $latestTag" -ForegroundColor DarkGray
+} else {
+    Write-Host "  Latest release : (none)" -ForegroundColor DarkGray
+}
+Write-Host ""
 if (-not $Version) {
     $Version = Read-Host "Enter version number (e.g. 1.2.0)"
 }
