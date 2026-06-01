@@ -1,17 +1,15 @@
 <#
 .SYNOPSIS
-    Builds the DocuLink OCR worker as a self-contained PyInstaller bundle.
+    Builds the DocuLink OCR worker using Python embeddable distribution.
 
 .DESCRIPTION
     Prerequisites:
-      - Python 3.12 on PATH (https://www.python.org/downloads/)
-      - Internet access on first run (Tesseract and Ghostscript are downloaded
-        automatically to src/python/tesseract/ and src/python/ghostscript/ via
-        download-tesseract.ps1 and download-ghostscript.ps1 if not already present).
-        Override locations with $env:TESSERACT_DIR or $env:GHOSTSCRIPT_DIR.
+      - Internet access on first run (Python embeddable zip, Tesseract, and
+        Ghostscript are downloaded automatically if not already present).
+        Override tool locations with $env:TESSERACT_DIR or $env:GHOSTSCRIPT_DIR.
 
     Output:
-      src/python/dist/worker/worker.exe  (plus supporting DLLs and tessdata)
+      src/python/dist/worker/python.exe  (signed Python + scripts + tool binaries)
 
     The dist/ folder is gitignored. After building, the C# project copies
     the worker to the addin output directory automatically on the next build.
@@ -42,24 +40,14 @@ function Wait-ForKeyPress {
 $scriptDir = $PSScriptRoot
 $exitCode = 0
 
+$PythonEmbedVersion = "3.12.10"
+$PythonEmbedUrl = "https://www.python.org/ftp/python/$PythonEmbedVersion/python-$PythonEmbedVersion-embed-amd64.zip"
+
 try {
-
-# ── Verify Python 3.12 ───────────────────────────────────────────────────────
-$pyVersion = & python --version 2>&1
-if ($LASTEXITCODE -ne 0) {
-    throw "Python not found on PATH. Install Python 3.12 from https://www.python.org/downloads/"
-}
-
-if ($pyVersion -notmatch 'Python 3\.12\.\d+') {
-    throw "Python 3.12 is required. Found: $pyVersion. Install Python 3.12 from https://www.python.org/downloads/"
-}
-
-Write-Host "Found $pyVersion" -ForegroundColor Green
 
 # ── Ensure Tesseract is present (downloads if needed) ─────────────────────────
 $defaultTessDir = Join-Path $scriptDir "tesseract"
 
-# Allow override via env var, otherwise use the repo-local copy
 $tessDir = $env:TESSERACT_DIR
 if (-not $tessDir) {
     $tessDir = $defaultTessDir
@@ -105,38 +93,64 @@ if (-not (Test-Path (Join-Path $gsDir "bin\gswin64c.exe"))) {
 
 $env:GHOSTSCRIPT_DIR = $gsDir
 
+# ── Set up output directory ───────────────────────────────────────────────────
+$workerDir = Join-Path $scriptDir "dist\worker"
+if (Test-Path $workerDir) {
+    Remove-Item $workerDir -Recurse -Force
+}
+New-Item -ItemType Directory -Force $workerDir | Out-Null
+
+# ── Download and extract Python embeddable ────────────────────────────────────
+Write-Host "`nDownloading Python $PythonEmbedVersion embeddable package..." -ForegroundColor Cyan
+$embedZip = Join-Path $workerDir "python-embed.zip"
+Invoke-WebRequest $PythonEmbedUrl -OutFile $embedZip
+Expand-Archive $embedZip -DestinationPath $workerDir -Force
+Remove-Item $embedZip
+Write-Host "Python embeddable extracted." -ForegroundColor Green
+
+# ── Enable site-packages in the _pth file ─────────────────────────────────────
+$pthFile = Get-Item (Join-Path $workerDir "python312._pth")
+$pthContent = Get-Content $pthFile.FullName -Raw
+$pthContent = $pthContent -replace '#import site', 'import site'
+$utf8NoBom = New-Object System.Text.UTF8Encoding $false
+[System.IO.File]::WriteAllText($pthFile.FullName, $pthContent, $utf8NoBom)
+Write-Host "Enabled site-packages in $($pthFile.Name)." -ForegroundColor Green
+
+# ── Bootstrap pip ─────────────────────────────────────────────────────────────
+Write-Host "`nBootstrapping pip..." -ForegroundColor Cyan
+$getPipScript = Join-Path $workerDir "get-pip.py"
+Invoke-WebRequest "https://bootstrap.pypa.io/get-pip.py" -OutFile $getPipScript
+& (Join-Path $workerDir "python.exe") $getPipScript --quiet
+if ($LASTEXITCODE -ne 0) { throw "pip bootstrap failed." }
+Remove-Item $getPipScript
+Write-Host "pip installed." -ForegroundColor Green
+
 # ── Install Python dependencies ───────────────────────────────────────────────
 Write-Host "`nInstalling Python dependencies..." -ForegroundColor Cyan
-Push-Location $scriptDir
-try {
-    & python -m pip install --upgrade pip --quiet
-    & python -m pip install -r requirements.txt --quiet
-    if ($LASTEXITCODE -ne 0) {
-        throw "pip install failed."
-    }
-} finally {
-    Pop-Location
-}
+& (Join-Path $workerDir "python.exe") -m pip install -r (Join-Path $scriptDir "requirements.txt") --quiet --no-warn-script-location
+if ($LASTEXITCODE -ne 0) { throw "pip install failed." }
 Write-Host "Dependencies installed." -ForegroundColor Green
 
-# ── Run PyInstaller ───────────────────────────────────────────────────────────
-Write-Host "`nRunning PyInstaller..." -ForegroundColor Cyan
-Push-Location $scriptDir
-try {
-    & python -m PyInstaller worker.spec --clean --noconfirm
-    if ($LASTEXITCODE -ne 0) {
-        throw "PyInstaller failed."
-    }
-} finally {
-    Pop-Location
-}
+# ── Copy Python source files ──────────────────────────────────────────────────
+Write-Host "`nCopying worker scripts..." -ForegroundColor Cyan
+Copy-Item (Join-Path $scriptDir "worker.py") $workerDir
+Copy-Item (Join-Path $scriptDir "engines")  (Join-Path $workerDir "engines")  -Recurse -Force
+Copy-Item (Join-Path $scriptDir "schemas")  (Join-Path $workerDir "schemas")  -Recurse -Force
 
-$outputExe = Join-Path $scriptDir "dist\worker\worker.exe"
+# ── Copy tool binaries ────────────────────────────────────────────────────────
+Write-Host "Copying Tesseract..." -ForegroundColor Cyan
+Copy-Item $tessDir (Join-Path $workerDir "tesseract") -Recurse -Force
+
+Write-Host "Copying Ghostscript..." -ForegroundColor Cyan
+Copy-Item $gsDir (Join-Path $workerDir "ghostscript") -Recurse -Force
+
+# ── Verify output ─────────────────────────────────────────────────────────────
+$outputExe = Join-Path $workerDir "python.exe"
 if (Test-Path $outputExe) {
     Write-Host "`nBuild complete: $outputExe" -ForegroundColor Green
     Write-Host "Build the C# project to automatically copy the worker to the addin output."
 } else {
-    throw "Build appeared to succeed but worker.exe not found at: $outputExe"
+    throw "Build appeared to succeed but python.exe not found at: $outputExe"
 }
 
 } catch {
