@@ -226,6 +226,7 @@
     <Compile Include="Modules\Services\PdfStatus.cs" />
     <Compile Include="Modules\Services\PdfTextLayerDetector.cs" />
     <Compile Include="Modules\Services\RotatePageService.cs" />
+    <Compile Include="Modules\Services\UpdateCheckService.cs" />
     <Compile Include="Modules\Services\UpdateLinkService.cs" />
     <Compile Include="Modules\Services\WorkbookProtectionGuard.cs" />
     <Compile Include="Modules\UI\LinkTextPromptDialog.cs">
@@ -233,6 +234,9 @@
     </Compile>
     <Compile Include="Modules\UI\IProgressReporter.cs" />
     <Compile Include="Modules\UI\ProgressDialog.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="Modules\UI\UpdateDialog.cs">
       <SubType>Form</SubType>
     </Compile>
     <Compile Include="Modules\UI\SettingsDialog.cs">
