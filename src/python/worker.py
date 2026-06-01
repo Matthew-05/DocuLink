@@ -32,6 +32,13 @@ def _handle_job(job: OcrJob) -> None:
 
         if job.mode == "geometry-only":
             geometry = extract_text_geometry(pdf_bytes, progress_callback=on_progress)
+            total_chars = sum(len(p["characters"]) for p in geometry["pages"])
+            if total_chars == 0 and geometry["pages"]:
+                # Pre-detector found text markers but PyMuPDF cannot extract chars
+                # (e.g. CID font with no ToUnicode map). Fall back to forced OCR.
+                on_progress("Text layer unextractable, falling back to OCR…")
+                result_bytes = ocr_pdf_bytes(pdf_bytes, force_ocr=True, progress_callback=on_progress)
+                geometry = extract_text_geometry(result_bytes, progress_callback=on_progress)
             geometry_b64 = geometry_to_base64(geometry)
             _write(
                 OcrResult(
