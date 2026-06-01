@@ -11,7 +11,7 @@
 -->
 <Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
 
-  <Product Id="{1F4C363C-18FE-4A4D-AA46-AF8DFB16F090}"
+  <Product Id="*"
            Name="DocuLink"
            Language="1033"
            Manufacturer="Matthew Tryon"
