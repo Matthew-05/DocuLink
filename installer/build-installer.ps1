@@ -102,7 +102,7 @@ foreach ($dir in @($PythonDist, $ReleaseDir, $ObjDir, $OutputDir)) {
 }
 if (Test-Path $FilesWxs) { Remove-Item $FilesWxs -Force }
 
-# ── Step 2: Python worker (bundles Ghostscript + Tesseract via PyInstaller) ───
+# ── Step 2: Python worker (embeddable Python + scripts + tool binaries) ───────
 Step "Building Python OCR worker"
 
 $buildWorker = Join-Path $PythonDir "build-worker.ps1"
@@ -111,9 +111,9 @@ if (-not (Test-Path $buildWorker)) { Fail "build-worker.ps1 not found at $buildW
 & powershell.exe -NonInteractive -ExecutionPolicy Bypass -File $buildWorker
 if ($LASTEXITCODE -ne 0) { Fail "build-worker.ps1 failed (exit $LASTEXITCODE)." }
 
-$workerExe = Join-Path $PythonDist "worker\worker.exe"
-if (-not (Test-Path $workerExe)) { Fail "worker.exe not found after build: $workerExe" }
-Write-Host "  worker.exe built OK"
+$workerPython = Join-Path $PythonDist "worker\python.exe"
+if (-not (Test-Path $workerPython)) { Fail "python.exe not found after build: $workerPython" }
+Write-Host "  python.exe built OK"
 
 # ── Step 3: C# add-in Release build ──────────────────────────────────────────
 Step "Building C# add-in (Release)"
