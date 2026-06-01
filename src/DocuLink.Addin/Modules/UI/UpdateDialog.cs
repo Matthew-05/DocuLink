@@ -217,7 +217,10 @@ namespace DocuLink.Addin.Modules.UI
                 if (_localMsiPath != null)
                 {
                     Process.Start("msiexec.exe", $"/i \"{_localMsiPath}\"");
+                    Globals.ThisAddIn.CloseAllApplicationWindows();
+                    var owner = Owner;
                     Close();
+                    owner?.Close();
                 }
                 return;
             }
