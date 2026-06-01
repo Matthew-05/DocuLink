@@ -9,15 +9,16 @@ from pathlib import Path
 
 def _configure_bundled_tools() -> None:
     """
-    When running as a PyInstaller bundle, Tesseract and Ghostscript live under
-    bundled subdirectories. ocrmypdf locates both via shutil.which; patch that
-    lookup and prepend each tool's bin directory to PATH so sibling DLLs load.
+    Locates Tesseract and Ghostscript bundled alongside the worker scripts.
+    Works for both PyInstaller frozen bundles and the embeddable Python layout
+    (where tools sit in the same directory as worker.py, two levels above this file).
     """
-    if not getattr(sys, "frozen", False):
-        return
-
-    # sys._MEIPASS is the resource root (PyInstaller 6+ uses _internal/).
-    bundle_dir = Path(sys._MEIPASS)  # type: ignore[attr-defined]
+    if getattr(sys, "frozen", False):
+        bundle_dir = Path(sys._MEIPASS)  # type: ignore[attr-defined]
+    else:
+        bundle_dir = Path(__file__).parent.parent
+        if not (bundle_dir / "tesseract" / "tesseract.exe").exists():
+            return
 
     paths_to_prepend: list[Path] = []
     which_overrides: dict[str, str] = {}
@@ -63,11 +64,14 @@ import ocrmypdf  # noqa: E402 — must come after env setup
 
 
 def configure_tesseract() -> None:
-    """Point pytesseract at the bundled Tesseract binary when frozen."""
-    if not getattr(sys, "frozen", False):
-        return
+    """Point pytesseract at the bundled Tesseract binary."""
+    if getattr(sys, "frozen", False):
+        bundle_dir = Path(sys._MEIPASS)  # type: ignore[attr-defined]
+    else:
+        bundle_dir = Path(__file__).parent.parent
+        if not (bundle_dir / "tesseract" / "tesseract.exe").exists():
+            return
 
-    bundle_dir = Path(sys._MEIPASS)  # type: ignore[attr-defined]
     tess_exe = bundle_dir / "tesseract" / "tesseract.exe"
     if tess_exe.exists():
         import pytesseract

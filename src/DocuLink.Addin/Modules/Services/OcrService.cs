@@ -81,10 +81,11 @@ namespace DocuLink.Addin.Modules.Services
             if (workbook == null) throw new ArgumentNullException(nameof(workbook));
             WorkbookProtectionGuard.ThrowIfStructureProtected(workbook);
 
-            string workerExe = GetWorkerExePath();
-            if (!File.Exists(workerExe))
+            string workerExe    = GetWorkerExePath();
+            string workerScript = GetWorkerScriptPath();
+            if (!File.Exists(workerExe) || !File.Exists(workerScript))
             {
-                string msg = $"OCR worker not found at:\n{workerExe}\n\nRun src/python/build-worker.ps1 to build it.";
+                string msg = "OCR worker not found. Run src/python/build-worker.ps1 to build it.";
                 foreach (string id in pdfIds)
                     onStatusUpdate(id, "error", msg);
                 return;
@@ -100,7 +101,7 @@ namespace DocuLink.Addin.Modules.Services
             IsRunning = true;
             try
             {
-                await Task.Run(() => RunWorker(workerExe, jobs, workbook, onStatusUpdate, _cts.Token));
+                await Task.Run(() => RunWorker(workerExe, workerScript, jobs, workbook, onStatusUpdate, _cts.Token));
             }
             finally
             {
@@ -112,6 +113,7 @@ namespace DocuLink.Addin.Modules.Services
 
         private void RunWorker(
             string workerExe,
+            string workerScript,
             IList<OcrJobEntry> jobs,
             Excel.Workbook workbook,
             Action<string, string, string> onStatusUpdate,
@@ -119,7 +121,8 @@ namespace DocuLink.Addin.Modules.Services
         {
             var psi = new ProcessStartInfo
             {
-                FileName = workerExe,
+                FileName  = workerExe,
+                Arguments = $"\"{workerScript}\"",
                 UseShellExecute = false,
                 RedirectStandardInput = true,
                 RedirectStandardOutput = true,
@@ -380,12 +383,21 @@ namespace DocuLink.Addin.Modules.Services
                 action();
         }
 
-        private static string GetWorkerExePath()
+        private static string GetAddinDir()
         {
             string codeBase = Assembly.GetExecutingAssembly().CodeBase;
-            string addinDir = Path.GetDirectoryName(new Uri(codeBase).LocalPath)
+            return Path.GetDirectoryName(new Uri(codeBase).LocalPath)
                 ?? AppDomain.CurrentDomain.BaseDirectory;
-            return Path.Combine(addinDir, "python", "worker", "worker.exe");
+        }
+
+        private static string GetWorkerExePath()
+        {
+            return Path.Combine(GetAddinDir(), "python", "worker", "python.exe");
+        }
+
+        private static string GetWorkerScriptPath()
+        {
+            return Path.Combine(GetAddinDir(), "python", "worker", "worker.py");
         }
 
         private sealed class OcrJobEntry
