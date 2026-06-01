@@ -8,7 +8,7 @@ namespace DocuLink.Addin.Modules.UI
         internal SettingsDialog()
         {
             Text = "DocuLink Settings";
-            ClientSize = new Size(320, 130);
+            ClientSize = new Size(320, 175);
             FormBorderStyle = FormBorderStyle.FixedDialog;
             MaximizeBox = false;
             MinimizeBox = false;
@@ -22,12 +22,22 @@ namespace DocuLink.Addin.Modules.UI
                 Font = new Font("Segoe UI", 10f)
             });
 
+            var checkBtn = new Button
+            {
+                Text = "Check for Updates",
+                AutoSize = true,
+                Location = new Point(20, 72),
+                Font = new Font("Segoe UI", 9f)
+            };
+            checkBtn.Click += (s, e) => new UpdateDialog().ShowDialog(this);
+            Controls.Add(checkBtn);
+
             var closeBtn = new Button
             {
                 Text = "Close",
                 DialogResult = DialogResult.Cancel,
                 Size = new Size(80, 28),
-                Location = new Point(220, 82)
+                Location = new Point(220, 127)
             };
             Controls.Add(closeBtn);
             CancelButton = closeBtn;

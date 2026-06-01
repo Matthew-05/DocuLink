@@ -22,6 +22,9 @@
 .OUTPUTS
     installer\Output\DocuLink-Setup-1.0.0.msi
 #>
+param(
+    [string]$Version = ""
+)
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
@@ -31,7 +34,9 @@ $InstallerDir = $PSScriptRoot
 
 # ── Version prompt ────────────────────────────────────────────────────────────
 Write-Host ""
-$Version = Read-Host "Enter version number for this release (e.g. 1.2.0)"
+if (-not $Version) {
+    $Version = Read-Host "Enter version number for this release (e.g. 1.2.0)"
+}
 if (-not $Version) { Write-Error "Version is required."; exit 1 }
 if ($Version -notmatch '^\d+\.\d+\.\d+$') { Write-Error "Version must be in x.y.z format."; exit 1 }
 Write-Host "  Building version: $Version" -ForegroundColor Green

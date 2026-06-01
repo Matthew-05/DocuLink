@@ -4,6 +4,10 @@ using System.Collections.Generic;
 
 using System.Runtime.InteropServices;
 
+using System.Threading.Tasks;
+
+using System.Windows.Forms;
+
 using Excel = Microsoft.Office.Interop.Excel;
 
 using Office = Microsoft.Office.Core;
@@ -15,6 +19,8 @@ using DocuLink.Addin.Modules.CustomXml;
 using DocuLink.Addin.Modules.CustomXml.Models;
 
 using DocuLink.Addin.Modules.Services;
+
+using DocuLink.Addin.Modules.UI;
 
 using DocuLink.Addin.Modules.WebView;
 
@@ -650,11 +656,41 @@ namespace DocuLink.Addin
 
 
 
-        private void Application_WorkbookOpen(Excel.Workbook wb)
+        private async void Application_WorkbookOpen(Excel.Workbook wb)
 
         {
 
             WarmUpTaskPaneFor(wb);
+
+            await CheckForUpdateOnOpenAsync();
+
+        }
+
+        private async Task CheckForUpdateOnOpenAsync()
+
+        {
+
+            if (AppVersion.Current == "dev") return;
+
+            if ((DateTime.UtcNow - Settings.Default.LastUpdateCheck).TotalHours < 24) return;
+
+            Settings.Default.LastUpdateCheck = DateTime.UtcNow;
+
+            Settings.Default.Save();
+
+            UpdateCheckResult result;
+
+            try { result = await UpdateCheckService.CheckAsync().ConfigureAwait(true); }
+
+            catch { return; }
+
+            if (result?.UpdateAvailable != true) return;
+
+            var msg = $"DocuLink {result.LatestVersion} is available (you have {AppVersion.Current}).\n\nDownload and install now?";
+
+            if (MessageBox.Show(msg, "Update Available", MessageBoxButtons.YesNo, MessageBoxIcon.Information) == DialogResult.Yes)
+
+                new UpdateDialog(result).ShowDialog();
 
         }
 
