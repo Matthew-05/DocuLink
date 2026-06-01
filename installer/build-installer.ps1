@@ -167,6 +167,8 @@ $wixObjs = Get-ChildItem $ObjDir -Filter "*.wixobj" | ForEach-Object { $_.FullNa
 & $Light `
     -nologo `
     -ext WixUIExtension `
+    -sice:ICE64 `
+    -sice:ICE80 `
     -sice:ICE91 `
     -out $MsiOut `
     $wixObjs
