@@ -15,6 +15,7 @@ export class FileTable {
   private _selectedFolderId: string | null = null;
   private _selectedIds: Set<string> = new Set();
   private _filterText = "";
+  private _selectionLocked = false;
   private _contextMenuFile: FileEntry | null = null;
   private _contextMenuNameSpan: HTMLSpanElement | null = null;
   private _contextMenuRow: HTMLTableRowElement | null = null;
@@ -96,6 +97,21 @@ export class FileTable {
     this._onSelectionChange([]);
   }
 
+  /**
+   * Locks or unlocks row selection. Locking immediately clears the current
+   * selection and disables all checkboxes so the user cannot select rows while
+   * OCR is running. Unlocking re-enables them. No-op if the state is unchanged.
+   */
+  setSelectionLocked(locked: boolean): void {
+    if (this._selectionLocked === locked) return;
+    this._selectionLocked = locked;
+    if (locked) {
+      this._selectedIds.clear();
+      this._onSelectionChange([]);
+    }
+    this._render();
+  }
+
   /** Clears row selection and the filter text. */
   reset(): void {
     this._filterText = "";
@@ -148,6 +164,7 @@ export class FileTable {
     const checkedCount = visible.filter((f) => this._selectedIds.has(f.id)).length;
     selectAllCb.checked = visible.length > 0 && checkedCount === visible.length;
     selectAllCb.indeterminate = checkedCount > 0 && checkedCount < visible.length;
+    selectAllCb.disabled = this._selectionLocked;
   }
 
   private _render(): void {
@@ -190,6 +207,7 @@ export class FileTable {
     cb.type = "checkbox";
     cb.className = "row-cb";
     cb.checked = this._selectedIds.has(file.id);
+    cb.disabled = this._selectionLocked;
     cb.addEventListener("change", () => {
       this._onRowCheck(file.id, cb.checked);
       tr.classList.toggle("is-selected", cb.checked);

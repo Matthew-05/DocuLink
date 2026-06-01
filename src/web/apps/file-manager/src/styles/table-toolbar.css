@@ -142,3 +142,24 @@
   opacity: 0.38;
   cursor: not-allowed;
 }
+
+/* ── Cancel OCR button ────────────────────────────────────────────────────── */
+
+.btn-toolbar-cancel {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 500;
+  border-radius: 5px;
+  border: 1px solid rgba(220, 160, 40, 0.4);
+  cursor: pointer;
+  white-space: nowrap;
+  background: rgba(220, 160, 40, 0.12);
+  color: #b07a00;
+}
+
+.btn-toolbar-cancel:hover {
+  background: rgba(220, 160, 40, 0.22);
+}

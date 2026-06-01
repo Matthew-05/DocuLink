@@ -47,6 +47,9 @@ namespace DocuLink.Addin.Modules.WebView
         private readonly ManageFilesService _service = new ManageFilesService();
         private OcrService _ocrService;
 
+        /// <summary>PDF IDs currently being processed by OCR. Populated before the await, cleared in finally.</summary>
+        private readonly HashSet<string> _activeOcrIds = new HashSet<string>(StringComparer.Ordinal);
+
         /// <summary>The folder GUID currently selected in the web UI (<c>null</c> for All Files).</summary>
         private string _selectedFolderId;
 
@@ -398,6 +401,10 @@ namespace DocuLink.Addin.Modules.WebView
                     case "ocr-pdfs":
                         _ = HandleOcrPdfsAsync(FileManagerMessageParser.ParseOcrPdfs(raw));
                         break;
+
+                    case "cancel-ocr":
+                        _ocrService.Cancel();
+                        break;
                 }
             }
             catch (Exception ex)
@@ -409,27 +416,38 @@ namespace DocuLink.Addin.Modules.WebView
         private async System.Threading.Tasks.Task HandleOcrPdfsAsync(OcrPdfsRequest req)
         {
             if (req?.PdfIds == null || req.PdfIds.Count == 0) return;
+            if (_ocrService.IsRunning) return;
 
             Excel.Workbook wb = GetActiveWorkbook();
             if (wb == null) return;
             if (!RequireWritable(wb)) return;
 
+            foreach (string id in req.PdfIds)
+                _activeOcrIds.Add(id);
+
             bool anyComplete = false;
 
-            await _ocrService.RunOcrAsync(
-                req.PdfIds,
-                wb,
-                onStatusUpdate: (pdfId, status, message) =>
-                {
-                    string json = FileManagerMessageSerializer.BuildOcrStatus(pdfId, status, message);
-                    _webView.CoreWebView2?.PostWebMessageAsString(json);
-
-                    if (status == PdfStatus.Ocr)
+            try
+            {
+                await _ocrService.RunOcrAsync(
+                    req.PdfIds,
+                    wb,
+                    onStatusUpdate: (pdfId, status, message) =>
                     {
-                        anyComplete = true;
-                        Globals.ThisAddIn.RefreshTaskPanePdf(pdfId);
-                    }
-                });
+                        string json = FileManagerMessageSerializer.BuildOcrStatus(pdfId, status, message);
+                        _webView.CoreWebView2?.PostWebMessageAsString(json);
+
+                        if (status == PdfStatus.Ocr)
+                        {
+                            anyComplete = true;
+                            Globals.ThisAddIn.RefreshTaskPanePdf(pdfId);
+                        }
+                    });
+            }
+            finally
+            {
+                _activeOcrIds.Clear();
+            }
 
             if (anyComplete)
             {
@@ -548,6 +566,7 @@ namespace DocuLink.Addin.Modules.WebView
 
         private void HandleRemoveFile(RemoveFileRequest req)
         {
+            if (_activeOcrIds.Contains(req.Id)) return;
             Excel.Workbook wb = GetActiveWorkbook();
             if (wb == null) return;
             if (!RequireWritable(wb)) return;
@@ -558,6 +577,7 @@ namespace DocuLink.Addin.Modules.WebView
 
         private void HandleMoveFile(MoveFileRequest req)
         {
+            if (_activeOcrIds.Contains(req.Id)) return;
             Excel.Workbook wb = GetActiveWorkbook();
             if (wb == null) return;
             if (!RequireWritable(wb)) return;
