@@ -364,6 +364,14 @@ namespace DocuLink.Addin
 
         }
 
+        internal void CloseAllApplicationWindows()
+        {
+            if (_fileManagerWindow != null && !_fileManagerWindow.IsDisposed)
+                _fileManagerWindow.Close();
+            if (_viewerWindow != null && !_viewerWindow.IsDisposed)
+                _viewerWindow.Close();
+        }
+
 
 
         // ── Per-workbook task pane management ────────────────────────────────
