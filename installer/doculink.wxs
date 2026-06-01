@@ -28,6 +28,9 @@
     <!-- Embed all files in the MSI as a single cabinet. -->
     <MediaTemplate EmbedCab="yes" />
 
+    <!-- ── Icon ──────────────────────────────────────────────────────────────── -->
+    <Icon Id="InstallIcon" SourceFile="$(sys.SOURCEFILEDIR)..\src\resources\branding\doculink-icon.ico" />
+
     <!-- ── UI ─────────────────────────────────────────────────────────────── -->
     <UIRef Id="WixUI_Minimal" />
     <WixVariable Id="WixUILicenseRtf" Value="$(sys.SOURCEFILEDIR)License.rtf" />
