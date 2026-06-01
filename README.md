@@ -12,7 +12,7 @@ DocuLink is an Excel add-in that bridges the gap between static PDFs and dynamic
 
 DocuLink is currently in active development. 
 
-*   **For Business/End Users:** We are working on a standard Windows installer to make setup effortless. Please keep an eye on our [Releases page](https://github.com/matthew-05/DocuLink/releases) for upcoming installer files. Once released, you will be able to install DocuLink with just a few clicks—no coding knowledge required.
+*   **For Business/End Users:** To download and install, navigate to the [Releases page](https://github.com/matthew-05/DocuLink/releases), then download and run the MSI installer to install DocuLink with just a few clicks—no coding knowledge required.
 *   **For Developers/Contributors:** If you'd like to test the current build, please see the **Technical & Developer Documentation** below to set up the environment and compile the add-in from source.
 
 ## Why DocuLink?
