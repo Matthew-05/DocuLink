@@ -4,12 +4,14 @@ export interface TableToolbarOptions {
   onRemoveSelected(): void;
   onMoveSelected(folderId: string | null): void;
   onProcessSelected(): void;
+  onCancelOcr(): void;
   onFilterChange(text: string): void;
 }
 
 export class TableToolbar {
   private readonly _root: HTMLElement;
   private readonly _filterInput: HTMLInputElement;
+  private readonly _cancelBtn: HTMLButtonElement;
   private readonly _moveBtn: HTMLButtonElement;
   private readonly _moveDropdown: HTMLElement;
   private readonly _processBtn: HTMLButtonElement;
@@ -36,6 +38,13 @@ export class TableToolbar {
     // ── Right-side button group ──────────────────────────────────────────────
     const rightGroup = document.createElement("div");
     rightGroup.className = "toolbar-right";
+
+    // Cancel OCR button (hidden unless OCR is running)
+    this._cancelBtn = document.createElement("button");
+    this._cancelBtn.className = "btn-toolbar-cancel";
+    this._cancelBtn.textContent = "Cancel OCR";
+    this._cancelBtn.style.display = "none";
+    this._cancelBtn.addEventListener("click", () => options.onCancelOcr());
 
     // Move button + dropdown wrapper (position: relative anchor)
     const moveWrap = document.createElement("div");
@@ -72,6 +81,7 @@ export class TableToolbar {
     this._removeBtn.textContent = "Remove Selected (0)";
     this._removeBtn.addEventListener("click", () => options.onRemoveSelected());
 
+    rightGroup.appendChild(this._cancelBtn);
     rightGroup.appendChild(moveWrap);
     rightGroup.appendChild(this._processBtn);
     rightGroup.appendChild(this._removeBtn);
@@ -84,12 +94,13 @@ export class TableToolbar {
     document.addEventListener("click", () => this._closeDropdown());
   }
 
-  update(selectedCount: number): void {
-    this._moveBtn.disabled = selectedCount === 0;
-    this._processBtn.disabled = selectedCount === 0;
-    this._removeBtn.disabled = selectedCount === 0;
+  update(selectedCount: number, selectedHasActiveOcr = false, anyOcrRunning = false): void {
+    this._moveBtn.disabled = selectedCount === 0 || selectedHasActiveOcr;
+    this._processBtn.disabled = selectedCount === 0 || selectedHasActiveOcr;
+    this._removeBtn.disabled = selectedCount === 0 || selectedHasActiveOcr;
     this._removeBtn.textContent = `Remove Selected (${selectedCount})`;
     if (selectedCount === 0) this._closeDropdown();
+    this._cancelBtn.style.display = anyOcrRunning ? "" : "none";
   }
 
   /** Clears the filter field, closes the move menu, and disables bulk actions. */

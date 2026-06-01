@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Web.Script.Serialization;
 using System.Windows.Forms;
@@ -29,6 +30,14 @@ namespace DocuLink.Addin.Modules.Services
         private readonly Control _uiControl;
         private readonly ManageFilesService _manageService = new ManageFilesService();
 
+        // Cancellation state — _runningProcess is volatile so Cancel() (any thread) always
+        // reads the latest value written by the background worker thread.
+        private volatile Process _runningProcess;
+        private CancellationTokenSource _cts;
+
+        /// <summary>True while a RunOcrAsync call is in flight. UI-thread only.</summary>
+        public bool IsRunning { get; private set; }
+
         /// <param name="uiControl">
         /// Any WinForms control that lives on the UI thread (e.g. the hosting
         /// <see cref="Form"/>). Used to marshal callbacks back to the UI thread.
@@ -36,6 +45,18 @@ namespace DocuLink.Addin.Modules.Services
         public OcrService(Control uiControl)
         {
             _uiControl = uiControl ?? throw new ArgumentNullException(nameof(uiControl));
+        }
+
+        /// <summary>
+        /// Cancels any in-progress OCR run. The worker process is killed immediately;
+        /// the in-flight job and all remaining queued jobs are reverted to their
+        /// original status (none / text) rather than marked as errors.
+        /// Safe to call from any thread.
+        /// </summary>
+        public void Cancel()
+        {
+            _cts?.Cancel();
+            try { _runningProcess?.Kill(); } catch { }
         }
 
         /// <summary>
@@ -75,14 +96,26 @@ namespace DocuLink.Addin.Modules.Services
             foreach (var job in jobs)
                 onStatusUpdate(job.PdfId, "queued", null);
 
-            await Task.Run(() => RunWorker(workerExe, jobs, workbook, onStatusUpdate));
+            _cts = new CancellationTokenSource();
+            IsRunning = true;
+            try
+            {
+                await Task.Run(() => RunWorker(workerExe, jobs, workbook, onStatusUpdate, _cts.Token));
+            }
+            finally
+            {
+                IsRunning = false;
+                _cts.Dispose();
+                _cts = null;
+            }
         }
 
         private void RunWorker(
             string workerExe,
             IList<OcrJobEntry> jobs,
             Excel.Workbook workbook,
-            Action<string, string, string> onStatusUpdate)
+            Action<string, string, string> onStatusUpdate,
+            CancellationToken token)
         {
             var psi = new ProcessStartInfo
             {
@@ -97,79 +130,102 @@ namespace DocuLink.Addin.Modules.Services
             using (var process = new Process { StartInfo = psi })
             {
                 process.Start();
+                _runningProcess = process;
 
-                // StandardInputEncoding / StandardOutputEncoding don't exist on
-                // .NET Framework — wrap the base streams in UTF-8 readers/writers instead.
-                // Do NOT dispose the originals: they own the underlying stream lifetime;
-                // disposing them here would close the BaseStream that our wrappers share.
-                var stdin = new StreamWriter(
-                    process.StandardInput.BaseStream,
-                    new UTF8Encoding(encoderShouldEmitUTF8Identifier: false))
+                StreamWriter stdin = null;
+                StreamReader stdout = null;
+
+                try
                 {
-                    AutoFlush = true,
-                };
-
-                var stdout = new StreamReader(
-                    process.StandardOutput.BaseStream,
-                    Encoding.UTF8);
-
-                foreach (var job in jobs)
-                {
-                    Invoke(() => onStatusUpdate(job.PdfId, "processing", null));
-
-                    // Write the job to stdin
-                    string jobJson = BuildJobJson(job);
-                    stdin.WriteLine(jobJson);
-
-                    // Read lines until we get a terminal result for this job_id
-                    string resultLine = ReadResultLine(stdout, job.PdfId);
-
-                    if (resultLine == null)
+                    // StandardInputEncoding / StandardOutputEncoding don't exist on
+                    // .NET Framework — wrap the base streams in UTF-8 readers/writers instead.
+                    // Do NOT dispose the originals: they own the underlying stream lifetime;
+                    // disposing them here would close the BaseStream that our wrappers share.
+                    stdin = new StreamWriter(
+                        process.StandardInput.BaseStream,
+                        new UTF8Encoding(encoderShouldEmitUTF8Identifier: false))
                     {
-                        Invoke(() => onStatusUpdate(job.PdfId, "error", "Worker closed unexpectedly."));
-                        break;
-                    }
+                        AutoFlush = true,
+                    };
 
-                    var parsed = ParseResultLine(resultLine);
-                    string status = parsed.Status;
-                    string errorMessage = parsed.Error;
+                    stdout = new StreamReader(
+                        process.StandardOutput.BaseStream,
+                        Encoding.UTF8);
 
-                    if (status == "success")
+                    bool workerDied = false;
+
+                    foreach (var job in jobs)
                     {
-                        Invoke(() =>
+                        // Cancelled or worker already gone — revert remaining to original status
+                        if (token.IsCancellationRequested || workerDied)
                         {
-                            try
+                            Invoke(() => onStatusUpdate(job.PdfId, job.OriginalStatus, null));
+                            continue;
+                        }
+
+                        Invoke(() => onStatusUpdate(job.PdfId, "processing", null));
+
+                        string jobJson = BuildJobJson(job);
+                        stdin.WriteLine(jobJson);
+
+                        // Read lines until we get a terminal result for this job_id
+                        string resultLine = ReadResultLine(stdout, job.PdfId);
+
+                        if (resultLine == null)
+                        {
+                            // Stream closed — either we killed the process (cancellation) or it crashed
+                            bool cancelled = token.IsCancellationRequested;
+                            Invoke(() => onStatusUpdate(
+                                job.PdfId,
+                                cancelled ? job.OriginalStatus : "error",
+                                cancelled ? null : "Worker closed unexpectedly."));
+                            workerDied = true;
+                            continue;
+                        }
+
+                        var parsed = ParseResultLine(resultLine);
+
+                        if (parsed.Status == "success")
+                        {
+                            Invoke(() =>
                             {
-                                if (string.Equals(job.Mode, "geometry-only", StringComparison.Ordinal))
+                                try
                                 {
-                                    _manageService.UpdatePdfGeometry(
-                                        workbook, job.PdfId, parsed.GeometryBase64 ?? string.Empty);
-                                    onStatusUpdate(job.PdfId, PdfStatus.Ocr, null);
+                                    if (string.Equals(job.Mode, "geometry-only", StringComparison.Ordinal))
+                                    {
+                                        _manageService.UpdatePdfGeometry(
+                                            workbook, job.PdfId, parsed.GeometryBase64 ?? string.Empty);
+                                        onStatusUpdate(job.PdfId, PdfStatus.Ocr, null);
+                                    }
+                                    else
+                                    {
+                                        _manageService.UpdatePdfAfterOcr(
+                                            workbook,
+                                            job.PdfId,
+                                            parsed.PdfBase64 ?? string.Empty,
+                                            parsed.GeometryBase64 ?? string.Empty);
+                                        onStatusUpdate(job.PdfId, PdfStatus.Ocr, null);
+                                    }
                                 }
-                                else
+                                catch (Exception ex)
                                 {
-                                    _manageService.UpdatePdfAfterOcr(
-                                        workbook,
-                                        job.PdfId,
-                                        parsed.PdfBase64 ?? string.Empty,
-                                        parsed.GeometryBase64 ?? string.Empty);
-                                    onStatusUpdate(job.PdfId, PdfStatus.Ocr, null);
+                                    onStatusUpdate(job.PdfId, "error", ex.Message);
                                 }
-                            }
-                            catch (Exception ex)
-                            {
-                                onStatusUpdate(job.PdfId, "error", ex.Message);
-                            }
-                        });
-                    }
-                    else
-                    {
-                        Invoke(() => onStatusUpdate(job.PdfId, "error", errorMessage));
+                            });
+                        }
+                        else
+                        {
+                            Invoke(() => onStatusUpdate(job.PdfId, "error", parsed.Error));
+                        }
                     }
                 }
+                finally
+                {
+                    _runningProcess = null;
+                }
 
-                // Close stdin so the worker exits cleanly
-                stdin.Close();
+                // Close stdin so the worker exits cleanly (may throw if process was killed)
+                try { stdin?.Close(); } catch { }
                 process.WaitForExit(5000);
                 if (!process.HasExited)
                     process.Kill();
@@ -305,7 +361,13 @@ namespace DocuLink.Addin.Modules.Services
                 store.TryLoadPdfBinary(id, out string base64, out _);
                 string mode = string.Equals(status, PdfStatus.Text, StringComparison.Ordinal)
                     ? "geometry-only" : "full";
-                result.Add(new OcrJobEntry { PdfId = id, Base64 = base64 ?? string.Empty, Mode = mode });
+                result.Add(new OcrJobEntry
+                {
+                    PdfId = id,
+                    Base64 = base64 ?? string.Empty,
+                    Mode = mode,
+                    OriginalStatus = status,
+                });
             }
             return result;
         }
@@ -331,6 +393,7 @@ namespace DocuLink.Addin.Modules.Services
             public string PdfId { get; set; }
             public string Base64 { get; set; }
             public string Mode { get; set; }
+            public string OriginalStatus { get; set; }
         }
 
         private sealed class OcrWorkerResult

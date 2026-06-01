@@ -11,7 +11,7 @@ interface FilesLoadedMessage {
 interface OcrStatusMessage {
   type: "ocr-status";
   pdfId: string;
-  status: "queued" | "processing" | "ocr" | "error";
+  status: "queued" | "processing" | "ocr" | "error" | "none" | "text";
   message?: string;
 }
 
@@ -54,7 +54,7 @@ export function registerUiResetHandler(handler: () => void): void {
 
 export function initHostBridge(
   onFilesLoaded: (folders: FolderEntry[], files: FileEntry[]) => void,
-  onOcrStatus?: (pdfId: string, status: OcrStatusMessage["status"], message: string | undefined) => void
+  onOcrStatus?: (pdfId: string, status: string, message: string | undefined) => void
 ): void {
   const webview = getWebView();
   if (!webview) return;
@@ -121,6 +121,10 @@ export function sendRemoveFolder(id: string): void {
 
 export function sendOcrPdfs(pdfIds: string[]): void {
   send({ type: "ocr-pdfs", pdfIds });
+}
+
+export function sendCancelOcr(): void {
+  send({ type: "cancel-ocr" });
 }
 
 /** Notifies host of the actively selected folder (for OS drag-drop import). Omit folderId → All Files. */

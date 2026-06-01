@@ -569,6 +569,19 @@
       ]
     },
 
+    "CancelOcrMessage": {
+      "description": "Sent by the file-manager web app when the user clicks 'Cancel OCR'. The host kills the worker process and reverts all queued/in-flight jobs to their original status (none or text).",
+      "type": "object",
+      "required": ["type"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "const": "cancel-ocr" }
+      },
+      "examples": [
+        { "type": "cancel-ocr" }
+      ]
+    },
+
     "OcrPdfsMessage": {
       "description": "Sent by the file-manager web app when the user clicks 'OCR'. The host runs full OCR on scanned PDFs and geometry-only extraction on PDFs with an embedded text layer, replying with one or more OcrStatusMessages.",
       "type": "object",
@@ -679,6 +692,7 @@
     { "$ref": "#/definitions/ClearRectangleHighlightMessage" },
     { "$ref": "#/definitions/HighlightRectangleMessage" },
     { "$ref": "#/definitions/ResetUiMessage" },
+    { "$ref": "#/definitions/CancelOcrMessage" },
     { "$ref": "#/definitions/OcrPdfsMessage" },
     { "$ref": "#/definitions/OcrStatusMessage" },
     { "$ref": "#/definitions/RotatePageMessage" },

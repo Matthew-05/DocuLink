@@ -1,5 +1,5 @@
 import type { FileEntry, FolderEntry } from "./types/index.js";
-import { initHostBridge, sendSelectedFolder, sendRemoveFile, sendMoveFile, sendOcrPdfs } from "./host-bridge.js";
+import { initHostBridge, sendSelectedFolder, sendRemoveFile, sendMoveFile, sendOcrPdfs, sendCancelOcr } from "./host-bridge.js";
 import { FolderPanel } from "./components/folder-panel/folder-panel.js";
 import { FileTable } from "./components/file-table/file-table.js";
 import { TableToolbar } from "./components/table-toolbar/table-toolbar.js";
@@ -19,6 +19,18 @@ export function mountApp(root: HTMLElement): void {
 
   let selectedFolderId: string | null = null;
   let currentFolders: FolderEntry[] = [];
+  let selectedIds: string[] = [];
+
+  const activeOcrStatuses = new Set(["queued", "processing"]);
+
+  function computeToolbarState(): { selectedHasActiveOcr: boolean; anyOcrRunning: boolean } {
+    const selectedHasActiveOcr = selectedIds.some((id) => {
+      const f = currentFiles.find((f) => f.id === id);
+      return f !== undefined && activeOcrStatuses.has(f.status);
+    });
+    const anyOcrRunning = currentFiles.some((f) => activeOcrStatuses.has(f.status));
+    return { selectedHasActiveOcr, anyOcrRunning };
+  }
 
   const toolbar = new TableToolbar(rightCol, {
     onRemoveSelected() {
@@ -32,7 +44,13 @@ export function mountApp(root: HTMLElement): void {
     },
     onProcessSelected() {
       const ids = fileTable.getSelectedIds();
-      if (ids.length > 0) sendOcrPdfs(ids);
+      if (ids.length > 0) {
+        sendOcrPdfs(ids);
+        fileTable.setSelectionLocked(true);
+      }
+    },
+    onCancelOcr() {
+      sendCancelOcr();
     },
     onFilterChange(text: string) {
       fileTable.setFilter(text);
@@ -41,7 +59,9 @@ export function mountApp(root: HTMLElement): void {
 
   const fileTable = new FileTable(rightCol, {
     onSelectionChange(ids: string[]) {
-      toolbar.update(ids.length);
+      selectedIds = ids;
+      const { selectedHasActiveOcr, anyOcrRunning } = computeToolbarState();
+      toolbar.update(ids.length, selectedHasActiveOcr, anyOcrRunning);
     },
   });
 
@@ -74,7 +94,7 @@ export function mountApp(root: HTMLElement): void {
 
   function onOcrStatus(
     pdfId: string,
-    status: "queued" | "processing" | "ocr" | "error",
+    status: string,
     message: string | undefined
   ): void {
     if (status === "error") {
@@ -84,6 +104,9 @@ export function mountApp(root: HTMLElement): void {
     if (entry) {
       entry.status = status;
       fileTable.update(currentFiles, selectedFolderId);
+      const { selectedHasActiveOcr, anyOcrRunning } = computeToolbarState();
+      toolbar.update(selectedIds.length, selectedHasActiveOcr, anyOcrRunning);
+      fileTable.setSelectionLocked(anyOcrRunning);
     }
   }
 

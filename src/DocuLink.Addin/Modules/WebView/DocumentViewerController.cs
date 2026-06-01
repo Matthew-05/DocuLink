@@ -177,6 +177,14 @@ namespace DocuLink.Addin.Modules.WebView
 
                     case "viewer-content-ready":
                         _contentReady = true;
+                        // Also dismiss the cache-build progress here. It was opened in
+                        // NotifyViewerShown() and is normally closed by cache-build-complete,
+                        // but viewer-content-ready is always sent (from the finally block in
+                        // viewer-bridge.ts) and arrives after onDocumentChanged has run —
+                        // so it guarantees the loader is dismissed even when the cache was
+                        // already populated (the fast path that skips sendCacheBuildComplete).
+                        _cacheProgress?.Dispose();
+                        _cacheProgress = null;
                         if (_viewerShown)
                             RevealWebView();
                         break;
