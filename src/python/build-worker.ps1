@@ -27,16 +27,6 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
-function Wait-ForKeyPress {
-    Write-Host ""
-    Write-Host "Press any key to exit..." -ForegroundColor DarkGray
-    try {
-        $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
-    } catch {
-        Read-Host "Press Enter to exit"
-    }
-}
-
 $scriptDir = $PSScriptRoot
 $exitCode = 0
 
@@ -156,8 +146,6 @@ if (Test-Path $outputExe) {
 } catch {
     Write-Host $_.Exception.Message -ForegroundColor Red
     $exitCode = 1
-} finally {
-    Wait-ForKeyPress
 }
 
 exit $exitCode
