@@ -570,6 +570,8 @@ namespace DocuLink.Addin
 
             ((Excel.AppEvents_Event)Application).NewWorkbook += Application_NewWorkbook;
 
+            _ = CheckForUpdateOnOpenAsync();
+
         }
 
 
@@ -682,10 +684,6 @@ namespace DocuLink.Addin
 
             if ((DateTime.UtcNow - Settings.Default.LastUpdateCheck).TotalHours < 24) return;
 
-            Settings.Default.LastUpdateCheck = DateTime.UtcNow;
-
-            Settings.Default.Save();
-
             UpdateCheckResult result;
 
             try { result = await UpdateCheckService.CheckAsync().ConfigureAwait(true); }
@@ -694,11 +692,7 @@ namespace DocuLink.Addin
 
             if (result?.UpdateAvailable != true) return;
 
-            var msg = $"DocuLink {result.LatestVersion} is available (you have {AppVersion.Current}).\n\nDownload and install now?";
-
-            if (MessageBox.Show(msg, "Update Available", MessageBoxButtons.YesNo, MessageBoxIcon.Information) == DialogResult.Yes)
-
-                new UpdateDialog(result).ShowDialog();
+            new UpdateDialog(result).ShowDialog();
 
         }
 

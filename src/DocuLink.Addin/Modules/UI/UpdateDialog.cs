@@ -5,6 +5,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using DocuLink.Addin.Modules.Services;
+using DocuLink.Addin.Properties;
 
 namespace DocuLink.Addin.Modules.UI
 {
@@ -22,13 +23,14 @@ namespace DocuLink.Addin.Modules.UI
         private readonly Label _percentLabel;
         private readonly Button _actionButton;
         private readonly Button _closeButton;
+        private readonly CheckBox _snoozeCheckBox;
 
         internal UpdateDialog(UpdateCheckResult preChecked = null)
         {
             _preChecked = preChecked;
 
             Text = "DocuLink Updates";
-            ClientSize = new Size(400, 170);
+            ClientSize = new Size(400, 185);
             FormBorderStyle = FormBorderStyle.FixedDialog;
             MaximizeBox = false;
             MinimizeBox = false;
@@ -74,7 +76,7 @@ namespace DocuLink.Addin.Modules.UI
             _actionButton = new Button
             {
                 Size = new Size(110, 28),
-                Location = new Point(160, 122),
+                Location = new Point(160, 142),
                 Text = "Download",
                 Visible = false
             };
@@ -83,13 +85,23 @@ namespace DocuLink.Addin.Modules.UI
             _closeButton = new Button
             {
                 Size = new Size(80, 28),
-                Location = new Point(300, 122),
+                Location = new Point(300, 142),
                 Text = "Close",
                 DialogResult = DialogResult.Cancel
             };
             CancelButton = _closeButton;
 
-            Controls.AddRange(new Control[] { _statusLabel, _versionLabel, _progressBar, _percentLabel, _actionButton, _closeButton });
+            _snoozeCheckBox = new CheckBox
+            {
+                AutoSize = false,
+                Size = new Size(366, 20),
+                Location = new Point(14, 74),
+                Font = new Font("Segoe UI", 9f),
+                Text = "Do not check for 24 hours",
+                Visible = false
+            };
+
+            Controls.AddRange(new Control[] { _statusLabel, _versionLabel, _progressBar, _percentLabel, _actionButton, _closeButton, _snoozeCheckBox });
         }
 
         protected override async void OnShown(EventArgs e)
@@ -141,6 +153,7 @@ namespace DocuLink.Addin.Modules.UI
                     _progressBar.Visible = false;
                     _percentLabel.Visible = false;
                     _actionButton.Visible = false;
+                    _snoozeCheckBox.Visible = false;
                     _closeButton.Text = "Cancel";
                     break;
 
@@ -153,6 +166,8 @@ namespace DocuLink.Addin.Modules.UI
                     _actionButton.Text = string.IsNullOrEmpty(result.DownloadUrl) ? "Release Page" : "Download";
                     _actionButton.Tag = result;
                     _actionButton.Visible = true;
+                    _snoozeCheckBox.Checked = false;
+                    _snoozeCheckBox.Visible = true;
                     _closeButton.Text = "Later";
                     break;
 
@@ -163,6 +178,7 @@ namespace DocuLink.Addin.Modules.UI
                     _progressBar.Visible = false;
                     _percentLabel.Visible = false;
                     _actionButton.Visible = false;
+                    _snoozeCheckBox.Visible = false;
                     _closeButton.Text = "Close";
                     break;
 
@@ -175,7 +191,9 @@ namespace DocuLink.Addin.Modules.UI
                     _actionButton.Text = "Download";
                     _actionButton.Tag = result;
                     _actionButton.Visible = true;
-                    _closeButton.Text = "Close";
+                    _snoozeCheckBox.Checked = false;
+                    _snoozeCheckBox.Visible = true;
+                    _closeButton.Text = "Later";
                     break;
 
                 case State.Downloading:
@@ -185,6 +203,7 @@ namespace DocuLink.Addin.Modules.UI
                     _percentLabel.Text = "0%";
                     _percentLabel.Visible = true;
                     _actionButton.Visible = false;
+                    _snoozeCheckBox.Visible = false;
                     _closeButton.Text = "Cancel";
                     break;
 
@@ -195,6 +214,7 @@ namespace DocuLink.Addin.Modules.UI
                     _actionButton.Text = "Install Now";
                     _actionButton.Tag = null;
                     _actionButton.Visible = true;
+                    _snoozeCheckBox.Visible = false;
                     _closeButton.Text = "Later";
                     break;
 
@@ -204,6 +224,7 @@ namespace DocuLink.Addin.Modules.UI
                     _progressBar.Visible = false;
                     _percentLabel.Visible = false;
                     _actionButton.Visible = false;
+                    _snoozeCheckBox.Visible = false;
                     _closeButton.Text = "Close";
                     break;
             }
@@ -262,6 +283,16 @@ namespace DocuLink.Addin.Modules.UI
                 _actionButton.Tag = result;
                 _actionButton.Visible = true;
                 _closeButton.Text = "Close";
+            }
+        }
+
+        protected override void OnFormClosed(FormClosedEventArgs e)
+        {
+            base.OnFormClosed(e);
+            if (_snoozeCheckBox.Checked)
+            {
+                Settings.Default.LastUpdateCheck = DateTime.UtcNow;
+                Settings.Default.Save();
             }
         }
 
