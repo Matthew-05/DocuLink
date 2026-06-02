@@ -1,0 +1,78 @@
+/* ── Floating bar container ─────────────────────────────────────────── */
+
+.link-type-bar {
+  position: absolute;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 20px;
+  padding: 6px 12px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.14);
+  user-select: none;
+  white-space: nowrap;
+  pointer-events: auto;
+}
+
+/* ── Segmented button group ─────────────────────────────────────────── */
+
+.link-type-selector {
+  display: inline-flex;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+}
+
+.link-type-selector__btn {
+  padding: 3px 10px;
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  background: var(--color-surface);
+  color: var(--color-text-muted);
+  border: none;
+  border-right: 1px solid var(--color-border);
+  cursor: pointer;
+  transition: background 0.1s, color 0.1s;
+}
+
+.link-type-selector__btn:last-child {
+  border-right: none;
+}
+
+/* ── Per-type inactive hover ────────────────────────────────────────── */
+
+.link-type-selector__btn[data-type="auto"]:hover:not(.link-type-selector__btn--active) {
+  background: rgba(37, 99, 235, 0.08);
+  color: rgb(37, 99, 235);
+}
+
+.link-type-selector__btn[data-type="raw"]:hover:not(.link-type-selector__btn--active) {
+  background: rgba(22, 163, 74, 0.08);
+  color: rgb(22, 163, 74);
+}
+
+.link-type-selector__btn[data-type="sum"]:hover:not(.link-type-selector__btn--active) {
+  background: rgba(217, 119, 6, 0.10);
+  color: rgb(217, 119, 6);
+}
+
+/* ── Per-type active state ──────────────────────────────────────────── */
+
+.link-type-selector__btn--active[data-type="auto"] {
+  background: rgb(37, 99, 235);
+  color: #fff;
+}
+
+.link-type-selector__btn--active[data-type="raw"] {
+  background: rgb(22, 163, 74);
+  color: #fff;
+}
+
+.link-type-selector__btn--active[data-type="sum"] {
+  background: rgb(217, 119, 6);
+  color: #fff;
+}

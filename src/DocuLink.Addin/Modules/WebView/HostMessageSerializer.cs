@@ -115,7 +115,9 @@ namespace DocuLink.Addin.Modules.WebView
                 sb.Append(",\"y\":"); AppendDouble(sb, r.Rectangle.Y);
                 sb.Append(",\"width\":"); AppendDouble(sb, r.Rectangle.Width);
                 sb.Append(",\"height\":"); AppendDouble(sb, r.Rectangle.Height);
-                sb.Append("}}");
+                sb.Append("}");
+                sb.Append(",\"linkType\":"); AppendString(sb, SerializeLinkType(r.LinkType));
+                sb.Append("}");
             }
 
             sb.Append("]}");
@@ -207,6 +209,16 @@ namespace DocuLink.Addin.Modules.WebView
                 sb.Append(nonZero[i].Value);
             }
             sb.Append('}');
+        }
+
+        private static string SerializeLinkType(LinkType linkType)
+        {
+            switch (linkType)
+            {
+                case LinkType.Raw: return "raw";
+                case LinkType.Sum: return "sum";
+                default:           return "auto";
+            }
         }
 
         private static void AppendDouble(StringBuilder sb, double value)

@@ -36,11 +36,24 @@ namespace DocuLink.Addin.Modules.Services
                     return false;
 
                 int trackIndex = rect.LinkedCell.TrackIndex;
+
+                if (rect.LinkType == LinkType.Sum)
+                {
+                    IList<LinkedRectangle> allLinks = session.GetLinks();
+                    var siblings = allLinks
+                        .Where(r => !string.Equals(r.Id, rectId, StringComparison.Ordinal)
+                                 && r.LinkedCell.TrackIndex == trackIndex)
+                        .ToList();
+
+                    if (siblings.Count > 0)
+                        return DeleteSumRectPartial(rectId, rect, siblings, workbook, session);
+                }
+
                 Excel.Range cell = LinkCellResolver.TryResolveCell(workbook, rect);
 
                 if (cell != null)
                 {
-                    try { CellFormatter.ClearLinkStyle(cell); }
+                    try { CellFormattingService.ClearLinkStyle(cell); }
                     catch (COMException ex)
                     {
                         System.Diagnostics.Debug.WriteLine(
@@ -55,6 +68,51 @@ namespace DocuLink.Addin.Modules.Services
             {
                 System.Diagnostics.Debug.WriteLine(
                     $"[DocuLink] DeleteLinkService.DeleteLink failed: {ex.Message}");
+                return false;
+            }
+        }
+
+        private static bool DeleteSumRectPartial(
+            string rectId,
+            LinkedRectangle rect,
+            IList<LinkedRectangle> siblings,
+            Excel.Workbook workbook,
+            WorkbookStorageSession session)
+        {
+            try
+            {
+                var remainingTexts = siblings.Select(r => r.SourceText).ToList();
+                string formula = TextValueFormatter.RebuildSumFormula(remainingTexts);
+
+                Excel.Range cell = LinkCellResolver.TryResolveCell(workbook, rect);
+                if (cell != null)
+                {
+                    try
+                    {
+                        if (formula != null)
+                        {
+                            CellFormattingService.ApplySumNumberFormat(cell, remainingTexts);
+                            cell.Formula = formula;
+                            cell.Calculate();
+                        }
+                        else
+                        {
+                            cell.Value2 = null;
+                        }
+                    }
+                    catch (COMException ex)
+                    {
+                        System.Diagnostics.Debug.WriteLine(
+                            $"[DocuLink] DeleteSumRectPartial cell update failed: {ex.Message}");
+                    }
+                }
+
+                return session.RemoveLink(rectId);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine(
+                    $"[DocuLink] DeleteSumRectPartial failed: {ex.Message}");
                 return false;
             }
         }
@@ -155,10 +213,11 @@ namespace DocuLink.Addin.Modules.Services
                         if (trackIndex <= 0)
                             continue;
 
-                        LinkedRectangle rect = links.FirstOrDefault(
-                            lr => lr.LinkedCell.TrackIndex == trackIndex);
-                        if (rect != null)
-                            idsToDelete.Add(rect.Id);
+                        foreach (LinkedRectangle lr in links)
+                        {
+                            if (lr.LinkedCell.TrackIndex == trackIndex)
+                                idsToDelete.Add(lr.Id);
+                        }
                     }
                     catch (COMException ex)
                     {
@@ -208,7 +267,7 @@ namespace DocuLink.Addin.Modules.Services
 
                 try
                 {
-                    CellFormatter.ClearLinkStyles(cellsToClear, app);
+                    CellFormattingService.ClearLinkStyles(cellsToClear, app);
                 }
                 catch (COMException ex)
                 {

@@ -5,6 +5,11 @@ import { applyNormalizedRectToElement } from "./rect-utils.js";
 
 const LINK_CLASS      = "rect-draw__link";
 const HIGHLIGHT_CLASS = "rect-draw__link--highlighted";
+const LINK_TYPE_CLASSES = {
+  auto: "rect-draw__link--auto",
+  raw:  "rect-draw__link--raw",
+  sum:  "rect-draw__link--sum",
+} as const;
 
 /**
  * Renders persisted link rectangles as absolutely-positioned overlay divs
@@ -165,6 +170,7 @@ export class RectRenderer {
     for (const entry of pageRects) {
       const div = document.createElement("div");
       div.className = LINK_CLASS;
+      div.classList.add(LINK_TYPE_CLASSES[entry.linkType ?? "auto"]);
       div.dataset["rectId"] = entry.id;
       applyNormalizedRectToElement(div, entry.rect);
       div.addEventListener("click", (e) => {

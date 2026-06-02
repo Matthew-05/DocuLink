@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.InteropServices;
+using DocuLink.Addin.Modules;
 using DocuLink.Addin.Modules.CustomXml;
 using DocuLink.Addin.Modules.CustomXml.Models;
 using Excel = Microsoft.Office.Interop.Excel;
@@ -126,21 +127,48 @@ namespace DocuLink.Addin.Modules.Services
         /// </summary>
         public static void SyncAllPositions(Excel.Workbook workbook)
         {
-            if (workbook == null) return;
+            if (workbook == null)
+            {
+                DocuLinkLog.Trace("ENTER workbook=(null) - return");
+                return;
+            }
+
+            DocuLinkLog.Trace($"ENTER workbook={GetWorkbookDebugName(workbook)}");
+
+            using (DocuLinkLog.Time("SyncAllPositions total"))
+            {
             WorkbookProtectionGuard.ThrowIfStructureProtected(workbook);
 
+            DocuLinkLog.Trace("getting storage session");
             WorkbookStorageSession session = Globals.ThisAddIn.GetStorageSession(workbook);
+
+            DocuLinkLog.Trace("loading links");
             IList<LinkedRectangle> links = session.GetLinks();
+            DocuLinkLog.Trace($"loaded links count={links.Count}");
+
             bool anyChanged = false;
+            int scanned = 0;
+            int missingMaps = 0;
+            int missingRanges = 0;
+            int changed = 0;
 
             foreach (LinkedRectangle linkedRect in links)
             {
+                scanned++;
                 int trackIndex = linkedRect.LinkedCell.TrackIndex;
                 Excel.XmlMap map = FindMap(workbook, trackIndex);
-                if (map == null) continue;
+                if (map == null)
+                {
+                    missingMaps++;
+                    continue;
+                }
 
                 Excel.Range foundRange = FindRangeForMap(workbook, map);
-                if (foundRange == null) continue;
+                if (foundRange == null)
+                {
+                    missingRanges++;
+                    continue;
+                }
 
                 string newSheet = ((Excel.Worksheet)foundRange.Worksheet).Name;
                 string newAddress = foundRange.get_Address(true, true);
@@ -151,11 +179,21 @@ namespace DocuLink.Addin.Modules.Services
                     linkedRect.LinkedCell.SheetName = newSheet;
                     linkedRect.LinkedCell.Address = newAddress;
                     anyChanged = true;
+                    changed++;
                 }
             }
 
+            DocuLinkLog.Trace($"scan done scanned={scanned} changed={changed} missingMaps={missingMaps} missingRanges={missingRanges}");
+
             if (anyChanged)
+            {
+                DocuLinkLog.Trace("saving updated link positions");
                 session.SetLinks(links.ToList());
+                DocuLinkLog.Trace("saved updated link positions");
+            }
+
+            DocuLinkLog.Trace("EXIT");
+            }
         }
 
         // ── Private helpers ───────────────────────────────────────────────────
@@ -203,6 +241,29 @@ namespace DocuLink.Addin.Modules.Services
                 catch (COMException) { }
             }
             return null;
+        }
+
+        private static string GetWorkbookDebugName(Excel.Workbook workbook)
+        {
+            try
+            {
+                if (!string.IsNullOrEmpty(workbook.FullName))
+                    return workbook.FullName;
+            }
+            catch (COMException ex)
+            {
+                DocuLinkLog.Trace($"FullName unavailable: {ex.Message}");
+            }
+
+            try
+            {
+                return workbook.Name ?? "(unnamed)";
+            }
+            catch (COMException ex)
+            {
+                DocuLinkLog.Trace($"Name unavailable: {ex.Message}");
+                return "(workbook COM unavailable)";
+            }
         }
     }
 }

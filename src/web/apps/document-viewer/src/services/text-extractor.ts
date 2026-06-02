@@ -63,7 +63,9 @@ export function extractText(
   let prev: CharacterEntry | null = null;
 
   for (const entry of included) {
-    if (!spacesPrecomputed && prev !== null && entry.itemIndex !== prev.itemIndex) {
+    if (prev !== null && entry.lineIndex !== prev.lineIndex) {
+      result += " ";
+    } else if (!spacesPrecomputed && prev !== null && entry.itemIndex !== prev.itemIndex) {
       const prevCharWidth = prev.normRight - prev.normLeft;
       const gap = entry.normLeft - prev.normRight;
       if (gap > prevCharWidth) {
