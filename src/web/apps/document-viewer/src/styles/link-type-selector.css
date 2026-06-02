@@ -8,7 +8,6 @@
   z-index: 20;
   display: flex;
   align-items: center;
-  gap: 10px;
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: 20px;
@@ -17,12 +16,6 @@
   user-select: none;
   white-space: nowrap;
   pointer-events: auto;
-}
-
-.link-type-bar__label {
-  font-size: var(--font-size-sm);
-  color: var(--color-text-muted);
-  font-weight: 500;
 }
 
 /* ── Segmented button group ─────────────────────────────────────────── */
@@ -50,16 +43,36 @@
   border-right: none;
 }
 
-.link-type-selector__btn:hover:not(.link-type-selector__btn--active) {
-  background: var(--color-surface-hover);
-  color: var(--color-text);
+/* ── Per-type inactive hover ────────────────────────────────────────── */
+
+.link-type-selector__btn[data-type="auto"]:hover:not(.link-type-selector__btn--active) {
+  background: rgba(37, 99, 235, 0.08);
+  color: rgb(37, 99, 235);
 }
 
-.link-type-selector__btn--active {
-  background: var(--color-accent);
+.link-type-selector__btn[data-type="raw"]:hover:not(.link-type-selector__btn--active) {
+  background: rgba(22, 163, 74, 0.08);
+  color: rgb(22, 163, 74);
+}
+
+.link-type-selector__btn[data-type="sum"]:hover:not(.link-type-selector__btn--active) {
+  background: rgba(217, 119, 6, 0.10);
+  color: rgb(217, 119, 6);
+}
+
+/* ── Per-type active state ──────────────────────────────────────────── */
+
+.link-type-selector__btn--active[data-type="auto"] {
+  background: rgb(37, 99, 235);
   color: #fff;
 }
 
-.link-type-selector__btn--active:hover {
-  background: var(--color-accent-hover);
+.link-type-selector__btn--active[data-type="raw"] {
+  background: rgb(22, 163, 74);
+  color: #fff;
+}
+
+.link-type-selector__btn--active[data-type="sum"] {
+  background: rgb(217, 119, 6);
+  color: #fff;
 }
