@@ -1,4 +1,5 @@
 using System.Windows.Forms;
+using DocuLink.Addin.Modules;
 
 namespace DocuLink.Addin.Modules.WebView
 {
@@ -36,5 +37,14 @@ namespace DocuLink.Addin.Modules.WebView
         public void SendPdfNameUpdated(string id, string name) => _controller.SendPdfNameUpdated(id, name);
 
         public void SendPdfRemoved(string id) => _controller.SendPdfRemoved(id);
+
+        protected override void Dispose(bool disposing)
+        {
+            DocuLinkLog.Trace($"ENTER disposing={disposing}");
+            if (disposing)
+                _controller.Dispose();
+            base.Dispose(disposing);
+            DocuLinkLog.Trace("EXIT");
+        }
     }
 }

@@ -7,6 +7,7 @@ using System.Linq;
 using System.Reflection;
 using System.Threading.Tasks;
 using System.Windows.Forms;
+using DocuLink.Addin.Modules;
 using DocuLink.Addin.Modules.CustomXml;
 using DocuLink.Addin.Modules.CustomXml.Models;
 using DocuLink.Addin.Modules.Services;
@@ -54,6 +55,7 @@ namespace DocuLink.Addin.Modules.WebView
         private string _selectedFolderId;
 
         private bool _webViewReady;
+        private bool _disposed;
 
         private readonly object _osImportLock = new object();
         private readonly Dictionary<string, long> _recentOsImportTicks =
@@ -95,8 +97,11 @@ namespace DocuLink.Addin.Modules.WebView
 
         private async Task InitAsync()
         {
+            DocuLinkLog.Trace("ENTER file manager init");
             try
             {
+                if (_disposed) return;
+
                 string userDataFolder = Path.Combine(
                     Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                     "DocuLink", "WebView2");
@@ -106,6 +111,8 @@ namespace DocuLink.Addin.Modules.WebView
                     userDataFolder: userDataFolder);
 
                 await _webView.EnsureCoreWebView2Async(environment);
+                if (_disposed) return;
+
                 _webView.AllowExternalDrop = false;
 
                 string uiPath = GetWebUiPath();
@@ -122,12 +129,14 @@ namespace DocuLink.Addin.Modules.WebView
 
                 _webView.CoreWebView2.WebMessageReceived += OnWebMessageReceived;
                 _webView.CoreWebView2.NavigationStarting += CoreWebView2_NavigationStarting;
-                _webView.CoreWebView2.NavigationCompleted += (sender, args) => PositionNativeDropZone();
+                _webView.CoreWebView2.NavigationCompleted += CoreWebView2_NavigationCompleted;
 
                 _webView.CoreWebView2.Navigate("https://doculink.local/file-manager/index.html");
+                DocuLinkLog.Trace("EXIT file manager initialized");
             }
             catch (Exception ex)
             {
+                DocuLinkLog.Trace($"EXCEPTION file manager init {ex.GetType().FullName}: {ex.Message}");
                 MessageBox.Show(
                     $"DocuLink file manager failed to load:\n\n{ex.Message}",
                     "DocuLink",
@@ -138,6 +147,8 @@ namespace DocuLink.Addin.Modules.WebView
 
         private void CoreWebView2_NavigationStarting(object sender, CoreWebView2NavigationStartingEventArgs e)
         {
+            if (_disposed) return;
+
             if (string.IsNullOrEmpty(e.Uri))
                 return;
             if (!e.Uri.StartsWith("file:", StringComparison.OrdinalIgnoreCase))
@@ -162,8 +173,16 @@ namespace DocuLink.Addin.Modules.WebView
             ProcessOsPaths(new[] { localPath });
         }
 
+        private void CoreWebView2_NavigationCompleted(object sender, CoreWebView2NavigationCompletedEventArgs e)
+        {
+            if (_disposed) return;
+            PositionNativeDropZone();
+        }
+
         private void NativeFileDrop_DragEnter(object sender, DragEventArgs e)
         {
+            if (_disposed) return;
+
             if (GetDroppedPaths(e.Data).Length == 0)
             {
                 e.Effect = DragDropEffects.None;
@@ -176,11 +195,14 @@ namespace DocuLink.Addin.Modules.WebView
 
         private void NativeFileDrop_DragLeave(object sender, EventArgs e)
         {
+            if (_disposed) return;
             _nativeDropZone.SetDragOver(false);
         }
 
         private void NativeFileDrop_DragDrop(object sender, DragEventArgs e)
         {
+            if (_disposed) return;
+
             _nativeDropZone.SetDragOver(false);
 
             string[] paths = GetDroppedPaths(e.Data);
@@ -200,6 +222,8 @@ namespace DocuLink.Addin.Modules.WebView
 
         private void PositionNativeDropZone()
         {
+            if (_disposed || IsDisposed) return;
+
             int width = Math.Max(DropzoneLayout.MinWidth, Math.Min(DropzoneLayout.SidebarWidth - DropzoneLayout.Gap * 2, ClientSize.Width - DropzoneLayout.Gap * 2));
             width = Math.Min(width, Math.Max(0, ClientSize.Width - DropzoneLayout.Gap * 2));
 
@@ -348,6 +372,8 @@ namespace DocuLink.Addin.Modules.WebView
 
         private void OnWebMessageReceived(object sender, CoreWebView2WebMessageReceivedEventArgs e)
         {
+            if (_disposed) return;
+
             try
             {
                 string raw = e.TryGetWebMessageAsString();
@@ -619,6 +645,7 @@ namespace DocuLink.Addin.Modules.WebView
         /// </summary>
         public void RefreshDataIfReady()
         {
+            if (_disposed) return;
             if (!_webViewReady) return;
             SendFilesToWebView();
         }
@@ -626,6 +653,9 @@ namespace DocuLink.Addin.Modules.WebView
         /// <summary>Reads the active workbook's file list and pushes it to the web UI.</summary>
         public void SendFilesToWebView(DocuLinkContent preloaded = null)
         {
+            using (DocuLinkLog.Time("SendFilesToWebView file manager"))
+            {
+            if (_disposed) return;
             try
             {
                 DocuLinkContent content = preloaded;
@@ -663,6 +693,8 @@ namespace DocuLink.Addin.Modules.WebView
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"[DocuLink] SendFilesToWebView failed: {ex.Message}");
+                DocuLinkLog.Trace($"EXCEPTION {ex.GetType().FullName}: {ex.Message}");
+            }
             }
         }
 
@@ -678,14 +710,66 @@ namespace DocuLink.Addin.Modules.WebView
 
         protected override void OnFormClosing(FormClosingEventArgs e)
         {
+            DocuLinkLog.Trace($"ENTER file manager reason={e.CloseReason} cancel={e.Cancel}");
             if (e.CloseReason == CloseReason.UserClosing)
             {
                 e.Cancel = true;
                 SendResetUiToWebView();
                 Hide();
+                DocuLinkLog.Trace("EXIT file manager user close hidden");
                 return;
             }
             base.OnFormClosing(e);
+            DocuLinkLog.Trace($"EXIT file manager cancel={e.Cancel}");
+        }
+
+        protected override void OnFormClosed(FormClosedEventArgs e)
+        {
+            DocuLinkLog.Trace($"ENTER file manager reason={e.CloseReason}");
+            base.OnFormClosed(e);
+            DocuLinkLog.Trace("EXIT file manager");
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            DocuLinkLog.Trace($"ENTER file manager disposing={disposing}");
+            if (!_disposed)
+            {
+                _disposed = true;
+
+                try
+                {
+                    if (_webView.CoreWebView2 != null)
+                    {
+                        _webView.CoreWebView2.WebMessageReceived -= OnWebMessageReceived;
+                        _webView.CoreWebView2.NavigationStarting -= CoreWebView2_NavigationStarting;
+                        _webView.CoreWebView2.NavigationCompleted -= CoreWebView2_NavigationCompleted;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    DocuLinkLog.Trace($"file manager WebView event detach failed: {ex.Message}");
+                }
+
+                if (disposing)
+                {
+                    _webView.DragEnter -= NativeFileDrop_DragEnter;
+                    _webView.DragOver -= NativeFileDrop_DragEnter;
+                    _webView.DragDrop -= NativeFileDrop_DragDrop;
+
+                    _nativeDropZone.DragEnter -= NativeFileDrop_DragEnter;
+                    _nativeDropZone.DragOver -= NativeFileDrop_DragEnter;
+                    _nativeDropZone.DragLeave -= NativeFileDrop_DragLeave;
+                    _nativeDropZone.DragDrop -= NativeFileDrop_DragDrop;
+
+                    DragEnter -= NativeFileDrop_DragEnter;
+                    DragOver -= NativeFileDrop_DragEnter;
+                    DragLeave -= NativeFileDrop_DragLeave;
+                    DragDrop -= NativeFileDrop_DragDrop;
+                }
+            }
+            base.Dispose(disposing);
+            DocuLinkLog.Trace("EXIT file manager");
         }
 
         protected override void OnResize(EventArgs e)
@@ -696,6 +780,7 @@ namespace DocuLink.Addin.Modules.WebView
 
         private void SendResetUiToWebView()
         {
+            if (_disposed) return;
             if (!_webViewReady) return;
 
             try
