@@ -216,7 +216,7 @@
     <Compile Include="Modules\CustomXml\WorkbookStorageSession.cs" />
     <Compile Include="Modules\DocuLinkLog.cs" />
     <Compile Include="Modules\Services\AddPdfDocumentService.cs" />
-    <Compile Include="Modules\Services\CellFormatter.cs" />
+    <Compile Include="Modules\Services\CellFormattingService.cs" />
     <Compile Include="Modules\Services\CreateLinkService.cs" />
     <Compile Include="Modules\Services\TextValueFormatter.cs" />
     <Compile Include="Modules\Services\DeleteLinkService.cs" />
@@ -246,6 +246,7 @@
     </Compile>
     <Compile Include="Modules\UI\ThreadedProgressController.cs" />
     <Compile Include="Modules\WebView\DocumentViewerController.cs" />
+    <Compile Include="Modules\WebView\ExcelGridFocusRestoreService.cs" />
     <Compile Include="Modules\WebView\FileManagerHost.cs" />
     <Compile Include="Modules\WebView\FileManagerMessageParser.cs" />
     <Compile Include="Modules\WebView\FileManagerMessageSerializer.cs" />

@@ -40,7 +40,7 @@ namespace DocuLink.Addin.Modules.Services
 
                 if (cell != null)
                 {
-                    try { CellFormatter.ClearLinkStyle(cell); }
+                    try { CellFormattingService.ClearLinkStyle(cell); }
                     catch (COMException ex)
                     {
                         System.Diagnostics.Debug.WriteLine(
@@ -208,7 +208,7 @@ namespace DocuLink.Addin.Modules.Services
 
                 try
                 {
-                    CellFormatter.ClearLinkStyles(cellsToClear, app);
+                    CellFormattingService.ClearLinkStyles(cellsToClear, app);
                 }
                 catch (COMException ex)
                 {

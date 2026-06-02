@@ -121,7 +121,15 @@ export class RectDrawOverlay {
     const entries = this._cache.get(pdfId, pageIndex);
     const text    = extractText(entries, normalizedRect);
 
-    for (const cb of this._onRectCreatedCallbacks) cb({ pdfId, page: pageIndex, rect: normalizedRect, text });
+    for (const cb of this._onRectCreatedCallbacks) {
+      cb({
+        pdfId,
+        page: pageIndex,
+        rect: normalizedRect,
+        text,
+        appendToActiveSum: e.ctrlKey,
+      });
+    }
   }
 
   private _findPageWrapper(target: EventTarget | null): HTMLDivElement | null {

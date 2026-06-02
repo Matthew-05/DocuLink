@@ -312,6 +312,7 @@ export function sendLinkRectangleCreated(payload: LinkRectPayload): void {
     rect:     payload.rect,
     text:     payload.text,
     linkType: payload.linkType ?? "auto",
+    appendToActiveSum: payload.appendToActiveSum === true,
   });
 }
 
