@@ -1,5 +1,6 @@
 import { createToolbar } from "../toolbar/toolbar.js";
 import { ZoomController } from "../toolbar/zoom-controller.js";
+import { LinkTypeSelector } from "../toolbar/link-type-selector.js";
 import { connectViewerToHostBridge } from "./viewer-bridge.js";
 import { RectDrawOverlay } from "./rect-draw-overlay.js";
 import { RectEditOverlay } from "./rect-edit-overlay.js";
@@ -30,12 +31,15 @@ interface DocuLinkDebugApi {
 }
 
 /**
- * Creates and wires the toolbar, rect-draw overlay, and text-content cache
- * to the viewer, then connects the host bridge.
- * Returns the toolbar element for the caller to mount in the DOM.
+ * Creates and wires the toolbar, rect-draw overlay, floating link-type bar,
+ * and text-content cache to the viewer, then connects the host bridge.
+ * Returns the toolbar element and a viewer wrapper (viewer + floating bar)
+ * for the caller to mount in the DOM.
  */
-export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLElement } {
+export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLElement; viewerWrapper: HTMLElement } {
   const { element: toolbarElement, zoom, page, selector, search, rotate } = createToolbar();
+
+  const linkTypeSelector = new LinkTypeSelector();
 
   viewer.onLoaded((total) => {
     page.setTotal(total);
@@ -200,7 +204,7 @@ export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLEleme
   contextMenu.attachScrollTarget(viewer.element);
 
   overlay.onRectCreated((payload) => {
-    sendLinkRectangleCreated(payload);
+    sendLinkRectangleCreated({ ...payload, linkType: linkTypeSelector.getLinkType() });
     renderer.addRectangle({
       id:    `temp-${Date.now()}`,
       pdfId: payload.pdfId,
@@ -316,5 +320,20 @@ export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLEleme
     },
   );
 
-  return { toolbarElement };
+  // ── Floating link-type bar ────────────────────────────────────────────────
+
+  const linkTypeBar = document.createElement("div");
+  linkTypeBar.className = "link-type-bar";
+
+  const linkTypeLabel = document.createElement("span");
+  linkTypeLabel.className = "link-type-bar__label";
+  linkTypeLabel.textContent = "Link Type";
+
+  linkTypeBar.append(linkTypeLabel, linkTypeSelector.element);
+
+  const viewerWrapper = document.createElement("div");
+  viewerWrapper.className = "viewer-wrapper";
+  viewerWrapper.append(viewer.element, linkTypeBar);
+
+  return { toolbarElement, viewerWrapper };
 }

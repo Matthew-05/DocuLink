@@ -270,6 +270,7 @@ namespace DocuLink.Addin.Modules.WebView
                         payload.Page,
                         payload.X, payload.Y, payload.Width, payload.Height,
                         text,
+                        payload.LinkType,
                         wb);
                 }
                 DocuLinkLog.Trace($"CreateLink returned id={linkedRect?.Id ?? "null"}");

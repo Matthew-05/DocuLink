@@ -306,11 +306,12 @@ export function sendLinkRectangleDeleted(id: string): void {
 
 export function sendLinkRectangleCreated(payload: LinkRectPayload): void {
   postToHost({
-    type:  "link-rectangle-created",
-    pdfId: payload.pdfId,
-    page:  payload.page,
-    rect:  payload.rect,
-    text:  payload.text,
+    type:     "link-rectangle-created",
+    pdfId:    payload.pdfId,
+    page:     payload.page,
+    rect:     payload.rect,
+    text:     payload.text,
+    linkType: payload.linkType ?? "auto",
   });
 }
 

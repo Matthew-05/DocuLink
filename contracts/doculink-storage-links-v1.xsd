@@ -25,9 +25,19 @@
       <xs:element name="Cell" type="dl:CellType" />
       <xs:element name="Rect" type="dl:RectType" />
     </xs:sequence>
-    <xs:attribute name="id"    type="xs:string" use="required" />
-    <xs:attribute name="pdfId" type="xs:string" use="required" />
+    <xs:attribute name="id"         type="xs:string"        use="required" />
+    <xs:attribute name="pdfId"      type="xs:string"        use="required" />
+    <xs:attribute name="linkType"   type="dl:LinkTypeEnum"  use="optional" />
+    <xs:attribute name="sourceText" type="xs:string"        use="optional" />
   </xs:complexType>
+
+  <xs:simpleType name="LinkTypeEnum">
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="auto" />
+      <xs:enumeration value="raw" />
+      <xs:enumeration value="sum" />
+    </xs:restriction>
+  </xs:simpleType>
 
   <xs:complexType name="CellType">
     <xs:attribute name="sheet"      type="xs:string"      use="required" />

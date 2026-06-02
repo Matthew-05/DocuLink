@@ -204,6 +204,7 @@
     <Compile Include="Modules\CustomXml\Models\DocuLinkStorage.cs" />
     <Compile Include="Modules\CustomXml\Models\LinkedCell.cs" />
     <Compile Include="Modules\CustomXml\Models\LinkedRectangle.cs" />
+    <Compile Include="Modules\CustomXml\Models\LinkType.cs" />
     <Compile Include="Modules\CustomXml\Models\PdfDocument.cs" />
     <Compile Include="Modules\CustomXml\Models\PdfFolder.cs" />
     <Compile Include="Modules\CustomXml\Models\PdfMetadata.cs" />
@@ -217,6 +218,7 @@
     <Compile Include="Modules\Services\AddPdfDocumentService.cs" />
     <Compile Include="Modules\Services\CellFormatter.cs" />
     <Compile Include="Modules\Services\CreateLinkService.cs" />
+    <Compile Include="Modules\Services\TextValueFormatter.cs" />
     <Compile Include="Modules\Services\DeleteLinkService.cs" />
     <Compile Include="Modules\Services\LinkCellResolver.cs" />
     <Compile Include="Modules\Services\LinkCellTracker.cs" />
