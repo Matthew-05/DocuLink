@@ -29,3 +29,7 @@
   opacity: 0.45;
   cursor: not-allowed;
 }
+
+.search-bar__input::-webkit-search-cancel-button {
+  cursor: pointer;
+}
