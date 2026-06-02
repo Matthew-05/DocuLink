@@ -107,7 +107,7 @@ namespace DocuLink.Addin.Modules.Services
             try
             {
                 WriteToCell(cell, text, linkType);
-                CellFormattingService.ApplyLinkStyle(cell);
+                CellFormattingService.ApplyLinkStyle(cell, linkType);
                 Trace("style applied");
             }
             catch
@@ -179,6 +179,7 @@ namespace DocuLink.Addin.Modules.Services
             try
             {
                 CellFormattingService.ApplySumNumberFormat(startCell, sumRectsForCell);
+                CellFormattingService.ApplyLinkStyle(startCell, LinkType.Sum);
                 startCell.Formula = formula;
                 startCell.Calculate();
             }

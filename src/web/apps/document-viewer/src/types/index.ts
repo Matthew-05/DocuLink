@@ -44,6 +44,7 @@ export interface LinkedRectEntry {
   pdfId: string;
   page: number; // 0-based
   rect: NormalizedRect;
+  linkType?: LinkType;
 }
 
 export interface SearchMatch {

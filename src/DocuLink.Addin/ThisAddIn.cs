@@ -149,6 +149,52 @@ namespace DocuLink.Addin
 
 
 
+        private static string GetWorkbookDebugName(Excel.Workbook workbook)
+
+        {
+
+            if (workbook == null) return "(null)";
+
+            try
+
+            {
+
+                if (!string.IsNullOrEmpty(workbook.FullName))
+
+                    return workbook.FullName;
+
+            }
+
+            catch (COMException ex)
+
+            {
+
+                Modules.DocuLinkLog.Trace($"FullName unavailable: {ex.Message}");
+
+            }
+
+            try
+
+            {
+
+                return workbook.Name ?? "(unnamed)";
+
+            }
+
+            catch (COMException ex)
+
+            {
+
+                Modules.DocuLinkLog.Trace($"Name unavailable: {ex.Message}");
+
+                return "(workbook COM unavailable)";
+
+            }
+
+        }
+
+
+
         private static string GetWorkbookSessionKey(Excel.Workbook workbook)
 
         {
@@ -580,6 +626,10 @@ namespace DocuLink.Addin
 
         {
 
+            Modules.DocuLinkLog.Trace("ENTER");
+
+            DisposeApplicationSurfacesForShutdown();
+
             Application.SheetSelectionChange -= Application_SheetSelectionChange;
 
             Application.WorkbookBeforeClose -= Application_WorkbookBeforeClose;
@@ -592,6 +642,106 @@ namespace DocuLink.Addin
 
             ((Excel.AppEvents_Event)Application).NewWorkbook -= Application_NewWorkbook;
 
+            Modules.DocuLinkLog.Trace("EXIT");
+
+        }
+
+
+
+        private void DisposeApplicationSurfacesForShutdown()
+
+        {
+
+            using (Modules.DocuLinkLog.Time("DisposeApplicationSurfacesForShutdown total"))
+
+            {
+
+                Modules.DocuLinkLog.Trace($"ENTER panes={_workbookPanes.Count} sessions={_storageSessions.Count}");
+
+                foreach (WorkbookPaneEntry entry in _workbookPanes.ToArray())
+
+                {
+
+                    try
+
+                    {
+
+                        Modules.DocuLinkLog.Trace("disposing task pane host");
+
+                        entry.Host?.Dispose();
+
+                    }
+
+                    catch (Exception ex)
+
+                    {
+
+                        Modules.DocuLinkLog.Trace($"task pane host dispose failed: {ex.GetType().FullName}: {ex.Message}");
+
+                    }
+
+                }
+
+                _workbookPanes.Clear();
+
+                try
+
+                {
+
+                    if (_fileManagerWindow != null && !_fileManagerWindow.IsDisposed)
+
+                    {
+
+                        Modules.DocuLinkLog.Trace("disposing file manager window");
+
+                        _fileManagerWindow.Dispose();
+
+                    }
+
+                }
+
+                catch (Exception ex)
+
+                {
+
+                    Modules.DocuLinkLog.Trace($"file manager dispose failed: {ex.GetType().FullName}: {ex.Message}");
+
+                }
+
+                _fileManagerWindow = null;
+
+                try
+
+                {
+
+                    if (_viewerWindow != null && !_viewerWindow.IsDisposed)
+
+                    {
+
+                        Modules.DocuLinkLog.Trace("disposing viewer window");
+
+                        _viewerWindow.Dispose();
+
+                    }
+
+                }
+
+                catch (Exception ex)
+
+                {
+
+                    Modules.DocuLinkLog.Trace($"viewer window dispose failed: {ex.GetType().FullName}: {ex.Message}");
+
+                }
+
+                _viewerWindow = null;
+
+                _storageSessions.Clear();
+
+                Modules.DocuLinkLog.Trace("EXIT");
+
+            }
+
         }
 
 
@@ -600,11 +750,35 @@ namespace DocuLink.Addin
 
         {
 
+            string workbookName = GetWorkbookDebugName(wb);
+
+            Modules.DocuLinkLog.Trace($"ENTER workbook={workbookName} cancel={cancel} panes={_workbookPanes.Count} sessions={_storageSessions.Count}");
+
+            using (Modules.DocuLinkLog.Time("WorkbookBeforeClose total"))
+
+            {
+
+            Modules.DocuLinkLog.Trace("calling ReleaseStorageSession");
+
             ReleaseStorageSession(wb);
+
+            Modules.DocuLinkLog.Trace($"ReleaseStorageSession done sessions={_storageSessions.Count}");
+
+            Modules.DocuLinkLog.Trace("calling FindEntryFor");
 
             var entry = FindEntryFor(wb);
 
-            if (entry == null) return;
+            Modules.DocuLinkLog.Trace($"FindEntryFor done found={entry != null}");
+
+            if (entry == null)
+
+            {
+
+                Modules.DocuLinkLog.Trace("EXIT no pane entry");
+
+                return;
+
+            }
 
 
 
@@ -612,7 +786,13 @@ namespace DocuLink.Addin
 
             // touches the soon-to-be-invalid CustomTaskPane COM object.
 
+            Modules.DocuLinkLog.Trace("removing pane entry");
+
             _workbookPanes.Remove(entry);
+
+            Modules.DocuLinkLog.Trace($"EXIT pane entry removed panes={_workbookPanes.Count}");
+
+            }
 
         }
 
@@ -754,14 +934,33 @@ namespace DocuLink.Addin
 
         {
 
+            string workbookName = GetWorkbookDebugName(wb);
+
+            Modules.DocuLinkLog.Trace($"ENTER workbook={workbookName} saveAsUi={saveAsUi} cancel={cancel}");
+
+            using (Modules.DocuLinkLog.Time("WorkbookBeforeSave total"))
+
+            {
+
             try
 
             {
 
                 if (WorkbookProtectionGuard.IsStructureProtected(wb))
+
+                {
+
+                    Modules.DocuLinkLog.Trace("structure protected - skipping SyncAllPositions");
+
                     return;
 
+                }
+
+                Modules.DocuLinkLog.Trace("calling LinkCellTracker.SyncAllPositions");
+
                 LinkCellTracker.SyncAllPositions(wb);
+
+                Modules.DocuLinkLog.Trace("LinkCellTracker.SyncAllPositions done");
 
             }
 
@@ -773,7 +972,13 @@ namespace DocuLink.Addin
 
                     $"[DocuLink] Application_WorkbookBeforeSave sync failed: {ex.Message}");
 
+                Modules.DocuLinkLog.Trace($"EXCEPTION {ex.GetType().FullName}: {ex.Message}");
+
             }
+
+            }
+
+            Modules.DocuLinkLog.Trace($"EXIT cancel={cancel}");
 
         }
 

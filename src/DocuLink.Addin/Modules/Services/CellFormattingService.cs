@@ -3,6 +3,7 @@ using System.Drawing;
 using System.Globalization;
 using System.Text;
 using System.Text.RegularExpressions;
+using DocuLink.Addin.Modules.CustomXml.Models;
 using Excel = Microsoft.Office.Interop.Excel;
 
 namespace DocuLink.Addin.Modules.Services
@@ -10,7 +11,9 @@ namespace DocuLink.Addin.Modules.Services
     /// <summary>Applies visual and number formats to Excel cells that host linked rectangles.</summary>
     internal static class CellFormattingService
     {
-        private static readonly int LightBlue = ColorTranslator.ToOle(Color.LightBlue);
+        private static readonly int AutoFill = ColorTranslator.ToOle(Color.FromArgb(221, 235, 255));
+        private static readonly int RawFill  = ColorTranslator.ToOle(Color.FromArgb(220, 252, 231));
+        private static readonly int SumFill  = ColorTranslator.ToOle(Color.FromArgb(254, 243, 199));
 
         private static readonly Regex _parentheticalNumber =
             new Regex(@"^\(([\d,]+(?:\.\d+)?)\)$", RegexOptions.Compiled);
@@ -25,9 +28,9 @@ namespace DocuLink.Addin.Modules.Services
             new Regex(@"\b([\d,]+(?:\.\d+)?)\b", RegexOptions.Compiled);
 
         /// <summary>Applies the standard link-rectangle cell style.</summary>
-        public static void ApplyLinkStyle(Excel.Range cell)
+        public static void ApplyLinkStyle(Excel.Range cell, LinkType linkType)
         {
-            cell.Interior.Color = LightBlue;
+            cell.Interior.Color = GetFillColor(linkType);
         }
 
         /// <summary>Applies Auto-link number formatting when <paramref name="sourceText"/> is numeric.</summary>
@@ -100,6 +103,16 @@ namespace DocuLink.Addin.Modules.Services
                 return null;
 
             return BuildNumberFormat(info);
+        }
+
+        private static int GetFillColor(LinkType linkType)
+        {
+            switch (linkType)
+            {
+                case LinkType.Raw: return RawFill;
+                case LinkType.Sum: return SumFill;
+                default:           return AutoFill;
+            }
         }
 
         private static string BuildSumNumberFormat(IEnumerable<string> sourceTexts)

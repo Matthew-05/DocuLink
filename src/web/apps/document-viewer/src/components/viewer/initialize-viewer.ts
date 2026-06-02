@@ -204,12 +204,14 @@ export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLEleme
   contextMenu.attachScrollTarget(viewer.element);
 
   overlay.onRectCreated((payload) => {
-    sendLinkRectangleCreated({ ...payload, linkType: linkTypeSelector.getLinkType() });
+    const linkType = linkTypeSelector.getLinkType();
+    sendLinkRectangleCreated({ ...payload, linkType });
     renderer.addRectangle({
       id:    `temp-${Date.now()}`,
       pdfId: payload.pdfId,
       page:  payload.page,
       rect:  payload.rect,
+      linkType,
     });
   });
 
