@@ -4,6 +4,6 @@ import { initializeViewer } from "./components/viewer/initialize-viewer.js";
 export function mountApp(root: HTMLElement): void {
   root.className = "document-viewer";
   const viewer = new PdfViewer();
-  const { toolbarElement } = initializeViewer(viewer);
-  root.replaceChildren(toolbarElement, viewer.element);
+  const { toolbarElement, viewerWrapper } = initializeViewer(viewer);
+  root.replaceChildren(toolbarElement, viewerWrapper);
 }

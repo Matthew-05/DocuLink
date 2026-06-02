@@ -1,4 +1,4 @@
-import type { PdfEntry, LinkRectPayload, LinkRectUpdatedPayload, LinkedRectEntry, NormalizedRect } from "./types/index.js";
+import type { PdfEntry, LinkRectPayload, LinkRectUpdatedPayload, LinkedRectEntry, LinkType, NormalizedRect } from "./types/index.js";
 
 interface PdfPayload {
   id: string;
@@ -39,6 +39,7 @@ interface LinkedRectPayload {
   pdfId: string;
   page: number;
   rect: { x: number; y: number; width: number; height: number };
+  linkType?: unknown;
 }
 
 interface LinkedRectanglesLoadedMessage {
@@ -119,6 +120,10 @@ function toPdfEntry(pdf: PdfPayload): PdfEntry {
   };
 }
 
+function normalizeLinkType(value: unknown): LinkType {
+  return value === "raw" || value === "sum" ? value : "auto";
+}
+
 function handleMessage(
   raw: unknown,
   onEntries: (entries: PdfEntry[]) => void,
@@ -169,6 +174,7 @@ function handleMessage(
         pdfId: r.pdfId,
         page:  r.page,
         rect:  r.rect as NormalizedRect,
+        linkType: normalizeLinkType(r.linkType),
       }));
       onLinkedRectangles(rects);
       return;
@@ -306,11 +312,13 @@ export function sendLinkRectangleDeleted(id: string): void {
 
 export function sendLinkRectangleCreated(payload: LinkRectPayload): void {
   postToHost({
-    type:  "link-rectangle-created",
-    pdfId: payload.pdfId,
-    page:  payload.page,
-    rect:  payload.rect,
-    text:  payload.text,
+    type:     "link-rectangle-created",
+    pdfId:    payload.pdfId,
+    page:     payload.page,
+    rect:     payload.rect,
+    text:     payload.text,
+    linkType: payload.linkType ?? "auto",
+    appendToActiveSum: payload.appendToActiveSum === true,
   });
 }
 

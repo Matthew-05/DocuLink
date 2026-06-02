@@ -4,7 +4,6 @@ using System.Drawing;
 using System.IO;
 using System.Linq;
 using System.Reflection;
-using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using DocuLink.Addin.Modules.CustomXml;
@@ -18,20 +17,14 @@ using Excel = Microsoft.Office.Interop.Excel;
 namespace DocuLink.Addin.Modules.WebView
 {
     /// <summary>Shared WebView2 + messaging logic for the document-viewer web app.</summary>
-    internal sealed class DocumentViewerController
+    internal sealed class DocumentViewerController : IDisposable
     {
-        // Transfers Win32 keyboard focus to the target HWND, sending WM_KILLFOCUS to
-        // the previously focused window (the WebView2 Chromium child) and WM_SETFOCUS
-        // to the target. Must target Application.Hwnd (XLMAIN), not Window.Hwnd (the
-        // workbook frame), to avoid blanking the formula bar.
-        [DllImport("user32.dll")]
-        private static extern IntPtr SetFocus(IntPtr hWnd);
-
         private readonly Control _invokeTarget;
         private readonly string _loadFailureSurfaceName;
         private readonly Panel _surface = new Panel();
         private readonly Label _startupPlaceholder = new Label();
         private readonly WebView2 _webView = new WebView2();
+        private readonly ExcelGridFocusRestoreService _focusRestoreService;
         private ThreadedProgressController _cacheProgress;
         private Task _initTask;
         private bool _webShellReady;
@@ -42,6 +35,7 @@ namespace DocuLink.Addin.Modules.WebView
         private string _pendingNavigateId;
         private string _pendingNavigatePdfId;
         private int? _pendingNavigatePage;
+        private bool _disposed;
 
         internal DocumentViewerController(Control invokeTarget, string loadFailureSurfaceName)
         {
@@ -55,6 +49,8 @@ namespace DocuLink.Addin.Modules.WebView
 
             _webView.Dock = DockStyle.Fill;
             _webView.DefaultBackgroundColor = background;
+            _webView.Leave += OnWebViewLeave;
+            _focusRestoreService = new ExcelGridFocusRestoreService(_surface);
 
             _startupPlaceholder.Dock = DockStyle.Fill;
             _startupPlaceholder.BackColor = background;
@@ -74,14 +70,19 @@ namespace DocuLink.Addin.Modules.WebView
 
         internal void Start()
         {
+            if (_disposed) return;
             if (_initTask != null) return;
+            DocuLinkLog.Trace($"START surface={_loadFailureSurfaceName}");
             _initTask = InitAsync();
         }
 
         private async Task InitAsync()
         {
+            DocuLinkLog.Trace($"ENTER surface={_loadFailureSurfaceName}");
             try
             {
+                if (_disposed) return;
+
                 string userDataFolder = Path.Combine(
                     Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                     "DocuLink", "WebView2");
@@ -91,6 +92,7 @@ namespace DocuLink.Addin.Modules.WebView
                     userDataFolder: userDataFolder);
 
                 await _webView.EnsureCoreWebView2Async(environment);
+                if (_disposed) return;
 
                 string uiPath = GetWebUiPath();
                 if (!Directory.Exists(uiPath))
@@ -105,9 +107,11 @@ namespace DocuLink.Addin.Modules.WebView
                 _webView.CoreWebView2.WebMessageReceived += OnWebMessageReceived;
 
                 _webView.CoreWebView2.Navigate("https://doculink.local/index.html");
+                DocuLinkLog.Trace($"EXIT initialized surface={_loadFailureSurfaceName}");
             }
             catch (Exception ex)
             {
+                DocuLinkLog.Trace($"EXCEPTION surface={_loadFailureSurfaceName} {ex.GetType().FullName}: {ex.Message}");
                 MessageBox.Show(
                     $"DocuLink {_loadFailureSurfaceName} failed to load:\n\n{ex.Message}",
                     "DocuLink",
@@ -120,6 +124,8 @@ namespace DocuLink.Addin.Modules.WebView
 
         private void RevealWebView()
         {
+            if (_disposed) return;
+
             if (_surface.InvokeRequired)
             {
                 _surface.BeginInvoke(new Action(RevealWebView));
@@ -132,6 +138,8 @@ namespace DocuLink.Addin.Modules.WebView
 
         private void ShowStartupFailure(string message)
         {
+            if (_disposed) return;
+
             if (_surface.InvokeRequired)
             {
                 _surface.BeginInvoke(new Action(() => ShowStartupFailure(message)));
@@ -145,13 +153,18 @@ namespace DocuLink.Addin.Modules.WebView
 
         private void OnWebMessageReceived(object sender, CoreWebView2WebMessageReceivedEventArgs e)
         {
+            if (_disposed) return;
+
             try
             {
                 string raw = e.TryGetWebMessageAsString();
                 if (string.IsNullOrWhiteSpace(raw))
                     return;
 
-                switch (HostMessageParser.GetMessageType(raw))
+                string messageType = HostMessageParser.GetMessageType(raw);
+                DocuLinkLog.Trace($"message type={messageType ?? "(unknown)"} surface={_loadFailureSurfaceName}");
+
+                switch (messageType)
                 {
                     case "viewer-shell-ready":
                         _webShellReady = true;
@@ -221,6 +234,17 @@ namespace DocuLink.Addin.Modules.WebView
             }
         }
 
+        private void OnWebViewLeave(object sender, EventArgs e)
+        {
+            if (_disposed) return;
+            RestoreExcelFocus();
+        }
+
+        private void RestoreExcelFocus()
+        {
+            ExcelGridFocusRestoreService.RestoreExcelFocus();
+        }
+
         private void HandleLinkRectangleCreated(string json)
         {
             var payload = HostMessageParser.ParseLinkRectangleCreated(json);
@@ -270,6 +294,8 @@ namespace DocuLink.Addin.Modules.WebView
                         payload.Page,
                         payload.X, payload.Y, payload.Width, payload.Height,
                         text,
+                        payload.LinkType,
+                        payload.AppendToActiveSum,
                         wb);
                 }
                 DocuLinkLog.Trace($"CreateLink returned id={linkedRect?.Id ?? "null"}");
@@ -298,23 +324,7 @@ namespace DocuLink.Addin.Modules.WebView
                 Globals.ThisAddIn.NotifyFileManagerLinksChanged();
 
                 DocuLinkLog.Trace("restoring focus to Excel");
-                try
-                {
-                    int appHwnd = Globals.ThisAddIn.Application?.Hwnd ?? 0;
-                    if (appHwnd != 0)
-                    {
-                        IntPtr prev = SetFocus(new IntPtr(appHwnd));
-                        DocuLinkLog.Trace($"SetFocus(Application.Hwnd) success, prev=0x{prev.ToInt64():X}");
-                    }
-                    else
-                    {
-                        DocuLinkLog.Trace("SetFocus skipped: Application.Hwnd is 0");
-                    }
-                }
-                catch (Exception ex)
-                {
-                    DocuLinkLog.Trace($"SetFocus failed: {ex.Message}");
-                }
+                RestoreExcelFocus();
 
                 DocuLinkLog.Trace("EXIT");
             }
@@ -351,18 +361,7 @@ namespace DocuLink.Addin.Modules.WebView
 
             SendLinkedRectanglesToWebView();
 
-            try
-            {
-                int appHwnd = Globals.ThisAddIn.Application?.Hwnd ?? 0;
-                if (appHwnd != 0)
-                {
-                    SetFocus(new IntPtr(appHwnd));
-                }
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"[DocuLink] HandleLinkRectangleUpdated focus restore failed: {ex.Message}");
-            }
+            RestoreExcelFocus();
         }
 
         private void HandleLinkRectangleClicked(string json)
@@ -394,9 +393,7 @@ namespace DocuLink.Addin.Modules.WebView
             {
                 ((Excel.Worksheet)cell.Worksheet).Activate();
                 cell.Select();
-                int appHwnd = Globals.ThisAddIn.Application?.Hwnd ?? 0;
-                if (appHwnd != 0)
-                    SetFocus(new IntPtr(appHwnd));
+                RestoreExcelFocus();
             }
             catch (Exception ex)
             {
@@ -430,16 +427,7 @@ namespace DocuLink.Addin.Modules.WebView
 
             Globals.ThisAddIn.NotifyFileManagerLinksChanged();
 
-            try
-            {
-                int appHwnd = Globals.ThisAddIn.Application?.Hwnd ?? 0;
-                if (appHwnd != 0)
-                    SetFocus(new IntPtr(appHwnd));
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"[DocuLink] HandleLinkRectangleDeleted focus restore failed: {ex.Message}");
-            }
+            RestoreExcelFocus();
         }
 
         private void HandleRotatePage(string json)
@@ -581,11 +569,13 @@ namespace DocuLink.Addin.Modules.WebView
 
         internal void RefreshDataIfReady()
         {
-            if (!_webViewReady || _dataSentToViewer) return;
+            DocuLinkLog.Trace($"ENTER surface={_loadFailureSurfaceName} ready={_webViewReady} dataSent={_dataSentToViewer}");
+            if (_disposed || !_webViewReady || _dataSentToViewer) return;
             SendPdfsToWebView();
             _dataSentToViewer = true;
             SendLinkedRectanglesToWebView();
             FlushPendingNavigateToRectangle();
+            DocuLinkLog.Trace($"EXIT surface={_loadFailureSurfaceName}");
         }
 
         internal void InvalidateData()
@@ -610,6 +600,9 @@ namespace DocuLink.Addin.Modules.WebView
 
         internal void SendLinkedRectanglesToWebView()
         {
+            using (DocuLinkLog.Time($"SendLinkedRectanglesToWebView surface={_loadFailureSurfaceName}"))
+            {
+            if (_disposed) return;
             try
             {
                 Excel.Application app = Globals.ThisAddIn.Application;
@@ -622,6 +615,8 @@ namespace DocuLink.Addin.Modules.WebView
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"[DocuLink] SendLinkedRectanglesToWebView failed: {ex.Message}");
+                DocuLinkLog.Trace($"EXCEPTION {ex.GetType().FullName}: {ex.Message}");
+            }
             }
         }
 
@@ -632,6 +627,7 @@ namespace DocuLink.Addin.Modules.WebView
         /// </summary>
         internal void SendLinkedRectanglesToWebView(IList<LinkedRectangle> linkedRectangles)
         {
+            if (_disposed) return;
             if (linkedRectangles == null) return;
             try
             {
@@ -646,6 +642,7 @@ namespace DocuLink.Addin.Modules.WebView
 
         private void PostLinkedRectangles(IList<LinkedRectangle> linkedRectangles)
         {
+            if (_disposed) return;
             if (!_webViewReady) return;
             string json = HostMessageSerializer.BuildLinkedRectanglesLoaded(linkedRectangles);
             _webView.CoreWebView2.PostWebMessageAsString(json);
@@ -653,6 +650,9 @@ namespace DocuLink.Addin.Modules.WebView
 
         internal void SendPdfsToWebView()
         {
+            using (DocuLinkLog.Time($"SendPdfsToWebView surface={_loadFailureSurfaceName}"))
+            {
+            if (_disposed) return;
             try
             {
                 Excel.Application app = Globals.ThisAddIn.Application;
@@ -666,11 +666,14 @@ namespace DocuLink.Addin.Modules.WebView
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"[DocuLink] SendPdfsToWebView failed: {ex.Message}");
+                DocuLinkLog.Trace($"EXCEPTION {ex.GetType().FullName}: {ex.Message}");
+            }
             }
         }
 
         internal void SendPdfUpdated(string pdfId)
         {
+            if (_disposed) return;
             if (!_webViewReady || string.IsNullOrWhiteSpace(pdfId))
                 return;
 
@@ -696,6 +699,7 @@ namespace DocuLink.Addin.Modules.WebView
 
         internal void SendPdfAdded(string pdfId)
         {
+            if (_disposed) return;
             if (!_webViewReady || string.IsNullOrWhiteSpace(pdfId))
                 return;
 
@@ -721,6 +725,7 @@ namespace DocuLink.Addin.Modules.WebView
 
         internal void SendPdfNameUpdated(string id, string name)
         {
+            if (_disposed) return;
             if (!_webViewReady || string.IsNullOrWhiteSpace(id))
                 return;
 
@@ -737,6 +742,7 @@ namespace DocuLink.Addin.Modules.WebView
 
         internal void SendPdfRemoved(string id)
         {
+            if (_disposed) return;
             if (!_webViewReady || string.IsNullOrWhiteSpace(id))
                 return;
 
@@ -758,6 +764,65 @@ namespace DocuLink.Addin.Modules.WebView
                 ?? AppDomain.CurrentDomain.BaseDirectory;
 
             return Path.Combine(addinDir, "webui");
+        }
+
+        public void Dispose()
+        {
+            if (_disposed) return;
+            _disposed = true;
+
+            DocuLinkLog.Trace($"ENTER surface={_loadFailureSurfaceName}");
+
+            try
+            {
+                _cacheProgress?.Dispose();
+                _cacheProgress = null;
+            }
+            catch (Exception ex)
+            {
+                DocuLinkLog.Trace($"cache progress dispose failed: {ex.Message}");
+            }
+
+            try
+            {
+                _focusRestoreService.Dispose();
+            }
+            catch (Exception ex)
+            {
+                DocuLinkLog.Trace($"focus restore dispose failed: {ex.Message}");
+            }
+
+            try
+            {
+                _webView.Leave -= OnWebViewLeave;
+                if (_webView.CoreWebView2 != null)
+                    _webView.CoreWebView2.WebMessageReceived -= OnWebMessageReceived;
+            }
+            catch (Exception ex)
+            {
+                DocuLinkLog.Trace($"webview event detach failed: {ex.Message}");
+            }
+
+            try
+            {
+                _webView.Dispose();
+            }
+            catch (Exception ex)
+            {
+                DocuLinkLog.Trace($"webview dispose failed: {ex.Message}");
+            }
+
+            try
+            {
+                _startupPlaceholder.Dispose();
+                _surface.Dispose();
+            }
+            catch (Exception ex)
+            {
+                DocuLinkLog.Trace($"surface dispose failed: {ex.Message}");
+            }
+
+            DocuLinkLog.Trace($"EXIT surface={_loadFailureSurfaceName}");
         }
     }
 }

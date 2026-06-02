@@ -11,10 +11,32 @@
 
 .rect-draw__link {
   position: absolute;
-  background: rgba(37, 99, 235, 0.12);
+  background: var(--rect-link-fill, rgba(37, 99, 235, 0.14));
+  border: 1px solid var(--rect-link-border, rgba(37, 99, 235, 0.42));
   pointer-events: auto;
   cursor: pointer;
   box-sizing: border-box;
+}
+
+.rect-draw__link--auto {
+  --rect-link-fill: rgba(37, 99, 235, 0.14);
+  --rect-link-border: rgba(37, 99, 235, 0.42);
+  --rect-link-selected-fill: rgba(37, 99, 235, 0.28);
+  --rect-link-selected-border: rgba(37, 99, 235, 0.85);
+}
+
+.rect-draw__link--raw {
+  --rect-link-fill: rgba(22, 163, 74, 0.14);
+  --rect-link-border: rgba(22, 163, 74, 0.42);
+  --rect-link-selected-fill: rgba(22, 163, 74, 0.28);
+  --rect-link-selected-border: rgba(22, 163, 74, 0.85);
+}
+
+.rect-draw__link--sum {
+  --rect-link-fill: rgba(217, 119, 6, 0.16);
+  --rect-link-border: rgba(217, 119, 6, 0.45);
+  --rect-link-selected-fill: rgba(217, 119, 6, 0.31);
+  --rect-link-selected-border: rgba(217, 119, 6, 0.9);
 }
 
 .rect-draw__link--editing {
@@ -22,7 +44,8 @@
 }
 
 .rect-draw__link--highlighted {
-  background: rgba(234, 88, 12, 0.2);
+  background: var(--rect-link-selected-fill, rgba(37, 99, 235, 0.28));
+  border-color: var(--rect-link-selected-border, rgba(37, 99, 235, 0.85));
 }
 
 .rect-draw__link--removed {

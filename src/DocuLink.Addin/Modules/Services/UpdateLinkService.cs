@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Runtime.InteropServices;
 using DocuLink.Addin.Modules.CustomXml;
 using DocuLink.Addin.Modules.CustomXml.Models;
@@ -33,7 +35,10 @@ namespace DocuLink.Addin.Modules.Services
                 Excel.Range cell = LinkCellResolver.TryResolveCell(workbook, existing);
                 if (cell != null)
                 {
-                    try { cell.Value2 = text; }
+                    try
+                    {
+                        WriteToCellForUpdate(cell, text, existing, session, workbook);
+                    }
                     catch (COMException ex)
                     {
                         System.Diagnostics.Debug.WriteLine(
@@ -41,8 +46,12 @@ namespace DocuLink.Addin.Modules.Services
                     }
                 }
 
-                var rect = new PdfRectangle(page, x, y, width, height, RectangleCoordinateSpace.Normalized);
-                var updated = new LinkedRectangle(existing.Id, existing.PdfId, existing.LinkedCell, rect);
+                var rect    = new PdfRectangle(page, x, y, width, height, RectangleCoordinateSpace.Normalized);
+                var updated = new LinkedRectangle(existing.Id, existing.PdfId, existing.LinkedCell, rect)
+                {
+                    LinkType   = existing.LinkType,
+                    SourceText = existing.LinkType == LinkType.Sum ? text : null,
+                };
                 return session.UpdateLink(updated);
             }
             catch (Exception ex)
@@ -51,6 +60,55 @@ namespace DocuLink.Addin.Modules.Services
                     $"[DocuLink] UpdateLinkService.UpdateLink failed: {ex.Message}");
                 return false;
             }
+        }
+
+        private static void WriteToCellForUpdate(
+            Excel.Range cell,
+            string text,
+            LinkedRectangle existing,
+            WorkbookStorageSession session,
+            Excel.Workbook workbook)
+        {
+            switch (existing.LinkType)
+            {
+                case LinkType.Raw:
+                    cell.Value2 = text;
+                    break;
+
+                case LinkType.Sum:
+                    // Gather sourceTexts from all sum rects pointing to this cell,
+                    // replacing the updated rect's contribution with the new text.
+                    IList<LinkedRectangle> allLinks = session.GetLinks();
+                    var sourceTexts = allLinks
+                        .Where(r => r.LinkType == LinkType.Sum && SameCell(r, existing))
+                        .Select(r => string.Equals(r.Id, existing.Id, StringComparison.Ordinal)
+                            ? text                // use the new text for the rect being updated
+                            : r.SourceText)
+                        .ToList();
+
+                    string formula = TextValueFormatter.RebuildSumFormula(sourceTexts);
+                    if (formula != null)
+                    {
+                        CellFormattingService.ApplySumNumberFormat(cell, sourceTexts);
+                        cell.Formula = formula;
+                        cell.Calculate();
+                    }
+                    else
+                        cell.Value2 = text;
+                    break;
+
+                default: // Auto
+                    cell.Value2 = TextValueFormatter.FormatAuto(text);
+                    CellFormattingService.ApplyAutoNumberFormat(cell, text);
+                    break;
+            }
+        }
+
+        private static bool SameCell(LinkedRectangle a, LinkedRectangle b)
+        {
+            return a.LinkedCell.TrackIndex == b.LinkedCell.TrackIndex
+                || (string.Equals(a.LinkedCell.SheetName, b.LinkedCell.SheetName, StringComparison.OrdinalIgnoreCase)
+                    && string.Equals(a.LinkedCell.Address, b.LinkedCell.Address, StringComparison.Ordinal));
         }
     }
 }

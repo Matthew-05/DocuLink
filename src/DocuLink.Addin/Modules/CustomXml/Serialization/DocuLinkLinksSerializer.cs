@@ -20,6 +20,8 @@ namespace DocuLink.Addin.Modules.CustomXml.Serialization
         private const string WidthAttribute = "width";
         private const string HeightAttribute = "height";
         private const string CoordinateSpaceAttribute = "coordinateSpace";
+        private const string LinkTypeAttribute = "linkType";
+        private const string SourceTextAttribute = "sourceText";
 
         public static IList<LinkedRectangle> FromXDocument(XDocument document)
         {
@@ -131,7 +133,33 @@ namespace DocuLink.Addin.Modules.CustomXml.Serialization
             var rect = new PdfRectangle((int)pageValue, x, y, w, h, space);
             var cell = new LinkedCell(sheetAttribute.Value, addressAttribute.Value, trackIndexValue);
 
-            return new LinkedRectangle(idAttribute.Value.Trim(), pdfIdAttribute.Value.Trim(), cell, rect);
+            LinkType linkType = ParseLinkType(element);
+            string sourceText = element.Attribute(SourceTextAttribute)?.Value;
+
+            return new LinkedRectangle(idAttribute.Value.Trim(), pdfIdAttribute.Value.Trim(), cell, rect)
+            {
+                LinkType   = linkType,
+                SourceText = string.IsNullOrEmpty(sourceText) ? null : sourceText,
+            };
+        }
+
+        private static LinkType ParseLinkType(XElement element)
+        {
+            string value = element.Attribute(LinkTypeAttribute)?.Value?.Trim();
+            if (string.IsNullOrEmpty(value)) return LinkType.Auto;
+            if (string.Equals(value, "raw",  StringComparison.OrdinalIgnoreCase)) return LinkType.Raw;
+            if (string.Equals(value, "sum",  StringComparison.OrdinalIgnoreCase)) return LinkType.Sum;
+            return LinkType.Auto;
+        }
+
+        private static string SerializeLinkType(LinkType linkType)
+        {
+            switch (linkType)
+            {
+                case LinkType.Raw: return "raw";
+                case LinkType.Sum: return "sum";
+                default:           return "auto";
+            }
         }
 
         private static RectangleCoordinateSpace ParseCoordinateSpace(XElement rectElement, int index)
@@ -175,16 +203,22 @@ namespace DocuLink.Addin.Modules.CustomXml.Serialization
             if (linkedRect.Rectangle == null)
                 throw new InvalidOperationException("LinkedRectangle '" + linkedRect.Id + "' has no Rectangle.");
 
-            return new XElement(
+            var element = new XElement(
                 DocuLinkXml.LinksNs + DocuLinkXml.LinkedRectangleElementName,
                 new XAttribute(IdAttribute, linkedRect.Id),
                 new XAttribute(DocuLinkXml.PdfIdAttribute, linkedRect.PdfId),
+                new XAttribute(LinkTypeAttribute, SerializeLinkType(linkedRect.LinkType)),
                 new XElement(
                     DocuLinkXml.LinksNs + DocuLinkXml.CellElementName,
                     new XAttribute(SheetAttribute, linkedRect.LinkedCell.SheetName ?? string.Empty),
                     new XAttribute(AddressAttribute, linkedRect.LinkedCell.Address ?? string.Empty),
                     new XAttribute(TrackIndexAttribute, linkedRect.LinkedCell.TrackIndex.ToString(CultureInfo.InvariantCulture))),
                 SerializeRect(linkedRect.Rectangle, linkedRect.Id));
+
+            if (!string.IsNullOrEmpty(linkedRect.SourceText))
+                element.Add(new XAttribute(SourceTextAttribute, linkedRect.SourceText));
+
+            return element;
         }
 
         private static XElement SerializeRect(PdfRectangle rect, string linkedRectId)

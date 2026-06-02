@@ -1,5 +1,6 @@
 using System;
 using System.Windows.Forms;
+using DocuLink.Addin.Modules;
 
 namespace DocuLink.Addin.Modules.WebView
 {
@@ -45,14 +46,34 @@ namespace DocuLink.Addin.Modules.WebView
 
         protected override void OnFormClosing(FormClosingEventArgs e)
         {
+            DocuLinkLog.Trace($"ENTER reason={e.CloseReason} cancel={e.Cancel}");
+
             if (e.CloseReason == CloseReason.UserClosing)
             {
                 e.Cancel = true;
                 Hide();
+                DocuLinkLog.Trace("EXIT user close hidden");
                 return;
             }
 
             base.OnFormClosing(e);
+            DocuLinkLog.Trace($"EXIT cancel={e.Cancel}");
+        }
+
+        protected override void OnFormClosed(FormClosedEventArgs e)
+        {
+            DocuLinkLog.Trace($"ENTER reason={e.CloseReason}");
+            base.OnFormClosed(e);
+            DocuLinkLog.Trace("EXIT");
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            DocuLinkLog.Trace($"ENTER disposing={disposing}");
+            if (disposing)
+                _controller.Dispose();
+            base.Dispose(disposing);
+            DocuLinkLog.Trace("EXIT");
         }
     }
 }

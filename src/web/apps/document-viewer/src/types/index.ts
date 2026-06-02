@@ -24,11 +24,15 @@ export interface NormalizedRect {
   height: number;
 }
 
+export type LinkType = "auto" | "raw" | "sum";
+
 export interface LinkRectPayload {
   pdfId: string;
   page: number; // 0-based
   rect: NormalizedRect;
   text: string;
+  linkType?: LinkType;
+  appendToActiveSum?: boolean;
 }
 
 export interface LinkRectUpdatedPayload extends LinkRectPayload {
@@ -40,6 +44,7 @@ export interface LinkedRectEntry {
   pdfId: string;
   page: number; // 0-based
   rect: NormalizedRect;
+  linkType?: LinkType;
 }
 
 export interface SearchMatch {

@@ -350,11 +350,13 @@
       "required": ["type", "pdfId", "page", "rect", "text"],
       "additionalProperties": false,
       "properties": {
-        "type":  { "const": "link-rectangle-created" },
-        "pdfId": { "type": "string", "description": "GUID of the PDF the rectangle was drawn on." },
-        "page":  { "type": "integer", "minimum": 0, "description": "0-based page index." },
-        "rect":  { "$ref": "#/definitions/RectPayload" },
-        "text":  { "type": "string", "description": "Extracted and formatted text contained within the rectangle." }
+        "type":     { "const": "link-rectangle-created" },
+        "pdfId":    { "type": "string", "description": "GUID of the PDF the rectangle was drawn on." },
+        "page":     { "type": "integer", "minimum": 0, "description": "0-based page index." },
+        "rect":     { "$ref": "#/definitions/RectPayload" },
+        "text":     { "type": "string", "description": "Extracted and formatted text contained within the rectangle." },
+        "linkType": { "type": "string", "enum": ["auto", "raw", "sum"], "description": "How the extracted text is processed before writing to the Excel cell. Defaults to 'auto' if omitted." },
+        "appendToActiveSum": { "type": "boolean", "description": "When true for a Sum link, append this rectangle's numbers to the currently active Sum-linked cell instead of creating a new link cell. Sent when the user holds Ctrl while completing the rectangle." }
       },
       "examples": [
         {
@@ -362,7 +364,9 @@
           "pdfId": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
           "page": 0,
           "rect": { "x": 0.1, "y": 0.2, "width": 0.4, "height": 0.05 },
-          "text": "Invoice Total: $1,234.56"
+          "text": "Invoice Total: $1,234.56",
+          "linkType": "auto",
+          "appendToActiveSum": false
         }
       ]
     },
@@ -424,10 +428,11 @@
       "required": ["id", "pdfId", "page", "rect"],
       "additionalProperties": false,
       "properties": {
-        "id":    { "type": "string", "description": "GUID that uniquely identifies this linked rectangle." },
-        "pdfId": { "type": "string", "description": "GUID of the PDF this rectangle belongs to." },
-        "page":  { "type": "integer", "minimum": 0, "description": "0-based page index." },
-        "rect":  { "$ref": "#/definitions/RectPayload" }
+        "id":       { "type": "string", "description": "GUID that uniquely identifies this linked rectangle." },
+        "pdfId":    { "type": "string", "description": "GUID of the PDF this rectangle belongs to." },
+        "page":     { "type": "integer", "minimum": 0, "description": "0-based page index." },
+        "rect":     { "$ref": "#/definitions/RectPayload" },
+        "linkType": { "type": "string", "enum": ["auto", "raw", "sum"], "description": "How the linked text is processed before writing to the Excel cell. Defaults to 'auto' if omitted." }
       }
     },
 
@@ -451,7 +456,8 @@
               "id":    "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
               "pdfId": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
               "page":  0,
-              "rect":  { "x": 0.1, "y": 0.2, "width": 0.4, "height": 0.05 }
+              "rect":  { "x": 0.1, "y": 0.2, "width": 0.4, "height": 0.05 },
+              "linkType": "auto"
             }
           ]
         }
