@@ -327,11 +327,7 @@ export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLEleme
   const linkTypeBar = document.createElement("div");
   linkTypeBar.className = "link-type-bar";
 
-  const linkTypeLabel = document.createElement("span");
-  linkTypeLabel.className = "link-type-bar__label";
-  linkTypeLabel.textContent = "Link Type";
-
-  linkTypeBar.append(linkTypeLabel, linkTypeSelector.element);
+  linkTypeBar.append(linkTypeSelector.element);
 
   const viewerWrapper = document.createElement("div");
   viewerWrapper.className = "viewer-wrapper";
