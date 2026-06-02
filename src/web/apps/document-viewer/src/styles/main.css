@@ -7,6 +7,7 @@
 @import "./search-results-panel.css";
 @import "./viewer.css";
 @import "./rotate-controller.css";
+@import "./link-type-selector.css";
 @import "./rect-draw.css";
 @import "./rect-context-menu.css";
 @import "./char-bbox-debug.css";

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using DocuLink.Addin.Modules.CustomXml.Models;
 
 namespace DocuLink.Addin.Modules.WebView
 {
@@ -81,6 +82,7 @@ namespace DocuLink.Addin.Modules.WebView
                 string pdfId = obj.TryGetValue("pdfId", out object pidVal) ? pidVal as string : null;
                 int    page  = obj.TryGetValue("page",  out object pgVal)  ? Convert.ToInt32(pgVal) : 0;
                 string text  = obj.TryGetValue("text",  out object txtVal) ? (txtVal as string ?? "") : "";
+                LinkType linkType = ParseLinkType(obj);
 
                 if (includeId && string.IsNullOrWhiteSpace(id))
                     return null;
@@ -112,13 +114,14 @@ namespace DocuLink.Addin.Modules.WebView
 
                 return new LinkRectangleCreatedPayload
                 {
-                    PdfId  = pdfId,
-                    Page   = page,
-                    X      = rx,
-                    Y      = ry,
-                    Width  = rw,
-                    Height = rh,
-                    Text   = text,
+                    PdfId    = pdfId,
+                    Page     = page,
+                    X        = rx,
+                    Y        = ry,
+                    Width    = rw,
+                    Height   = rh,
+                    Text     = text,
+                    LinkType = linkType,
                 };
             }
             catch
@@ -126,6 +129,15 @@ namespace DocuLink.Addin.Modules.WebView
                 return null;
             }
         }
+
+    private static LinkType ParseLinkType(Dictionary<string, object> obj)
+    {
+        if (!obj.TryGetValue("linkType", out object ltVal) || !(ltVal is string ltStr))
+            return LinkType.Auto;
+        if (string.Equals(ltStr, "raw", StringComparison.OrdinalIgnoreCase)) return LinkType.Raw;
+        if (string.Equals(ltStr, "sum", StringComparison.OrdinalIgnoreCase)) return LinkType.Sum;
+        return LinkType.Auto;
+    }
 
     /// <summary>
     /// Parses a <c>rotate-page</c> message into a <see cref="RotatePagePayload"/>.
@@ -160,13 +172,14 @@ namespace DocuLink.Addin.Modules.WebView
     /// <summary>Deserialized payload for a <c>link-rectangle-created</c> message.</summary>
     internal sealed class LinkRectangleCreatedPayload
     {
-        public string PdfId  { get; set; }
-        public int    Page   { get; set; }
-        public double X      { get; set; }
-        public double Y      { get; set; }
-        public double Width  { get; set; }
-        public double Height { get; set; }
-        public string Text   { get; set; }
+        public string   PdfId    { get; set; }
+        public int      Page     { get; set; }
+        public double   X        { get; set; }
+        public double   Y        { get; set; }
+        public double   Width    { get; set; }
+        public double   Height   { get; set; }
+        public string   Text     { get; set; }
+        public LinkType LinkType { get; set; }
     }
 
     /// <summary>Deserialized payload for a <c>rotate-page</c> message.</summary>

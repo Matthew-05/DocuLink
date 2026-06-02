@@ -350,11 +350,12 @@
       "required": ["type", "pdfId", "page", "rect", "text"],
       "additionalProperties": false,
       "properties": {
-        "type":  { "const": "link-rectangle-created" },
-        "pdfId": { "type": "string", "description": "GUID of the PDF the rectangle was drawn on." },
-        "page":  { "type": "integer", "minimum": 0, "description": "0-based page index." },
-        "rect":  { "$ref": "#/definitions/RectPayload" },
-        "text":  { "type": "string", "description": "Extracted and formatted text contained within the rectangle." }
+        "type":     { "const": "link-rectangle-created" },
+        "pdfId":    { "type": "string", "description": "GUID of the PDF the rectangle was drawn on." },
+        "page":     { "type": "integer", "minimum": 0, "description": "0-based page index." },
+        "rect":     { "$ref": "#/definitions/RectPayload" },
+        "text":     { "type": "string", "description": "Extracted and formatted text contained within the rectangle." },
+        "linkType": { "type": "string", "enum": ["auto", "raw", "sum"], "description": "How the extracted text is processed before writing to the Excel cell. Defaults to 'auto' if omitted." }
       },
       "examples": [
         {
@@ -362,7 +363,8 @@
           "pdfId": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
           "page": 0,
           "rect": { "x": 0.1, "y": 0.2, "width": 0.4, "height": 0.05 },
-          "text": "Invoice Total: $1,234.56"
+          "text": "Invoice Total: $1,234.56",
+          "linkType": "auto"
         }
       ]
     },
