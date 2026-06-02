@@ -88,13 +88,18 @@ namespace DocuLink.Addin.Modules.Services
 
                     string formula = TextValueFormatter.RebuildSumFormula(sourceTexts);
                     if (formula != null)
+                    {
+                        CellFormattingService.ApplySumNumberFormat(cell, sourceTexts);
                         cell.Formula = formula;
+                        cell.Calculate();
+                    }
                     else
                         cell.Value2 = text;
                     break;
 
                 default: // Auto
                     cell.Value2 = TextValueFormatter.FormatAuto(text);
+                    CellFormattingService.ApplyAutoNumberFormat(cell, text);
                     break;
             }
         }

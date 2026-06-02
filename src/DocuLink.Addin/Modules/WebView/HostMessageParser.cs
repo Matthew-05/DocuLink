@@ -83,6 +83,7 @@ namespace DocuLink.Addin.Modules.WebView
                 int    page  = obj.TryGetValue("page",  out object pgVal)  ? Convert.ToInt32(pgVal) : 0;
                 string text  = obj.TryGetValue("text",  out object txtVal) ? (txtVal as string ?? "") : "";
                 LinkType linkType = ParseLinkType(obj);
+                bool appendToActiveSum = ParseBoolean(obj, "appendToActiveSum");
 
                 if (includeId && string.IsNullOrWhiteSpace(id))
                     return null;
@@ -122,6 +123,7 @@ namespace DocuLink.Addin.Modules.WebView
                     Height   = rh,
                     Text     = text,
                     LinkType = linkType,
+                    AppendToActiveSum = appendToActiveSum,
                 };
             }
             catch
@@ -137,6 +139,20 @@ namespace DocuLink.Addin.Modules.WebView
         if (string.Equals(ltStr, "raw", StringComparison.OrdinalIgnoreCase)) return LinkType.Raw;
         if (string.Equals(ltStr, "sum", StringComparison.OrdinalIgnoreCase)) return LinkType.Sum;
         return LinkType.Auto;
+    }
+
+    private static bool ParseBoolean(Dictionary<string, object> obj, string key)
+    {
+        if (!obj.TryGetValue(key, out object value) || value == null)
+            return false;
+
+        if (value is bool boolValue)
+            return boolValue;
+
+        if (value is string stringValue && bool.TryParse(stringValue, out bool parsed))
+            return parsed;
+
+        return false;
     }
 
     /// <summary>
@@ -180,6 +196,7 @@ namespace DocuLink.Addin.Modules.WebView
         public double   Height   { get; set; }
         public string   Text     { get; set; }
         public LinkType LinkType { get; set; }
+        public bool     AppendToActiveSum { get; set; }
     }
 
     /// <summary>Deserialized payload for a <c>rotate-page</c> message.</summary>

@@ -29,6 +29,7 @@ namespace DocuLink.Addin.Modules.Services
             double x, double y, double width, double height,
             string text,
             LinkType linkType,
+            bool appendToActiveSum,
             Excel.Workbook workbook)
         {
             if (workbook == null) throw new ArgumentNullException(nameof(workbook));
@@ -46,7 +47,7 @@ namespace DocuLink.Addin.Modules.Services
 
             // Sum-append: if the currently active cell is already a Sum link cell, add
             // this rectangle's numbers to its formula instead of targeting a new cell.
-            if (linkType == LinkType.Sum)
+            if (linkType == LinkType.Sum && appendToActiveSum)
             {
                 using (Time("SumAppendCheck"))
                 {
@@ -106,7 +107,7 @@ namespace DocuLink.Addin.Modules.Services
             try
             {
                 WriteToCell(cell, text, linkType);
-                CellFormatter.ApplyLinkStyle(cell);
+                CellFormattingService.ApplyLinkStyle(cell);
                 Trace("style applied");
             }
             catch
@@ -175,7 +176,12 @@ namespace DocuLink.Addin.Modules.Services
             string formula = TextValueFormatter.RebuildSumFormula(sumRectsForCell);
             if (formula == null) formula = "0";
 
-            try { startCell.Formula = formula; }
+            try
+            {
+                CellFormattingService.ApplySumNumberFormat(startCell, sumRectsForCell);
+                startCell.Formula = formula;
+                startCell.Calculate();
+            }
             catch (Exception ex) { Trace($"Sum append formula write failed: {ex.Message}"); }
 
             // New LinkedRectangle shares the same LinkedCell (same sheet/address/trackIndex)
@@ -213,13 +219,18 @@ namespace DocuLink.Addin.Modules.Services
                 case LinkType.Sum:
                     string formula = TextValueFormatter.BuildSumFormula(text);
                     if (formula != null)
+                    {
+                        CellFormattingService.ApplySumNumberFormat(cell, text);
                         cell.Formula = formula;
+                        cell.Calculate();
+                    }
                     else
                         cell.Value2 = text; // fallback: no numbers found, write raw
                     break;
 
                 default: // Auto
                     cell.Value2 = TextValueFormatter.FormatAuto(text);
+                    CellFormattingService.ApplyAutoNumberFormat(cell, text);
                     break;
             }
         }

@@ -32,6 +32,7 @@ export interface LinkRectPayload {
   rect: NormalizedRect;
   text: string;
   linkType?: LinkType;
+  appendToActiveSum?: boolean;
 }
 
 export interface LinkRectUpdatedPayload extends LinkRectPayload {

@@ -33,27 +33,56 @@ namespace DocuLink.Addin.Modules.Services
         /// </summary>
         public static object FormatAuto(string text)
         {
-            if (string.IsNullOrEmpty(text)) return text ?? string.Empty;
+            if (TryParseAutoNumber(text, out double value, out _))
+                return value;
 
-            string trimmed = text.Trim();
+            return NormalizeAutoTextContent(text);
+        }
 
-            Match parenMatch = _parentheticalNumber.Match(trimmed);
-            if (parenMatch.Success)
+        private static bool TryParseAutoNumber(
+            string text,
+            out double value,
+            out bool isParenthetical)
+        {
+            value = 0;
+            isParenthetical = false;
+            if (string.IsNullOrEmpty(text)) return false;
+
+            string trimmed = NormalizeAutoNumberText(text);
+
+            Match match = _parentheticalNumber.Match(trimmed);
+            if (match.Success)
             {
-                string digits = parenMatch.Groups[1].Value.Replace(",", "");
-                if (double.TryParse(digits, NumberStyles.Any, CultureInfo.InvariantCulture, out double negVal))
-                    return -negVal;
+                isParenthetical = true;
+            }
+            else
+            {
+                match = _plainNumber.Match(trimmed);
             }
 
-            Match plainMatch = _plainNumber.Match(trimmed);
-            if (plainMatch.Success)
-            {
-                string digits = plainMatch.Groups[1].Value.Replace(",", "");
-                if (double.TryParse(digits, NumberStyles.Any, CultureInfo.InvariantCulture, out double posVal))
-                    return posVal;
-            }
+            if (!match.Success) return false;
 
-            return text;
+            string sourceNumber = match.Groups[1].Value;
+            string digits = sourceNumber.Replace(",", "");
+            if (!double.TryParse(digits, NumberStyles.Any, CultureInfo.InvariantCulture, out double parsed))
+                return false;
+
+            value = isParenthetical ? -parsed : parsed;
+            return true;
+        }
+
+        private static string NormalizeAutoNumberText(string text)
+        {
+            return Regex.Replace(text.Trim(), @"\s+", "");
+        }
+
+        private static string NormalizeAutoTextContent(string text)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+                return string.Empty;
+
+            string withoutLineBreaks = Regex.Replace(text.Trim(), @"\r\n|\r|\n", " ");
+            return Regex.Replace(withoutLineBreaks, @"\s+", " ");
         }
 
         /// <summary>
@@ -128,5 +157,6 @@ namespace DocuLink.Addin.Modules.Services
             }
             return sb.ToString();
         }
+
     }
 }

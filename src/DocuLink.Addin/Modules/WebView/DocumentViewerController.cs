@@ -4,7 +4,6 @@ using System.Drawing;
 using System.IO;
 using System.Linq;
 using System.Reflection;
-using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using DocuLink.Addin.Modules.CustomXml;
@@ -20,18 +19,12 @@ namespace DocuLink.Addin.Modules.WebView
     /// <summary>Shared WebView2 + messaging logic for the document-viewer web app.</summary>
     internal sealed class DocumentViewerController
     {
-        // Transfers Win32 keyboard focus to the target HWND, sending WM_KILLFOCUS to
-        // the previously focused window (the WebView2 Chromium child) and WM_SETFOCUS
-        // to the target. Must target Application.Hwnd (XLMAIN), not Window.Hwnd (the
-        // workbook frame), to avoid blanking the formula bar.
-        [DllImport("user32.dll")]
-        private static extern IntPtr SetFocus(IntPtr hWnd);
-
         private readonly Control _invokeTarget;
         private readonly string _loadFailureSurfaceName;
         private readonly Panel _surface = new Panel();
         private readonly Label _startupPlaceholder = new Label();
         private readonly WebView2 _webView = new WebView2();
+        private readonly ExcelGridFocusRestoreService _focusRestoreService;
         private ThreadedProgressController _cacheProgress;
         private Task _initTask;
         private bool _webShellReady;
@@ -55,6 +48,8 @@ namespace DocuLink.Addin.Modules.WebView
 
             _webView.Dock = DockStyle.Fill;
             _webView.DefaultBackgroundColor = background;
+            _webView.Leave += OnWebViewLeave;
+            _focusRestoreService = new ExcelGridFocusRestoreService(_surface);
 
             _startupPlaceholder.Dock = DockStyle.Fill;
             _startupPlaceholder.BackColor = background;
@@ -221,6 +216,16 @@ namespace DocuLink.Addin.Modules.WebView
             }
         }
 
+        private void OnWebViewLeave(object sender, EventArgs e)
+        {
+            RestoreExcelFocus();
+        }
+
+        private void RestoreExcelFocus()
+        {
+            ExcelGridFocusRestoreService.RestoreExcelFocus();
+        }
+
         private void HandleLinkRectangleCreated(string json)
         {
             var payload = HostMessageParser.ParseLinkRectangleCreated(json);
@@ -271,6 +276,7 @@ namespace DocuLink.Addin.Modules.WebView
                         payload.X, payload.Y, payload.Width, payload.Height,
                         text,
                         payload.LinkType,
+                        payload.AppendToActiveSum,
                         wb);
                 }
                 DocuLinkLog.Trace($"CreateLink returned id={linkedRect?.Id ?? "null"}");
@@ -299,23 +305,7 @@ namespace DocuLink.Addin.Modules.WebView
                 Globals.ThisAddIn.NotifyFileManagerLinksChanged();
 
                 DocuLinkLog.Trace("restoring focus to Excel");
-                try
-                {
-                    int appHwnd = Globals.ThisAddIn.Application?.Hwnd ?? 0;
-                    if (appHwnd != 0)
-                    {
-                        IntPtr prev = SetFocus(new IntPtr(appHwnd));
-                        DocuLinkLog.Trace($"SetFocus(Application.Hwnd) success, prev=0x{prev.ToInt64():X}");
-                    }
-                    else
-                    {
-                        DocuLinkLog.Trace("SetFocus skipped: Application.Hwnd is 0");
-                    }
-                }
-                catch (Exception ex)
-                {
-                    DocuLinkLog.Trace($"SetFocus failed: {ex.Message}");
-                }
+                RestoreExcelFocus();
 
                 DocuLinkLog.Trace("EXIT");
             }
@@ -352,18 +342,7 @@ namespace DocuLink.Addin.Modules.WebView
 
             SendLinkedRectanglesToWebView();
 
-            try
-            {
-                int appHwnd = Globals.ThisAddIn.Application?.Hwnd ?? 0;
-                if (appHwnd != 0)
-                {
-                    SetFocus(new IntPtr(appHwnd));
-                }
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"[DocuLink] HandleLinkRectangleUpdated focus restore failed: {ex.Message}");
-            }
+            RestoreExcelFocus();
         }
 
         private void HandleLinkRectangleClicked(string json)
@@ -395,9 +374,7 @@ namespace DocuLink.Addin.Modules.WebView
             {
                 ((Excel.Worksheet)cell.Worksheet).Activate();
                 cell.Select();
-                int appHwnd = Globals.ThisAddIn.Application?.Hwnd ?? 0;
-                if (appHwnd != 0)
-                    SetFocus(new IntPtr(appHwnd));
+                RestoreExcelFocus();
             }
             catch (Exception ex)
             {
@@ -431,16 +408,7 @@ namespace DocuLink.Addin.Modules.WebView
 
             Globals.ThisAddIn.NotifyFileManagerLinksChanged();
 
-            try
-            {
-                int appHwnd = Globals.ThisAddIn.Application?.Hwnd ?? 0;
-                if (appHwnd != 0)
-                    SetFocus(new IntPtr(appHwnd));
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"[DocuLink] HandleLinkRectangleDeleted focus restore failed: {ex.Message}");
-            }
+            RestoreExcelFocus();
         }
 
         private void HandleRotatePage(string json)
