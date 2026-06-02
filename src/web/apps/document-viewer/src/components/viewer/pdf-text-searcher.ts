@@ -1,14 +1,45 @@
 import type { TextContentCache, CharacterEntry } from "../../services/text-content-cache.js";
 import type { NormalizedRect, PdfEntry, SearchMatch } from "../../types/index.js";
 
-/** Normalizes a user query before searching. Extensible hook for future rules. */
-export function normalizeSearchQuery(raw: string): string {
-  return raw.trim().toLowerCase();
+function isNumericComma(text: string, i: number): boolean {
+  return text[i] === "," && /\d/.test(text[i - 1] ?? "") && /\d/.test(text[i + 1] ?? "");
 }
 
-/** Returns true if `pageText` contains `normalizedQuery`. Extensible hook. */
+/** Normalizes a user query before searching. Strips thousands-separator commas between digits. */
+export function normalizeSearchQuery(raw: string): string {
+  const lower = raw.trim().toLowerCase();
+  let result = "";
+  for (let i = 0; i < lower.length; i++) {
+    if (!isNumericComma(lower, i)) result += lower[i];
+  }
+  return result;
+}
+
+/** Returns true if `pageText` (with numeric commas stripped) contains `normalizedQuery`. */
 export function pageTextMatchesQuery(pageText: string, normalizedQuery: string): boolean {
-  return pageText.toLowerCase().includes(normalizedQuery);
+  const lower = pageText.toLowerCase();
+  let stripped = "";
+  for (let i = 0; i < lower.length; i++) {
+    if (!isNumericComma(lower, i)) stripped += lower[i];
+  }
+  return stripped.includes(normalizedQuery);
+}
+
+/**
+ * Builds a version of `text` with digit-adjacent commas removed, and an index
+ * map from each position in the normalized string back to the original position.
+ * Used so indexOf() results can be mapped back to CharacterEntry indices.
+ */
+function buildNormalizedPageText(text: string): { normalized: string; indexMap: number[] } {
+  const indexMap: number[] = [];
+  let normalized = "";
+  for (let i = 0; i < text.length; i++) {
+    if (!isNumericComma(text, i)) {
+      indexMap.push(i);
+      normalized += text[i];
+    }
+  }
+  return { normalized, indexMap };
 }
 
 export class PdfTextSearcher {
@@ -45,7 +76,8 @@ export class PdfTextSearcher {
   ): SearchMatch[] {
     const pageText = entries.map((e) => e.char).join("");
     if (!pageTextMatchesQuery(pageText, normalizedQuery)) return [];
-    const normalizedPageText = pageText.toLowerCase();
+
+    const { normalized: normalizedPageText, indexMap } = buildNormalizedPageText(pageText.toLowerCase());
     const queryLen = normalizedQuery.length;
     const matches: SearchMatch[] = [];
 
@@ -54,17 +86,22 @@ export class PdfTextSearcher {
       const hitIndex = normalizedPageText.indexOf(normalizedQuery, offset);
       if (hitIndex === -1) break;
 
-      const matchEnd = hitIndex + queryLen;
-      if (!matchSpansSingleLine(entries, hitIndex, matchEnd)) {
+      // Map normalized indices back to original entry positions.
+      // The original span may be wider than queryLen when the text contained
+      // digit-adjacent commas that were stripped during normalization.
+      const originalStart = indexMap[hitIndex]!;
+      const originalEnd = indexMap[hitIndex + queryLen - 1]! + 1;
+
+      if (!matchSpansSingleLine(entries, originalStart, originalEnd)) {
         offset = hitIndex + 1;
         continue;
       }
 
-      const { contextText, matchInContext } = expandToWord(pageText, entries, hitIndex, matchEnd);
-      const highlightRect = rectFromEntries(entries, hitIndex, matchEnd - 1);
+      const { contextText, matchInContext } = expandToWord(pageText, entries, originalStart, originalEnd);
+      const highlightRect = rectFromEntries(entries, originalStart, originalEnd - 1);
 
       matches.push({
-        id: `${pdfId}:${pageIndex}:${hitIndex}`,
+        id: `${pdfId}:${pageIndex}:${originalStart}`,
         pdfId,
         pdfName,
         pageIndex,
