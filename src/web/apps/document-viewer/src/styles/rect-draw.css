@@ -23,7 +23,6 @@
   --rect-link-border: rgba(37, 99, 235, 0.42);
   --rect-link-selected-fill: rgba(37, 99, 235, 0.28);
   --rect-link-selected-border: rgba(37, 99, 235, 0.85);
-  --rect-link-selected-outline: rgba(37, 99, 235, 0.26);
 }
 
 .rect-draw__link--raw {
@@ -31,7 +30,6 @@
   --rect-link-border: rgba(22, 163, 74, 0.42);
   --rect-link-selected-fill: rgba(22, 163, 74, 0.28);
   --rect-link-selected-border: rgba(22, 163, 74, 0.85);
-  --rect-link-selected-outline: rgba(22, 163, 74, 0.24);
 }
 
 .rect-draw__link--sum {
@@ -39,7 +37,6 @@
   --rect-link-border: rgba(217, 119, 6, 0.45);
   --rect-link-selected-fill: rgba(217, 119, 6, 0.31);
   --rect-link-selected-border: rgba(217, 119, 6, 0.9);
-  --rect-link-selected-outline: rgba(217, 119, 6, 0.25);
 }
 
 .rect-draw__link--editing {
@@ -49,9 +46,6 @@
 .rect-draw__link--highlighted {
   background: var(--rect-link-selected-fill, rgba(37, 99, 235, 0.28));
   border-color: var(--rect-link-selected-border, rgba(37, 99, 235, 0.85));
-  box-shadow:
-    0 0 0 2px var(--rect-link-selected-outline, rgba(37, 99, 235, 0.26)),
-    inset 0 0 0 1px rgba(255, 255, 255, 0.75);
 }
 
 .rect-draw__link--removed {
