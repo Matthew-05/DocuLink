@@ -429,6 +429,17 @@ namespace DocuLink.Addin.Modules.WebView
             }
 
             Globals.ThisAddIn.NotifyFileManagerLinksChanged();
+
+            try
+            {
+                int appHwnd = Globals.ThisAddIn.Application?.Hwnd ?? 0;
+                if (appHwnd != 0)
+                    SetFocus(new IntPtr(appHwnd));
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[DocuLink] HandleLinkRectangleDeleted focus restore failed: {ex.Message}");
+            }
         }
 
         private void HandleRotatePage(string json)
