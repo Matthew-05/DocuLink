@@ -7,7 +7,8 @@
     "build": "node build.mjs"
   },
   "dependencies": {
-    "@doculink/shared": "*"
+    "@doculink/shared": "*",
+    "pdfjs-dist": "^4.10.38"
   },
   "devDependencies": {
     "esbuild": "^0.25.0",

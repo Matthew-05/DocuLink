@@ -11,8 +11,8 @@ import type {
 } from "./types/index.js";
 
 type InboundMessage =
-  | { type: "matcher-ready"; rangeDisplay: string; rowCount: number; keyColumns: KeyColumnInfo[]; outputColumns: OutputColumnInfo[]; folders: FolderInfo[] }
-  | { type: "matcher-selection-changed"; rangeDisplay: string; rowCount: number; keyColumns: KeyColumnInfo[]; outputColumns: OutputColumnInfo[] }
+  | { type: "matcher-ready"; rowCount: number; keyColumns: KeyColumnInfo[]; outputColumns: OutputColumnInfo[]; folders: FolderInfo[] }
+  | { type: "matcher-selection-changed"; rowCount: number; keyColumns: KeyColumnInfo[]; outputColumns: OutputColumnInfo[] }
   | { type: "matcher-data-loaded"; rows: MatcherRow[]; pdfs: MatcherPdf[] }
   | { type: "links-created"; results: Array<{ rowIndex: number; outputColNumber: number; success: boolean }> };
 
@@ -38,7 +38,6 @@ export function initHostBridge(callbacks: HostBridgeCallbacks): void {
     switch (msg.type) {
       case "matcher-ready":
         callbacks.onMatcherReady({
-          rangeDisplay: msg.rangeDisplay,
           rowCount: msg.rowCount,
           keyColumns: msg.keyColumns,
           outputColumns: msg.outputColumns,
@@ -47,7 +46,6 @@ export function initHostBridge(callbacks: HostBridgeCallbacks): void {
         break;
       case "matcher-selection-changed":
         callbacks.onSelectionChanged({
-          rangeDisplay: msg.rangeDisplay,
           rowCount: msg.rowCount,
           keyColumns: msg.keyColumns,
           outputColumns: msg.outputColumns,
@@ -67,6 +65,22 @@ export function initHostBridge(callbacks: HostBridgeCallbacks): void {
 
 export function sendStartMatching(outputColNumbers: number[], folderIds: string[]): void {
   send({ type: "start-matching", outputColNumbers, folderIds });
+}
+
+export function sendSelectionLocked(): void {
+  send({ type: "matcher-selection-locked" });
+}
+
+export function sendSelectionUnlocked(): void {
+  send({ type: "matcher-selection-unlocked" });
+}
+
+export function sendMatcherLog(message: string): void {
+  send({ type: "matcher-log", message });
+}
+
+export function sendMatcherGeometryPrepared(pdfId: string, geometryBase64: string): void {
+  send({ type: "matcher-geometry-prepared", pdfId, geometryBase64 });
 }
 
 export function sendCreateLinks(links: LinkCreationRequest[]): void {

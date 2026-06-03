@@ -16,22 +16,26 @@ namespace DocuLink.Addin.Modules.WebView
     /// <summary>Hosts the document-matcher wizard web UI in a standalone non-modal window.</summary>
     public sealed class DocumentMatcherHost : Form
     {
+        private const string AllFoldersId = "__all__";
+
         private readonly WebView2 _webView = new WebView2();
         private bool _webViewReady;
         private bool _disposed;
+        private bool _selectionChangeSubscribed;
+        private bool _selectionLocked;
 
         /// <summary>
-        /// The areas selected when the user opened the wizard.
-        /// Each area corresponds to one key column. All areas are assumed to share the same row span.
+        /// The range selected when the user opened the wizard.
+        /// Each column in each selected area corresponds to one key column.
         /// </summary>
         private Excel.Range _selectedRange;
 
         /// <summary>
-        /// The 1-based Excel column numbers for the header row of the selected areas' worksheet,
+        /// The first 1-based Excel row number in the selected areas' worksheet,
         /// ordered to match the key columns sent in matcher-ready.
         /// Stored so HandleCreateLinks can resolve rows correctly.
         /// </summary>
-        private int _headerRow;
+        private int _firstSelectedRow;
 
         public DocumentMatcherHost()
         {
@@ -105,6 +109,22 @@ namespace DocuLink.Addin.Modules.WebView
                     HandleAppReady();
                     break;
 
+                case "matcher-selection-locked":
+                    HandleSelectionLocked();
+                    break;
+
+                case "matcher-selection-unlocked":
+                    HandleSelectionUnlocked();
+                    break;
+
+                case "matcher-log":
+                    HandleMatcherLog(raw);
+                    break;
+
+                case "matcher-geometry-prepared":
+                    HandleMatcherGeometryPrepared(raw);
+                    break;
+
                 case "start-matching":
                     HandleStartMatching(raw);
                     break;
@@ -120,6 +140,8 @@ namespace DocuLink.Addin.Modules.WebView
             DocuLinkLog.Trace("matcher-app-ready received");
             try
             {
+                _selectionLocked = false;
+
                 var app = Globals.ThisAddIn.Application;
                 var workbook = app?.ActiveWorkbook;
                 if (workbook == null) return;
@@ -127,28 +149,133 @@ namespace DocuLink.Addin.Modules.WebView
                 _selectedRange = app.Selection as Excel.Range;
                 if (_selectedRange == null) return;
 
-                var areas = _selectedRange.Areas;
-                if (areas.Count == 0) return;
+                if (!TryAnalyzeSelection(_selectedRange, out int rowCount, out var keyColumns, out var outputColumns))
+                    return;
 
-                var firstArea = (Excel.Range)areas[1]; // 1-based
-                var worksheet = (Excel.Worksheet)firstArea.Worksheet;
-                _headerRow = firstArea.Row;
+                var firstArea = (Excel.Range)_selectedRange.Areas[1]; // 1-based
+                _firstSelectedRow = firstArea.Row;
 
-                // Build key column entries from each selected area
-                var keyColumns = new List<KeyColumnEntry>();
-                int maxKeyColNumber = 0;
+                var session = Globals.ThisAddIn.GetStorageSession(workbook);
+                var content = session.Store.LoadContent();
+                var folders = content.Folders ?? new List<PdfFolder>();
 
-                for (int a = 1; a <= areas.Count; a++)
+                string json = DocumentMatcherMessageSerializer.BuildMatcherReady(
+                    rowCount, keyColumns, outputColumns, folders);
+                Post(json);
+                SubscribeSelectionChanged();
+            }
+            catch (Exception ex)
+            {
+                DocuLinkLog.Trace($"HandleAppReady error {ex.GetType().FullName}: {ex.Message}");
+            }
+        }
+
+        private void Application_SheetSelectionChange(object sh, Excel.Range target)
+        {
+            if (_disposed || !_webViewReady || _selectionLocked) return;
+
+            try
+            {
+                if (TryAnalyzeSelection(target, out int rowCount, out var keyColumns, out var outputColumns))
                 {
-                    var area = (Excel.Range)areas[a];
-                    int colNumber = area.Column;
-                    // Header is the first cell of this area
-                    var headerCell = (Excel.Range)area.Cells[1, 1];
-                    string header = headerCell.Value2?.ToString();
-                    if (string.IsNullOrWhiteSpace(header))
-                        header = ColNumberToLetter(colNumber);
+                    _selectedRange = target;
+                    _firstSelectedRow = ((Excel.Range)target.Areas[1]).Row;
+                    Post(DocumentMatcherMessageSerializer.BuildMatcherSelectionChanged(
+                        rowCount, keyColumns, outputColumns));
+                }
+            }
+            catch (Exception ex)
+            {
+                DocuLinkLog.Trace($"Application_SheetSelectionChange error {ex.GetType().FullName}: {ex.Message}");
+            }
+        }
 
-                    string rangeAddress = area.get_Address(
+        private void HandleSelectionLocked()
+        {
+            DocuLinkLog.Trace("matcher-selection-locked received");
+            _selectionLocked = true;
+            UnsubscribeSelectionChanged();
+        }
+
+        private void HandleSelectionUnlocked()
+        {
+            DocuLinkLog.Trace("matcher-selection-unlocked received");
+            _selectionLocked = false;
+            SubscribeSelectionChanged();
+        }
+
+        private void HandleMatcherLog(string raw)
+        {
+            try
+            {
+                string message = DocumentMatcherMessageParser.ParseMatcherLog(raw);
+                DocuLinkLog.Trace($"web matcher: {message}");
+            }
+            catch (Exception ex)
+            {
+                DocuLinkLog.Trace($"matcher-log parse failed {ex.GetType().FullName}: {ex.Message}");
+            }
+        }
+
+        private void HandleMatcherGeometryPrepared(string raw)
+        {
+            try
+            {
+                var payload = DocumentMatcherMessageParser.ParseMatcherGeometryPrepared(raw);
+                var workbook = GetSelectedWorkbook() ?? Globals.ThisAddIn.Application?.ActiveWorkbook;
+                Globals.ThisAddIn.StoreTransientPdfGeometry(
+                    workbook, payload.PdfId, payload.GeometryBase64);
+                DocuLinkLog.Trace($"matcher geometry cached pdfId={payload.PdfId}");
+            }
+            catch (Exception ex)
+            {
+                DocuLinkLog.Trace($"matcher-geometry-prepared failed {ex.GetType().FullName}: {ex.Message}");
+            }
+        }
+
+        private Excel.Workbook GetSelectedWorkbook()
+        {
+            if (_selectedRange == null) return null;
+
+            var firstArea = (Excel.Range)_selectedRange.Areas[1];
+            var worksheet = (Excel.Worksheet)firstArea.Worksheet;
+            return worksheet.Parent as Excel.Workbook;
+        }
+
+        private bool TryAnalyzeSelection(
+            Excel.Range range,
+            out int rowCount,
+            out List<KeyColumnEntry> keyColumns,
+            out List<OutputColumnEntry> outputColumns)
+        {
+            rowCount = 0;
+            keyColumns = new List<KeyColumnEntry>();
+            outputColumns = new List<OutputColumnEntry>();
+
+            if (range == null) return false;
+
+            var areas = range.Areas;
+            if (areas.Count == 0) return false;
+
+            var firstArea = (Excel.Range)areas[1]; // 1-based
+            var worksheet = (Excel.Worksheet)firstArea.Worksheet;
+            int maxKeyColNumber = 0;
+
+            for (int a = 1; a <= areas.Count; a++)
+            {
+                var area = (Excel.Range)areas[a];
+                int areaColumnCount = area.Columns.Count;
+                int areaRowCount = area.Rows.Count;
+
+                for (int offset = 0; offset < areaColumnCount; offset++)
+                {
+                    int colNumber = area.Column + offset;
+                    string header = ColNumberToLetter(colNumber);
+
+                    var startCell = (Excel.Range)worksheet.Cells[area.Row, colNumber];
+                    var endCell = (Excel.Range)worksheet.Cells[area.Row + areaRowCount - 1, colNumber];
+                    var columnRange = worksheet.get_Range(startCell, endCell);
+                    string rangeAddress = columnRange.get_Address(
                         RowAbsolute: true,
                         ColumnAbsolute: true,
                         ReferenceStyle: Excel.XlReferenceStyle.xlA1,
@@ -164,41 +291,36 @@ namespace DocuLink.Addin.Modules.WebView
                     if (colNumber > maxKeyColNumber)
                         maxKeyColNumber = colNumber;
                 }
-
-                // Output columns: columns immediately after the rightmost key column
-                var outputColumns = new List<OutputColumnEntry>();
-                if (maxKeyColNumber > 0)
-                {
-                    var usedRange = worksheet.UsedRange;
-                    int lastUsedCol = usedRange.Column + usedRange.Columns.Count - 1;
-                    // Offer at least 10 output options beyond the used range boundary
-                    int outputEnd = Math.Max(lastUsedCol, maxKeyColNumber + 10);
-
-                    for (int c = maxKeyColNumber + 1; c <= outputEnd; c++)
-                    {
-                        var headerCell = (Excel.Range)worksheet.Cells[_headerRow, c];
-                        string header = headerCell.Value2?.ToString();
-                        if (string.IsNullOrWhiteSpace(header))
-                            header = ColNumberToLetter(c);
-
-                        outputColumns.Add(new OutputColumnEntry { ColNumber = c, Header = header });
-                    }
-                }
-
-                var session = Globals.ThisAddIn.GetStorageSession(workbook);
-                var content = session.Store.LoadContent();
-                var folders = content.Folders ?? new List<PdfFolder>();
-
-                int rowCount = firstArea.Rows.Count;
-
-                string json = DocumentMatcherMessageSerializer.BuildMatcherReady(
-                    rowCount, keyColumns, outputColumns, folders);
-                Post(json);
             }
-            catch (Exception ex)
+
+            if (maxKeyColNumber > 0)
             {
-                DocuLinkLog.Trace($"HandleAppReady error: {ex.Message}");
+                var usedRange = worksheet.UsedRange;
+                int lastUsedCol = usedRange.Column + usedRange.Columns.Count - 1;
+                int outputEnd = Math.Max(lastUsedCol, maxKeyColNumber + 10);
+
+                for (int c = maxKeyColNumber + 1; c <= outputEnd; c++)
+                {
+                    outputColumns.Add(new OutputColumnEntry { ColNumber = c, Header = ColNumberToLetter(c) });
+                }
             }
+
+            rowCount = firstArea.Rows.Count;
+            return true;
+        }
+
+        private void SubscribeSelectionChanged()
+        {
+            if (_selectionChangeSubscribed) return;
+            Globals.ThisAddIn.Application.SheetSelectionChange += Application_SheetSelectionChange;
+            _selectionChangeSubscribed = true;
+        }
+
+        private void UnsubscribeSelectionChanged()
+        {
+            if (!_selectionChangeSubscribed) return;
+            Globals.ThisAddIn.Application.SheetSelectionChange -= Application_SheetSelectionChange;
+            _selectionChangeSubscribed = false;
         }
 
         private void HandleStartMatching(string raw)
@@ -206,67 +328,85 @@ namespace DocuLink.Addin.Modules.WebView
             DocuLinkLog.Trace("start-matching received");
             try
             {
+                _selectionLocked = true;
+                UnsubscribeSelectionChanged();
+
                 var payload = DocumentMatcherMessageParser.ParseStartMatching(raw);
                 var app = Globals.ThisAddIn.Application;
-                var workbook = app?.ActiveWorkbook;
+                var workbook = GetSelectedWorkbook() ?? app?.ActiveWorkbook;
                 if (workbook == null || _selectedRange == null) return;
 
                 var session = Globals.ThisAddIn.GetStorageSession(workbook);
                 var content = session.Store.LoadContent();
 
                 var selectedFolderIds = new HashSet<string>(
-                    payload.FolderIds, StringComparer.OrdinalIgnoreCase);
+                    payload.FolderIds ?? new List<string>(), StringComparer.OrdinalIgnoreCase);
+                bool includeAllFolders =
+                    selectedFolderIds.Count == 0 || selectedFolderIds.Contains(AllFoldersId);
+                DocuLinkLog.Trace($"start-matching outputCols={payload.OutputColNumbers.Count} folderIds={selectedFolderIds.Count} includeAll={includeAllFolders}");
 
                 var matchingPdfs = new List<PdfMetadata>();
                 foreach (var pdf in content.Pdfs)
                 {
                     string fid = pdf.FolderId ?? string.Empty;
-                    if (selectedFolderIds.Contains(fid))
+                    if (includeAllFolders || selectedFolderIds.Contains(fid))
                         matchingPdfs.Add(pdf);
                 }
 
                 var pdfEntries = new List<MatcherPdfEntry>();
                 foreach (var meta in matchingPdfs)
                 {
-                    session.Store.TryLoadPdfBinary(meta.Id, out _, out string geometryBase64);
+                    session.Store.TryLoadPdfBinary(meta.Id, out string base64, out string geometryBase64);
+                    bool hasGeometry = !string.IsNullOrEmpty(geometryBase64);
+                    if (!hasGeometry
+                        && Globals.ThisAddIn.TryGetTransientPdfGeometry(
+                            workbook, meta.Id, out string cachedGeometryBase64))
+                    {
+                        geometryBase64 = cachedGeometryBase64;
+                        hasGeometry = true;
+                    }
+
                     pdfEntries.Add(new MatcherPdfEntry
                     {
                         Id             = meta.Id,
                         Name           = meta.Name,
                         FolderId       = meta.FolderId ?? string.Empty,
-                        GeometryBase64 = string.IsNullOrEmpty(geometryBase64) ? null : geometryBase64,
+                        GeometryBase64 = hasGeometry ? geometryBase64 : null,
+                        Base64         = hasGeometry ? null : (string.IsNullOrEmpty(base64) ? null : base64),
                     });
                 }
+                DocuLinkLog.Trace($"start-matching pdfEntries={pdfEntries.Count}");
 
-                // Read key column values from each selected area for every data row
-                var areas = _selectedRange.Areas;
-                var firstArea = (Excel.Range)areas[1];
+                if (!TryAnalyzeSelection(_selectedRange, out int totalRows, out var keyColumns, out _))
+                    return;
+                DocuLinkLog.Trace($"start-matching selection rows={totalRows} keyColumns={keyColumns.Count}");
+
+                var firstArea = (Excel.Range)_selectedRange.Areas[1];
                 var worksheet = (Excel.Worksheet)firstArea.Worksheet;
 
-                int totalRows = firstArea.Rows.Count;
                 var rows = new List<MatcherRowEntry>();
 
-                for (int r = 2; r <= totalRows; r++) // row 1 = header, skip it
+                for (int r = 1; r <= totalRows; r++)
                 {
-                    int excelRow = _headerRow + (r - 1);
+                    int excelRow = _firstSelectedRow + (r - 1);
                     var keyValues = new List<string>();
 
-                    for (int a = 1; a <= areas.Count; a++)
+                    foreach (var keyColumn in keyColumns)
                     {
-                        var area = (Excel.Range)areas[a];
-                        var cell = (Excel.Range)worksheet.Cells[excelRow, area.Column];
+                        var cell = (Excel.Range)worksheet.Cells[excelRow, keyColumn.ColNumber];
                         keyValues.Add(cell.Value2?.ToString() ?? string.Empty);
                     }
 
-                    rows.Add(new MatcherRowEntry { RowIndex = r - 2, KeyValues = keyValues });
+                    rows.Add(new MatcherRowEntry { RowIndex = r - 1, KeyValues = keyValues });
                 }
 
                 string json = DocumentMatcherMessageSerializer.BuildMatcherDataLoaded(rows, pdfEntries);
+                DocuLinkLog.Trace($"posting matcher-data-loaded rows={rows.Count} pdfs={pdfEntries.Count}");
                 Post(json);
             }
             catch (Exception ex)
             {
-                DocuLinkLog.Trace($"HandleStartMatching error: {ex.Message}");
+                DocuLinkLog.Trace($"HandleStartMatching error {ex.GetType().FullName}: {ex.Message}");
             }
         }
 
@@ -294,8 +434,7 @@ namespace DocuLink.Addin.Modules.WebView
                     bool success = false;
                     try
                     {
-                        // rowIndex is 0-based from first data row; +1 skips header row
-                        int excelRow = _headerRow + 1 + link.RowIndex;
+                        int excelRow = _firstSelectedRow + link.RowIndex;
                         // outputColNumber is directly the 1-based Excel column number
                         int excelCol = link.OutputColNumber;
 
@@ -375,6 +514,7 @@ namespace DocuLink.Addin.Modules.WebView
             if (disposing && !_disposed)
             {
                 _disposed = true;
+                UnsubscribeSelectionChanged();
                 _webView.Dispose();
             }
             base.Dispose(disposing);

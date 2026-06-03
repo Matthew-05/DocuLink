@@ -104,7 +104,7 @@ export class StepOutputColumns {
       const keyLabel = document.createElement("div");
       keyLabel.className = "config-view__key-label";
       keyLabel.title = keyCol.rangeAddress;
-      keyLabel.textContent = keyCol.header;
+      keyLabel.textContent = colNumberToLetter(keyCol.colNumber);
 
       const arrow = document.createElement("span");
       arrow.className = "config-view__arrow";
@@ -144,4 +144,15 @@ export class StepOutputColumns {
   remove(): void {
     this._el.remove();
   }
+}
+
+function colNumberToLetter(colNumber: number): string {
+  let n = colNumber;
+  let result = "";
+  while (n > 0) {
+    const rem = (n - 1) % 26;
+    result = String.fromCharCode(65 + rem) + result;
+    n = Math.floor((n - 1) / 26);
+  }
+  return result || String(colNumber);
 }

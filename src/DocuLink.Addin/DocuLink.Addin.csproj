@@ -245,7 +245,9 @@
       <SubType>Form</SubType>
     </Compile>
     <Compile Include="Modules\UI\ThreadedProgressController.cs" />
-    <Compile Include="Modules\WebView\DocumentMatcherHost.cs" />
+    <Compile Include="Modules\WebView\DocumentMatcherHost.cs">
+      <SubType>Form</SubType>
+    </Compile>
     <Compile Include="Modules\WebView\DocumentMatcherMessageParser.cs" />
     <Compile Include="Modules\WebView\DocumentMatcherMessageSerializer.cs" />
     <Compile Include="Modules\WebView\DocumentViewerController.cs" />
@@ -321,7 +323,6 @@
   <Target Name="GenerateVersionFile" BeforeTargets="CoreCompile">
     <Exec Command="powershell -NonInteractive -ExecutionPolicy Bypass -File &quot;$(MSBuildProjectDirectory)\generate-version.ps1&quot; -Version &quot;$(AppVersion)&quot; -OutputPath &quot;$(GeneratedVersionPath)&quot;" />
   </Target>
-
   <!-- ── Web asset build ── -->
   <PropertyGroup>
     <WebRootDir>$(MSBuildProjectDirectory)\..\web</WebRootDir>

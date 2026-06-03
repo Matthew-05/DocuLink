@@ -11,6 +11,22 @@ namespace DocuLink.Addin.Modules.WebView
         public static string GetMessageType(string json) =>
             WebMessageParser.GetMessageType(json);
 
+        public static string ParseMatcherLog(string json)
+        {
+            var dict = Deserialize(json);
+            return GetStringOrEmpty(dict, "message");
+        }
+
+        public static MatcherGeometryPreparedPayload ParseMatcherGeometryPrepared(string json)
+        {
+            var dict = Deserialize(json);
+            return new MatcherGeometryPreparedPayload
+            {
+                PdfId          = GetString(dict, "pdfId"),
+                GeometryBase64 = GetString(dict, "geometryBase64"),
+            };
+        }
+
         public static StartMatchingPayload ParseStartMatching(string json)
         {
             var dict = Deserialize(json);
@@ -108,6 +124,7 @@ namespace DocuLink.Addin.Modules.WebView
             if (val is int i) return i;
             if (val is long l) return (int)l;
             if (val is double d) return (int)d;
+            if (val is decimal m) return (int)m;
             throw new FormatException($"Cannot convert '{val}' to int.");
         }
 
@@ -118,6 +135,7 @@ namespace DocuLink.Addin.Modules.WebView
                 if (val is double d) return d;
                 if (val is int i) return i;
                 if (val is long l) return l;
+                if (val is decimal m) return (double)m;
             }
             throw new FormatException($"Missing or non-numeric field '{key}'.");
         }
@@ -152,5 +170,11 @@ namespace DocuLink.Addin.Modules.WebView
     internal sealed class CreateLinksPayload
     {
         public List<LinkCreationEntry> Links { get; set; }
+    }
+
+    internal sealed class MatcherGeometryPreparedPayload
+    {
+        public string PdfId          { get; set; }
+        public string GeometryBase64 { get; set; }
     }
 }

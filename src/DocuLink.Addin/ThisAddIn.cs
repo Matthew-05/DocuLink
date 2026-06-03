@@ -49,6 +49,9 @@ namespace DocuLink.Addin
         private readonly Dictionary<string, WorkbookStorageSession> _storageSessions =
             new Dictionary<string, WorkbookStorageSession>(StringComparer.OrdinalIgnoreCase);
 
+        private readonly Dictionary<string, Dictionary<string, string>> _transientPdfGeometry =
+            new Dictionary<string, Dictionary<string, string>>(StringComparer.OrdinalIgnoreCase);
+
 
 
         /// <summary>
@@ -145,8 +148,36 @@ namespace DocuLink.Addin
 
             if (workbook == null) return;
 
-            _storageSessions.Remove(GetWorkbookSessionKey(workbook));
+            string key = GetWorkbookSessionKey(workbook);
+            _storageSessions.Remove(key);
+            _transientPdfGeometry.Remove(key);
 
+        }
+
+        internal bool TryGetTransientPdfGeometry(Excel.Workbook workbook, string pdfId, out string geometryBase64)
+        {
+            geometryBase64 = null;
+            if (workbook == null || string.IsNullOrWhiteSpace(pdfId)) return false;
+
+            string key = GetWorkbookSessionKey(workbook);
+            return _transientPdfGeometry.TryGetValue(key, out var byPdf)
+                && byPdf.TryGetValue(pdfId, out geometryBase64)
+                && !string.IsNullOrWhiteSpace(geometryBase64);
+        }
+
+        internal void StoreTransientPdfGeometry(Excel.Workbook workbook, string pdfId, string geometryBase64)
+        {
+            if (workbook == null || string.IsNullOrWhiteSpace(pdfId) || string.IsNullOrWhiteSpace(geometryBase64))
+                return;
+
+            string key = GetWorkbookSessionKey(workbook);
+            if (!_transientPdfGeometry.TryGetValue(key, out var byPdf))
+            {
+                byPdf = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                _transientPdfGeometry[key] = byPdf;
+            }
+
+            byPdf[pdfId] = geometryBase64;
         }
 
 

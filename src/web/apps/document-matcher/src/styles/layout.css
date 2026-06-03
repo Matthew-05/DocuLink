@@ -9,6 +9,41 @@
   overflow: hidden;
 }
 
+.matcher-app__indicator-wrap {
+  border-bottom: 1px solid var(--color-border);
+  padding: 12px 20px;
+  background: var(--color-surface);
+}
+
+.matcher-app__step-content {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.wizard-step {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.wizard-step__body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 20px;
+}
+
+.wizard-step__footer {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 12px 20px;
+  border-top: 1px solid var(--color-border);
+  background: var(--color-surface);
+}
+
 .btn {
   display: inline-flex;
   align-items: center;
