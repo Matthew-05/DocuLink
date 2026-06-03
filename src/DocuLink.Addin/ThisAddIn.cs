@@ -42,6 +42,8 @@ namespace DocuLink.Addin
 
         private FileManagerHost _fileManagerWindow;
 
+        private DocumentMatcherHost _matcherWindow;
+
         private ViewerWindowHost _viewerWindow;
 
         private readonly Dictionary<string, WorkbookStorageSession> _storageSessions =
@@ -342,6 +344,24 @@ namespace DocuLink.Addin
             _fileManagerWindow.BringToFront();
 
             _fileManagerWindow.RefreshDataIfReady();
+
+        }
+
+
+
+        internal void ShowDocumentMatcherWindow()
+
+        {
+
+            if (_matcherWindow == null || _matcherWindow.IsDisposed)
+
+                _matcherWindow = new DocumentMatcherHost();
+
+
+
+            _matcherWindow.Show();
+
+            _matcherWindow.BringToFront();
 
         }
 

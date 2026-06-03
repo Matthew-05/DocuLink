@@ -662,6 +662,74 @@
         { "type": "ocr-status", "pdfId": "3fa85f64-5717-4562-b3fc-2c963f66afa6", "status": "ocr" },
         { "type": "ocr-status", "pdfId": "3fa85f64-5717-4562-b3fc-2c963f66afa6", "status": "error", "message": "Tesseract not found" }
       ]
+    },
+
+    "MatcherAppReadyMessage": {
+      "description": "Sent by the document-matcher web app once mounted. The host responds with MatcherReadyMessage.",
+      "type": "object",
+      "required": ["type"],
+      "additionalProperties": false,
+      "properties": { "type": { "const": "matcher-app-ready" } }
+    },
+
+    "MatcherReadyMessage": {
+      "description": "Sent by C# host in response to matcher-app-ready. Contains Excel selection metadata and available folders.",
+      "type": "object",
+      "required": ["type", "rangeAddress", "rowCount", "columns", "folders"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "const": "matcher-ready" },
+        "rangeAddress": { "type": "string" },
+        "rowCount": { "type": "integer" },
+        "columns": { "type": "array", "items": { "type": "object", "required": ["index", "header"], "properties": { "index": { "type": "integer" }, "header": { "type": "string" } } } },
+        "folders": { "type": "array", "items": { "type": "object", "required": ["id", "name"], "properties": { "id": { "type": "string" }, "name": { "type": "string" } } } }
+      }
+    },
+
+    "StartMatchingMessage": {
+      "description": "Sent by the document-matcher web app when the user clicks Start. The host responds with MatcherDataLoadedMessage.",
+      "type": "object",
+      "required": ["type", "columnPairs", "folderIds"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "const": "start-matching" },
+        "columnPairs": { "type": "array", "items": { "type": "object", "required": ["keyColIndex", "outputColIndex"], "properties": { "keyColIndex": { "type": "integer" }, "outputColIndex": { "type": "integer" } } } },
+        "folderIds": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+
+    "MatcherDataLoadedMessage": {
+      "description": "Sent by C# host with key column values per data row and PDF geometry for matching.",
+      "type": "object",
+      "required": ["type", "rows", "pdfs"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "const": "matcher-data-loaded" },
+        "rows": { "type": "array", "items": { "type": "object", "required": ["rowIndex", "keyValues"], "properties": { "rowIndex": { "type": "integer" }, "keyValues": { "type": "array", "items": { "type": "string" } } } } },
+        "pdfs": { "type": "array", "items": { "type": "object", "required": ["id", "name", "folderId"], "properties": { "id": { "type": "string" }, "name": { "type": "string" }, "folderId": { "type": "string" }, "geometryBase64": { "type": ["string", "null"] } } } }
+      }
+    },
+
+    "CreateLinksMessage": {
+      "description": "Sent by the document-matcher web app after matching is complete. C# creates the links and responds with LinksCreatedMessage.",
+      "type": "object",
+      "required": ["type", "links"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "const": "create-links" },
+        "links": { "type": "array", "items": { "type": "object", "required": ["rowIndex", "outputColIndex", "pdfId", "pageIndex", "rect", "text"], "properties": { "rowIndex": { "type": "integer" }, "outputColIndex": { "type": "integer" }, "pdfId": { "type": "string" }, "pageIndex": { "type": "integer" }, "rect": { "type": "object", "properties": { "x": { "type": "number" }, "y": { "type": "number" }, "width": { "type": "number" }, "height": { "type": "number" } } }, "text": { "type": "string" } } } }
+      }
+    },
+
+    "LinksCreatedMessage": {
+      "description": "Sent by C# host after all link creation requests have been processed.",
+      "type": "object",
+      "required": ["type", "results"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "const": "links-created" },
+        "results": { "type": "array", "items": { "type": "object", "required": ["rowIndex", "outputColIndex", "success"], "properties": { "rowIndex": { "type": "integer" }, "outputColIndex": { "type": "integer" }, "success": { "type": "boolean" } } } }
+      }
     }
 
   },
@@ -702,6 +770,13 @@
     { "$ref": "#/definitions/OcrPdfsMessage" },
     { "$ref": "#/definitions/OcrStatusMessage" },
     { "$ref": "#/definitions/RotatePageMessage" },
-    { "$ref": "#/definitions/PageRotationsUpdatedMessage" }
+    { "$ref": "#/definitions/PageRotationsUpdatedMessage" },
+
+    { "$ref": "#/definitions/MatcherAppReadyMessage" },
+    { "$ref": "#/definitions/MatcherReadyMessage" },
+    { "$ref": "#/definitions/StartMatchingMessage" },
+    { "$ref": "#/definitions/MatcherDataLoadedMessage" },
+    { "$ref": "#/definitions/CreateLinksMessage" },
+    { "$ref": "#/definitions/LinksCreatedMessage" }
   ]
 }
