@@ -1,6 +1,8 @@
 import {
   buildCharEntriesFromGeometry,
   decodeTextGeometry,
+  encodeTextGeometry,
+  extractTextGeometryFromPdfBase64,
   normalizeSearchQuery,
   searchPage,
 } from "@doculink/shared";
@@ -13,12 +15,35 @@ interface PdfCache {
   pages: Map<number, CharacterEntry[]>;
 }
 
-async function buildPdfCache(pdfs: MatcherPdf[]): Promise<PdfCache[]> {
+function hasFiniteRect(rect: LinkCreationRequest["rect"]): boolean {
+  return Number.isFinite(rect.x)
+    && Number.isFinite(rect.y)
+    && Number.isFinite(rect.width)
+    && Number.isFinite(rect.height);
+}
+
+async function buildPdfCache(
+  pdfs: MatcherPdf[],
+  onGeometryPrepared?: (pdfId: string, geometryBase64: string) => void,
+): Promise<PdfCache[]> {
   const result: PdfCache[] = [];
   for (const pdf of pdfs) {
-    if (!pdf.geometryBase64) continue;
-    const geometry = await decodeTextGeometry(pdf.geometryBase64);
-    result.push({ id: pdf.id, name: pdf.name, pages: buildCharEntriesFromGeometry(geometry) });
+    try {
+      if (pdf.geometryBase64) {
+        const geometry = await decodeTextGeometry(pdf.geometryBase64);
+        result.push({ id: pdf.id, name: pdf.name, pages: buildCharEntriesFromGeometry(geometry) });
+        continue;
+      }
+
+      if (pdf.base64) {
+        const geometry = await extractTextGeometryFromPdfBase64(pdf.base64);
+        const geometryBase64 = await encodeTextGeometry(geometry);
+        onGeometryPrepared?.(pdf.id, geometryBase64);
+        result.push({ id: pdf.id, name: pdf.name, pages: buildCharEntriesFromGeometry(geometry) });
+      }
+    } catch (error) {
+      console.warn("[DocuLink] Skipping PDF with unreadable text content", pdf.name, error);
+    }
   }
   return result;
 }
@@ -64,8 +89,9 @@ export async function runMatching(
   rows: MatcherRow[],
   outputColNumbers: number[],
   onRowComplete: (result: RowResult) => void,
+  onGeometryPrepared?: (pdfId: string, geometryBase64: string) => void,
 ): Promise<LinkCreationRequest[]> {
-  const pdfCache = await buildPdfCache(pdfs);
+  const pdfCache = await buildPdfCache(pdfs, onGeometryPrepared);
   const requests: LinkCreationRequest[] = [];
 
   for (const row of rows) {
@@ -123,6 +149,8 @@ export async function runMatching(
       if (matches.length === 0) continue;
 
       const match = matches[0]!;
+      if (!hasFiniteRect(match.highlightRect)) continue;
+
       requests.push({
         rowIndex: row.rowIndex,
         outputColNumber,

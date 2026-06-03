@@ -1,6 +1,6 @@
 import type { RowResult } from "../../types/index.js";
 
-type Phase = "matching" | "creating" | "done";
+type Phase = "matching" | "creating" | "done" | "error";
 
 export interface ResultsViewCallbacks {
   onClose: () => void;
@@ -96,6 +96,10 @@ export class ResultsView {
     switch (phase) {
       case "creating":
         this._statusLine.textContent = "Creating links in Excel…";
+        break;
+      case "error":
+        this._statusLine.textContent = "Matching failed";
+        this._closeBtn.disabled = false;
         break;
       case "done":
         this._statusLine.textContent = summary

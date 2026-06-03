@@ -1,4 +1,6 @@
 @import "@doculink/shared/base.css";
 @import "./layout.css";
+@import "./step-indicator.css";
+@import "./step-select-ranges.css";
 @import "./config-view.css";
 @import "./results-view.css";

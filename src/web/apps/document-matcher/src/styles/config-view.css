@@ -131,3 +131,10 @@
   border-top: 1px solid var(--color-border);
   background: var(--color-surface);
 }
+
+.step-folders__instructions {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+  line-height: 1.4;
+}

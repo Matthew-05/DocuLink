@@ -61,6 +61,45 @@ namespace DocuLink.Addin.Modules.WebView
         }
 
         /// <summary>
+        /// Sent when the Excel selection changes while the matcher wizard is open.
+        /// </summary>
+        public static string BuildMatcherSelectionChanged(
+            int rowCount,
+            IList<KeyColumnEntry> keyColumns,
+            IList<OutputColumnEntry> outputColumns)
+        {
+            var sb = new StringBuilder();
+            sb.Append("{\"type\":\"matcher-selection-changed\"");
+            sb.Append(",\"rowCount\":"); sb.Append(rowCount);
+
+            sb.Append(",\"keyColumns\":[");
+            for (int i = 0; i < keyColumns.Count; i++)
+            {
+                if (i > 0) sb.Append(',');
+                var kc = keyColumns[i];
+                sb.Append("{\"colNumber\":"); sb.Append(kc.ColNumber);
+                sb.Append(",\"header\":"); AppendString(sb, kc.Header ?? string.Empty);
+                sb.Append(",\"rangeAddress\":"); AppendString(sb, kc.RangeAddress ?? string.Empty);
+                sb.Append('}');
+            }
+            sb.Append(']');
+
+            sb.Append(",\"outputColumns\":[");
+            for (int i = 0; i < outputColumns.Count; i++)
+            {
+                if (i > 0) sb.Append(',');
+                var oc = outputColumns[i];
+                sb.Append("{\"colNumber\":"); sb.Append(oc.ColNumber);
+                sb.Append(",\"header\":"); AppendString(sb, oc.Header ?? string.Empty);
+                sb.Append('}');
+            }
+            sb.Append(']');
+
+            sb.Append('}');
+            return sb.ToString();
+        }
+
+        /// <summary>
         /// Sent after the user clicks Start: provides the key column values per data row
         /// and the geometry data for all searchable PDFs in the selected folders.
         /// </summary>
@@ -98,6 +137,11 @@ namespace DocuLink.Addin.Modules.WebView
                 sb.Append(",\"geometryBase64\":");
                 if (pdf.GeometryBase64 != null)
                     AppendString(sb, pdf.GeometryBase64);
+                else
+                    sb.Append("null");
+                sb.Append(",\"base64\":");
+                if (pdf.Base64 != null)
+                    AppendString(sb, pdf.Base64);
                 else
                     sb.Append("null");
                 sb.Append('}');
@@ -179,6 +223,7 @@ namespace DocuLink.Addin.Modules.WebView
         public string Name           { get; set; }
         public string FolderId       { get; set; }
         public string GeometryBase64 { get; set; }
+        public string Base64         { get; set; }
     }
 
     internal sealed class LinkResultEntry

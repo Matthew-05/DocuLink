@@ -24,6 +24,7 @@ export interface MatcherPdf {
   name: string;
   folderId: string;
   geometryBase64: string | null;
+  base64: string | null;
 }
 
 export interface LinkCreationRequest {
@@ -43,7 +44,6 @@ export interface RowResult {
 }
 
 export interface SelectionInfo {
-  rangeDisplay: string;
   rowCount: number;
   keyColumns: KeyColumnInfo[];
   outputColumns: OutputColumnInfo[];

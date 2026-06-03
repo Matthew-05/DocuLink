@@ -1,9 +1,14 @@
 import * as esbuild from "esbuild";
-import { mkdirSync, writeFileSync } from "fs";
+import { copyFileSync, mkdirSync, writeFileSync } from "fs";
 
 const isProd = process.argv.includes("--prod");
 
 mkdirSync("dist", { recursive: true });
+
+copyFileSync(
+  "../../node_modules/pdfjs-dist/build/pdf.worker.min.mjs",
+  "dist/pdf.worker.min.mjs"
+);
 
 writeFileSync(
   "dist/index.html",

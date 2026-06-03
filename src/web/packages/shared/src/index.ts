@@ -5,3 +5,9 @@ export type { CharacterEntry } from "./char-entries.js";
 export { buildCharEntriesFromGeometry } from "./char-entries.js";
 export { normalizeSearchQuery, pageTextMatchesQuery, searchPage } from "./text-searcher.js";
 export { extractText } from "./text-extractor.js";
+export {
+  encodeTextGeometry,
+  extractTextGeometryFromPdfBase64,
+  extractTextGeometryFromPdfDocument,
+  extractTextGeometryFromPdfUrl,
+} from "./pdf-text-geometry.js";
