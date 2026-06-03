@@ -56,16 +56,19 @@ namespace DocuLink.Addin.Modules.Services
 
             WorkbookProtectionGuard.ThrowIfStructureProtected(workbook);
 
-            Excel.XmlMap map = EnsureMap(workbook, trackIndex);
+            Excel.XmlMap map = EnsureMap(workbook, trackIndex, out bool created);
 
             // If the map was orphaned (e.g. prior delete that left the XmlMap behind),
             // its XPath is still bound to the old cell. Excel rejects a second SetValue
             // on the same map+XPath, so clear the stale binding first.
-            Excel.Range stale = FindRangeForMap(workbook, map);
-            if (stale != null)
+            if (!created)
             {
-                try { stale.XPath.Clear(); }
-                catch (COMException) { }
+                Excel.Range stale = FindRangeForMap(workbook, map);
+                if (stale != null)
+                {
+                    try { stale.XPath.Clear(); }
+                    catch (COMException) { }
+                }
             }
 
             cell.XPath.SetValue(map, LinkXPath, Type.Missing, false);
@@ -198,13 +201,18 @@ namespace DocuLink.Addin.Modules.Services
 
         // ── Private helpers ───────────────────────────────────────────────────
 
-        private static Excel.XmlMap EnsureMap(Excel.Workbook workbook, int trackIndex)
+        private static Excel.XmlMap EnsureMap(Excel.Workbook workbook, int trackIndex, out bool created)
         {
             Excel.XmlMap existing = FindMap(workbook, trackIndex);
-            if (existing != null) return existing;
+            if (existing != null)
+            {
+                created = false;
+                return existing;
+            }
 
             Excel.XmlMap map = workbook.XmlMaps.Add(MapSchemaXml, Type.Missing);
             map.Name = MapNamePrefix + trackIndex;
+            created = true;
             return map;
         }
 
