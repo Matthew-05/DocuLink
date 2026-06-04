@@ -76,16 +76,16 @@ export class ResultsView {
     fill.style.width = `${pct}%`;
     this._progressLabel.textContent = `${this._processed} / ${this._total} rows`;
 
+    if (result.status === "skipped") return;
+
     const entry = document.createElement("div");
     entry.className = `results-view__log-entry results-view__log-entry--${result.status}`;
 
-    const icon = result.status === "matched" ? "✓" : result.status === "unmatched" ? "✗" : "–";
+    const icon = result.status === "matched" ? "✓" : "✗";
     const label =
       result.status === "matched"
         ? `Row ${result.rowIndex + 1}  →  ${result.pdfName ?? ""}`
-        : result.status === "unmatched"
-          ? `Row ${result.rowIndex + 1}  →  No match found`
-          : `Row ${result.rowIndex + 1}  →  Skipped (empty)`;
+        : `Row ${result.rowIndex + 1}  →  No match found`;
 
     entry.innerHTML = `<span class="results-view__icon">${icon}</span><span>${label}</span>`;
     this._log.appendChild(entry);
