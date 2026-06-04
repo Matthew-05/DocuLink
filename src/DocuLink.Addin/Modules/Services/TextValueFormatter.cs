@@ -73,7 +73,10 @@ namespace DocuLink.Addin.Modules.Services
 
         private static string NormalizeAutoNumberText(string text)
         {
-            return Regex.Replace(text.Trim(), @"\s+", "");
+            string normalized = Regex.Replace(text.Trim(), @"\s+", "");
+            return normalized.StartsWith("$", StringComparison.Ordinal)
+                ? normalized.Substring(1)
+                : normalized;
         }
 
         private static string NormalizeAutoTextContent(string text)
