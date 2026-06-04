@@ -138,18 +138,18 @@ namespace DocuLink.Addin.Modules.Services
                 if (areaCount > 1)
                 {
                     foreach (Excel.Range area in areas)
-                        CollectLinkedRectIds(area, links, idsToDelete, orphanBindings, orphanTrackIndexes);
+                        CollectLinkedRectIds(workbook, area, links, idsToDelete, orphanBindings, orphanTrackIndexes);
                 }
                 else
                 {
-                    CollectLinkedRectIds(selection, links, idsToDelete, orphanBindings, orphanTrackIndexes);
+                    CollectLinkedRectIds(workbook, selection, links, idsToDelete, orphanBindings, orphanTrackIndexes);
                 }
             }
             catch (COMException ex)
             {
                 System.Diagnostics.Debug.WriteLine(
                     $"[DocuLink] DeleteLinksInSelection iteration failed: {ex.Message}");
-                CollectLinkedRectIds(selection, links, idsToDelete, orphanBindings, orphanTrackIndexes);
+                CollectLinkedRectIds(workbook, selection, links, idsToDelete, orphanBindings, orphanTrackIndexes);
             }
 
             if (idsToDelete.Count == 0 && orphanBindings.Count == 0)
@@ -198,6 +198,7 @@ namespace DocuLink.Addin.Modules.Services
         }
 
         private static void CollectLinkedRectIds(
+            Excel.Workbook workbook,
             Excel.Range range,
             IList<LinkedRectangle> links,
             HashSet<string> idsToDelete,
@@ -218,28 +219,39 @@ namespace DocuLink.Addin.Modules.Services
 
                         string cellSheet = ((Excel.Worksheet)cell.Worksheet).Name;
                         string cellAddress = cell.Address;
-                        foreach (LinkedRectangle lr in links)
-                        {
-                            if (SameCellAddress(lr, cellSheet, cellAddress))
-                                idsToDelete.Add(lr.Id);
-                        }
 
                         int trackIndex = LinkCellTracker.FindTrackIndexForCell(cell);
-                        if (trackIndex <= 0)
-                            continue;
-
                         bool foundStoredLink = false;
-                        foreach (LinkedRectangle lr in links)
+
+                        if (trackIndex > 0)
                         {
-                            if (lr.LinkedCell.TrackIndex == trackIndex)
+                            foreach (LinkedRectangle lr in links)
                             {
-                                idsToDelete.Add(lr.Id);
-                                foundStoredLink = true;
+                                if (lr.LinkedCell.TrackIndex == trackIndex)
+                                {
+                                    idsToDelete.Add(lr.Id);
+                                    foundStoredLink = true;
+                                }
                             }
+
+                            if (!foundStoredLink && orphanTrackIndexes.Add(trackIndex))
+                                orphanBindings.Add((cell, trackIndex));
                         }
 
-                        if (!foundStoredLink && orphanTrackIndexes.Add(trackIndex))
-                            orphanBindings.Add((cell, trackIndex));
+                        foreach (LinkedRectangle lr in links)
+                        {
+                            if (!SameCellAddress(lr, cellSheet, cellAddress))
+                                continue;
+
+                            Excel.Range liveCell = LinkCellResolver.TryResolveCellViaXmlMap(
+                                workbook,
+                                lr.LinkedCell.TrackIndex);
+
+                            if (liveCell != null && !SameCellAddress(liveCell, cellSheet, cellAddress))
+                                continue;
+
+                            idsToDelete.Add(lr.Id);
+                        }
                     }
                     catch (COMException ex)
                     {
@@ -256,6 +268,24 @@ namespace DocuLink.Addin.Modules.Services
 
             return string.Equals(link.LinkedCell.SheetName, sheetName, StringComparison.OrdinalIgnoreCase)
                 && string.Equals(link.LinkedCell.Address, address, StringComparison.Ordinal);
+        }
+
+        private static bool SameCellAddress(Excel.Range cell, string sheetName, string address)
+        {
+            if (cell == null) return false;
+
+            try
+            {
+                string resolvedSheet = ((Excel.Worksheet)cell.Worksheet).Name;
+                string resolvedAddress = cell.Address;
+
+                return string.Equals(resolvedSheet, sheetName, StringComparison.OrdinalIgnoreCase)
+                    && string.Equals(resolvedAddress, address, StringComparison.Ordinal);
+            }
+            catch (COMException)
+            {
+                return false;
+            }
         }
 
         private static IList<string> DeleteLinksByIdCore(
