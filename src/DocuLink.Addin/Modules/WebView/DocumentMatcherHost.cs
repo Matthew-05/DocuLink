@@ -363,7 +363,7 @@ namespace DocuLink.Addin.Modules.WebView
                 }
             }
 
-            rowCount = firstArea.Rows.Count;
+            rowCount = CountRowsWithKeyData(worksheet, firstArea.Row, firstArea.Rows.Count, keyColumns);
             return true;
         }
 
@@ -435,25 +435,33 @@ namespace DocuLink.Addin.Modules.WebView
                 }
                 DocuLinkLog.Trace($"start-matching pdfEntries={pdfEntries.Count}");
 
-                if (!TryAnalyzeSelection(_selectedRange, out int totalRows, out var keyColumns, out _))
+                if (!TryAnalyzeSelection(_selectedRange, out int dataRows, out var keyColumns, out _))
                     return;
-                DocuLinkLog.Trace($"start-matching selection rows={totalRows} keyColumns={keyColumns.Count}");
+                DocuLinkLog.Trace($"start-matching selection dataRows={dataRows} keyColumns={keyColumns.Count}");
 
                 var firstArea = (Excel.Range)_selectedRange.Areas[1];
                 var worksheet = (Excel.Worksheet)firstArea.Worksheet;
+                int selectedRows = firstArea.Rows.Count;
 
                 var rows = new List<MatcherRowEntry>();
 
-                for (int r = 1; r <= totalRows; r++)
+                for (int r = 1; r <= selectedRows; r++)
                 {
                     int excelRow = _firstSelectedRow + (r - 1);
                     var keyValues = new List<string>();
+                    bool hasKeyData = false;
 
                     foreach (var keyColumn in keyColumns)
                     {
                         var cell = (Excel.Range)worksheet.Cells[excelRow, keyColumn.ColNumber];
-                        keyValues.Add(cell.Value2?.ToString() ?? string.Empty);
+                        string value = cell.Value2?.ToString() ?? string.Empty;
+                        if (!string.IsNullOrWhiteSpace(value))
+                            hasKeyData = true;
+                        keyValues.Add(value);
                     }
+
+                    if (!hasKeyData)
+                        continue;
 
                     rows.Add(new MatcherRowEntry { RowIndex = r - 1, KeyValues = keyValues });
                 }
@@ -614,6 +622,38 @@ namespace DocuLink.Addin.Modules.WebView
                 return false;
             }
             return !(v is string str && str.Length == 0);
+        }
+
+        private static int CountRowsWithKeyData(
+            Excel.Worksheet worksheet,
+            int firstRow,
+            int rowCount,
+            IList<KeyColumnEntry> keyColumns)
+        {
+            if (rowCount <= 0 || keyColumns.Count == 0) return 0;
+
+            int count = 0;
+            for (int offset = 0; offset < rowCount; offset++)
+            {
+                int row = firstRow + offset;
+                foreach (var keyColumn in keyColumns)
+                {
+                    var cell = (Excel.Range)worksheet.Cells[row, keyColumn.ColNumber];
+                    if (CellHasContent(cell.Value2))
+                    {
+                        count++;
+                        break;
+                    }
+                }
+            }
+
+            return count;
+        }
+
+        private static bool CellHasContent(object value)
+        {
+            if (value == null) return false;
+            return !(value is string text && string.IsNullOrWhiteSpace(text));
         }
 
         private static string ColNumberToLetter(int colNumber)

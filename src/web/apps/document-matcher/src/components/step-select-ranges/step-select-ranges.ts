@@ -74,10 +74,10 @@ export class StepSelectRanges {
     const selectedRows = Math.max(0, info.rowCount);
     this._subtitleEl.textContent =
       count > 0
-        ? `${count} key column${count !== 1 ? "s" : ""} - ${selectedRows} selected row${selectedRows !== 1 ? "s" : ""}`
+        ? `${count} key column${count !== 1 ? "s" : ""} - ${selectedRows} data row${selectedRows !== 1 ? "s" : ""}`
         : "Nothing selected";
 
-    this._nextBtn.disabled = count === 0;
+    this._nextBtn.disabled = count === 0 || selectedRows === 0;
   }
 
   get element(): HTMLElement {
