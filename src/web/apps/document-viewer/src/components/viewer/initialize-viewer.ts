@@ -199,6 +199,18 @@ export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLEleme
     searchNavigator(match, lastSearchResults);
   });
 
+  document.addEventListener(
+    "keydown",
+    (e) => {
+      if (!(e.ctrlKey || e.metaKey) || e.altKey || e.key.toLowerCase() !== "f") return;
+
+      e.preventDefault();
+      e.stopPropagation();
+      search.focus();
+    },
+    true
+  );
+
   search.disable();
 
   contextMenu.attachScrollTarget(viewer.element);
