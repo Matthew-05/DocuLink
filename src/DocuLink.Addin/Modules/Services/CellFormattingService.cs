@@ -27,18 +27,19 @@ namespace DocuLink.Addin.Modules.Services
         private static readonly Regex _anyPlain =
             new Regex(@"\b([\d,]+(?:\.\d+)?)\b", RegexOptions.Compiled);
 
+        private static readonly IAutoDateFormatPolicy AutoDateFormatPolicy =
+            new DefaultAutoDateFormatPolicy();
+
         /// <summary>Applies the standard link-rectangle cell style.</summary>
         public static void ApplyLinkStyle(Excel.Range cell, LinkType linkType)
         {
             cell.Interior.Color = GetFillColor(linkType);
         }
 
-        /// <summary>Applies Auto-link number formatting when <paramref name="sourceText"/> is numeric.</summary>
+        /// <summary>Applies Auto-link date or number formatting inferred from <paramref name="sourceText"/>.</summary>
         public static void ApplyAutoNumberFormat(Excel.Range cell, string sourceText)
         {
-            string numberFormat = BuildAutoNumberFormat(sourceText);
-            if (numberFormat != null)
-                cell.NumberFormat = numberFormat;
+            cell.NumberFormat = BuildAutoFormat(sourceText) ?? "General";
         }
 
         /// <summary>Applies Sum-link number formatting inferred from all contributing source texts.</summary>
@@ -95,6 +96,23 @@ namespace DocuLink.Addin.Modules.Services
 
                 batch.Interior.Pattern = Excel.XlPattern.xlPatternNone;
             }
+        }
+
+        private static string BuildAutoFormat(string text)
+        {
+            string dateFormat = BuildAutoDateFormat(text);
+            if (dateFormat != null)
+                return dateFormat;
+
+            return BuildAutoNumberFormat(text);
+        }
+
+        private static string BuildAutoDateFormat(string text)
+        {
+            if (!AutoDateParser.TryParse(text, out AutoDateParseResult result))
+                return null;
+
+            return AutoDateFormatPolicy.GetNumberFormat(result);
         }
 
         private static string BuildAutoNumberFormat(string text)

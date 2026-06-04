@@ -27,12 +27,16 @@ namespace DocuLink.Addin.Modules.Services
             new Regex(@"\b([\d,]+(?:\.\d+)?)\b", RegexOptions.Compiled);
 
         /// <summary>
-        /// Auto format: converts parenthetical numbers to negatives, strips numeric thousand-separator
-        /// commas. Returns a <see cref="double"/> when the entire trimmed text is a number;
-        /// otherwise returns the original string.
+        /// Auto format: converts date-like values to Excel date serials, converts
+        /// parenthetical numbers to negatives, and strips numeric thousand-separator
+        /// commas. Returns a <see cref="double"/> when the entire trimmed text is a
+        /// date or number; otherwise returns normalized text.
         /// </summary>
         public static object FormatAuto(string text)
         {
+            if (AutoDateParser.TryParse(text, out AutoDateParseResult dateResult))
+                return dateResult.Value.ToOADate();
+
             if (TryParseAutoNumber(text, out double value, out _))
                 return value;
 
