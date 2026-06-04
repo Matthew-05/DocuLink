@@ -2,6 +2,7 @@ import {
   buildCharEntriesFromGeometry,
   decodeTextGeometry,
   encodeTextGeometry,
+  extractText,
   extractTextGeometryFromPdfBase64,
   normalizeSearchQuery,
   searchPage,
@@ -151,13 +152,28 @@ export async function runMatching(
       const match = matches[0]!;
       if (!hasFiniteRect(match.highlightRect)) continue;
 
+      const extractedText = extractText(pageEntries, match.highlightRect);
+      if (extractedText.length === 0) {
+        console.warn(
+          "[DocuLink] Skipping matcher link because matched rectangle extracted no text",
+          {
+            pdfName: bestPdf.name,
+            pageIndex: bestPageIndex,
+            rowIndex: row.rowIndex,
+            outputColNumber,
+            contextText: match.contextText,
+          },
+        );
+        continue;
+      }
+
       requests.push({
         rowIndex: row.rowIndex,
         outputColNumber,
         pdfId: bestPdf.id,
         pageIndex: bestPageIndex,
         rect: match.highlightRect,
-        text: match.contextText,
+        text: extractedText,
       });
       linkCount++;
     }
