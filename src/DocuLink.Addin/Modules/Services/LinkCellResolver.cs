@@ -33,7 +33,7 @@ namespace DocuLink.Addin.Modules.Services
             return null;
         }
 
-        private static Excel.Range TryResolveCellViaXmlMap(Excel.Workbook workbook, int trackIndex)
+        internal static Excel.Range TryResolveCellViaXmlMap(Excel.Workbook workbook, int trackIndex)
         {
             if (trackIndex <= 0)
                 return null;
