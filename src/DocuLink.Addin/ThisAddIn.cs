@@ -392,8 +392,6 @@ namespace DocuLink.Addin
 
                 _matcherWindow.Reset();
 
-
-
             _matcherWindow.Show();
 
             _matcherWindow.BringToFront();
@@ -465,12 +463,26 @@ namespace DocuLink.Addin
 
         }
 
+
+
+        internal void PreloadMatcherWindow()
+
+        {
+
+            _matcherWindow = new DocumentMatcherHost();
+
+            _ = _matcherWindow.Handle;
+
+        }
+
         internal void CloseAllApplicationWindows()
         {
             if (_fileManagerWindow != null && !_fileManagerWindow.IsDisposed)
                 _fileManagerWindow.Close();
             if (_viewerWindow != null && !_viewerWindow.IsDisposed)
                 _viewerWindow.Close();
+            if (_matcherWindow != null && !_matcherWindow.IsDisposed)
+                _matcherWindow.Close();
         }
 
 
@@ -790,6 +802,32 @@ namespace DocuLink.Addin
                 }
 
                 _viewerWindow = null;
+
+                try
+
+                {
+
+                    if (_matcherWindow != null && !_matcherWindow.IsDisposed)
+
+                    {
+
+                        Modules.DocuLinkLog.Trace("disposing document matcher window");
+
+                        _matcherWindow.Dispose();
+
+                    }
+
+                }
+
+                catch (Exception ex)
+
+                {
+
+                    Modules.DocuLinkLog.Trace($"document matcher window dispose failed: {ex.GetType().FullName}: {ex.Message}");
+
+                }
+
+                _matcherWindow = null;
 
                 _storageSessions.Clear();
 

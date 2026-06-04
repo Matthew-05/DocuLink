@@ -20,6 +20,9 @@ namespace DocuLink.Addin
 
             // Document viewer pop-out window: same warm-load pattern
             addIn.PreloadViewerWindow();
+
+            // Document matcher window: same warm-load pattern
+            addIn.PreloadMatcherWindow();
         }
     }
 }
