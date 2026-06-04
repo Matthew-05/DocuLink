@@ -13,6 +13,8 @@ export class StepOutputColumns {
   private _pairsContainer!: HTMLElement;
   private _nextBtn!: HTMLButtonElement;
   private _backBtn!: HTMLButtonElement;
+  private _errorEl!: HTMLElement;
+  private _selects: HTMLSelectElement[] = [];
   private _callbacks: StepOutputColumnsCallbacks;
 
   constructor(
@@ -66,6 +68,13 @@ export class StepOutputColumns {
       this._pairsContainer = document.createElement("div");
       this._pairsContainer.className = "config-view__pairs";
       body.appendChild(this._pairsContainer);
+
+      this._errorEl = document.createElement("p");
+      this._errorEl.className = "step-output-columns__error";
+      this._errorEl.textContent = "Each key column must map to a unique output column.";
+      this._errorEl.hidden = true;
+      body.appendChild(this._errorEl);
+
       this._renderPairs();
     }
 
@@ -96,6 +105,7 @@ export class StepOutputColumns {
   private _renderPairs(): void {
     if (!this._pairsContainer) return;
     this._pairsContainer.innerHTML = "";
+    this._selects = [];
 
     this._keyColumns.forEach((keyCol, i) => {
       const row = document.createElement("div");
@@ -121,19 +131,38 @@ export class StepOutputColumns {
       }
       sel.addEventListener("change", () => {
         this._outputColNumbers[i] = Number(sel.value);
+        this._validate();
       });
 
+      this._selects.push(sel);
       row.appendChild(keyLabel);
       row.appendChild(arrow);
       row.appendChild(sel);
       this._pairsContainer.appendChild(row);
     });
+
+    this._validate();
   }
 
   private _validate(): void {
+    const noOptions = this._keyColumns.length === 0 || this._outputColumns.length === 0;
+
+    const seen = new Set<number>();
+    const duplicates = new Set<number>();
+    for (const n of this._outputColNumbers) {
+      if (seen.has(n)) duplicates.add(n);
+      else seen.add(n);
+    }
+    const hasDuplicates = duplicates.size > 0;
+
+    for (const sel of this._selects) {
+      sel.classList.toggle("config-view__col-select--error", duplicates.has(Number(sel.value)));
+    }
+
+    if (this._errorEl) this._errorEl.hidden = !hasDuplicates;
+
     if (this._nextBtn) {
-      this._nextBtn.disabled =
-        this._keyColumns.length === 0 || this._outputColumns.length === 0;
+      this._nextBtn.disabled = noOptions || hasDuplicates;
     }
   }
 
