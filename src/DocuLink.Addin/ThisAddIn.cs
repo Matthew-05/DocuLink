@@ -388,6 +388,10 @@ namespace DocuLink.Addin
 
                 _matcherWindow = new DocumentMatcherHost();
 
+            else
+
+                _matcherWindow.Reset();
+
 
 
             _matcherWindow.Show();

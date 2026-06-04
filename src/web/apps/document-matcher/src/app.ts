@@ -5,6 +5,7 @@ import { StepOutputColumns } from "./components/step-output-columns/step-output-
 import { StepSelectRanges } from "./components/step-select-ranges/step-select-ranges.js";
 import {
   initHostBridge,
+  sendClose,
   sendCreateLinks,
   sendMatcherGeometryPrepared,
   sendMatcherLog,
@@ -70,7 +71,7 @@ export function mountApp(root: HTMLElement): void {
         sendSelectionLocked();
         goToStep2();
       },
-      onCancel: () => window.close?.(),
+      onCancel: () => sendClose(),
     });
   }
 
@@ -113,7 +114,7 @@ export function mountApp(root: HTMLElement): void {
 
     const total = Math.max(0, selectionInfo?.rowCount ?? 0);
     step4 = new ResultsView(stepContent, total, {
-      onClose: () => window.close?.(),
+      onClose: () => sendClose(),
     });
 
     sendStartMatching(outputColNumbers, folderIds);

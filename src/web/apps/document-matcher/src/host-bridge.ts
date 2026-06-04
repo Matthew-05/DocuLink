@@ -86,3 +86,7 @@ export function sendMatcherGeometryPrepared(pdfId: string, geometryBase64: strin
 export function sendCreateLinks(links: LinkCreationRequest[]): void {
   send({ type: "create-links", links });
 }
+
+export function sendClose(): void {
+  send({ type: "matcher-close" });
+}
