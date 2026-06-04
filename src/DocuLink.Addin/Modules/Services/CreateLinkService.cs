@@ -145,6 +145,10 @@ namespace DocuLink.Addin.Modules.Services
 
             Trace($"CreateLinkAtCell cell={targetCell.Address}");
 
+            IList<string> replacedIds = new DeleteLinkService().DeleteLinksInSelection(targetCell, workbook);
+            if (replacedIds.Count > 0)
+                Trace($"CreateLinkAtCell replaced existing links count={replacedIds.Count}");
+
             WorkbookStorageSession session = Globals.ThisAddIn.GetStorageSession(workbook);
 
             string sheetName = ((Excel.Worksheet)targetCell.Worksheet).Name;

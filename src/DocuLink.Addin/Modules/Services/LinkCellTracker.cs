@@ -57,6 +57,7 @@ namespace DocuLink.Addin.Modules.Services
             WorkbookProtectionGuard.ThrowIfStructureProtected(workbook);
 
             Excel.XmlMap map = EnsureMap(workbook, trackIndex, out bool created);
+            ConfigureMapFormatting(map);
 
             // If the map was orphaned (e.g. prior delete that left the XmlMap behind),
             // its XPath is still bound to the old cell. Excel rejects a second SetValue
@@ -71,7 +72,30 @@ namespace DocuLink.Addin.Modules.Services
                 }
             }
 
-            cell.XPath.SetValue(map, LinkXPath, Type.Missing, false);
+            Excel.Application app = null;
+            bool restoreDisplayAlerts = false;
+            bool previousDisplayAlerts = true;
+
+            try
+            {
+                app = workbook.Application as Excel.Application;
+                if (app != null)
+                {
+                    previousDisplayAlerts = app.DisplayAlerts;
+                    app.DisplayAlerts = false;
+                    restoreDisplayAlerts = true;
+                }
+
+                cell.XPath.SetValue(map, LinkXPath, Type.Missing, false);
+            }
+            finally
+            {
+                if (restoreDisplayAlerts && app != null)
+                {
+                    try { app.DisplayAlerts = previousDisplayAlerts; }
+                    catch (COMException) { }
+                }
+            }
         }
 
         /// <summary>
@@ -235,8 +259,20 @@ namespace DocuLink.Addin.Modules.Services
 
             Excel.XmlMap map = workbook.XmlMaps.Add(MapSchemaXml, Type.Missing);
             map.Name = MapNamePrefix + trackIndex;
+            ConfigureMapFormatting(map);
             created = true;
             return map;
+        }
+
+        private static void ConfigureMapFormatting(Excel.XmlMap map)
+        {
+            if (map == null) return;
+
+            try { map.PreserveNumberFormatting = true; }
+            catch (COMException) { }
+
+            try { map.AdjustColumnWidth = false; }
+            catch (COMException) { }
         }
 
         private static Excel.XmlMap FindMap(Excel.Workbook workbook, int trackIndex)
