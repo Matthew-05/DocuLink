@@ -172,6 +172,13 @@ namespace DocuLink.Addin.Modules.WebView
             return sb.ToString();
         }
 
+        public static string BuildConfirmOverwriteResult(bool confirmed)
+        {
+            return confirmed
+                ? "{\"type\":\"matcher-confirm-overwrite-result\",\"confirmed\":true}"
+                : "{\"type\":\"matcher-confirm-overwrite-result\",\"confirmed\":false}";
+        }
+
         private static void AppendString(StringBuilder sb, string value)
         {
             sb.Append('"');

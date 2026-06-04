@@ -5,6 +5,7 @@ import { StepOutputColumns } from "./components/step-output-columns/step-output-
 import { StepSelectRanges } from "./components/step-select-ranges/step-select-ranges.js";
 import {
   initHostBridge,
+  sendCheckOutputContent,
   sendClose,
   sendCreateLinks,
   sendMatcherGeometryPrepared,
@@ -100,7 +101,9 @@ export function mountApp(root: HTMLElement): void {
     indicator.setStep(3);
     step3 = new StepFolders(stepContent, folders, {
       onBack: goToStep2,
-      onStart(folderIds) {
+      async onStart(folderIds) {
+        const confirmed = await sendCheckOutputContent(outputColNumbers);
+        if (!confirmed) return;
         goToStep4(folderIds);
       },
     });

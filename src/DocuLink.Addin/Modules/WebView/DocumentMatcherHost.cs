@@ -133,6 +133,10 @@ namespace DocuLink.Addin.Modules.WebView
                     HandleCreateLinks(raw);
                     break;
 
+                case "check-output-content":
+                    HandleCheckOutputContent(raw);
+                    break;
+
                 case "matcher-close":
                     Hide();
                     break;
@@ -206,6 +210,57 @@ namespace DocuLink.Addin.Modules.WebView
             DocuLinkLog.Trace("matcher-selection-unlocked received");
             _selectionLocked = false;
             SubscribeSelectionChanged();
+        }
+
+        private void HandleCheckOutputContent(string raw)
+        {
+            try
+            {
+                var colNumbers = DocumentMatcherMessageParser.ParseCheckOutputContent(raw);
+
+                if (_selectedRange == null || colNumbers.Count == 0)
+                {
+                    Post(DocumentMatcherMessageSerializer.BuildConfirmOverwriteResult(true));
+                    return;
+                }
+
+                var firstArea  = (Excel.Range)_selectedRange.Areas[1];
+                var worksheet  = (Excel.Worksheet)firstArea.Worksheet;
+                int firstRow   = firstArea.Row;
+                int rowCount   = firstArea.Rows.Count;
+
+                var conflictingHeaders = new List<string>();
+                foreach (int col in colNumbers)
+                {
+                    if (ColumnHasContent(worksheet, firstRow, rowCount, col))
+                        conflictingHeaders.Add(ColNumberToLetter(col));
+                }
+
+                if (conflictingHeaders.Count == 0)
+                {
+                    Post(DocumentMatcherMessageSerializer.BuildConfirmOverwriteResult(true));
+                    return;
+                }
+
+                string colNames  = string.Join(", ", conflictingHeaders);
+                bool   isPlural  = conflictingHeaders.Count > 1;
+                string message   = $"{(isPlural ? "Columns" : "Column")} {colNames} already contain data.\n\n" +
+                                   "Continuing will overwrite existing cell content. Do you want to proceed?";
+
+                var result = MessageBox.Show(
+                    message,
+                    "DocuLink – Overwrite Warning",
+                    MessageBoxButtons.YesNo,
+                    MessageBoxIcon.Warning,
+                    MessageBoxDefaultButton.Button2);
+
+                Post(DocumentMatcherMessageSerializer.BuildConfirmOverwriteResult(result == DialogResult.Yes));
+            }
+            catch (Exception ex)
+            {
+                DocuLinkLog.Trace($"HandleCheckOutputContent error {ex.GetType().FullName}: {ex.Message}");
+                Post(DocumentMatcherMessageSerializer.BuildConfirmOverwriteResult(false));
+            }
         }
 
         private void HandleMatcherLog(string raw)
@@ -302,7 +357,6 @@ namespace DocuLink.Addin.Modules.WebView
                 var usedRange = worksheet.UsedRange;
                 int lastUsedCol = usedRange.Column + usedRange.Columns.Count - 1;
                 int outputEnd = Math.Max(lastUsedCol, maxKeyColNumber + 10);
-
                 for (int c = maxKeyColNumber + 1; c <= outputEnd; c++)
                 {
                     outputColumns.Add(new OutputColumnEntry { ColNumber = c, Header = ColNumberToLetter(c) });
@@ -542,6 +596,24 @@ namespace DocuLink.Addin.Modules.WebView
             string addinDir = Path.GetDirectoryName(new Uri(codeBase).LocalPath)
                 ?? AppDomain.CurrentDomain.BaseDirectory;
             return Path.Combine(addinDir, "webui");
+        }
+
+        private static bool ColumnHasContent(Excel.Worksheet worksheet, int firstRow, int rowCount, int col)
+        {
+            if (rowCount <= 0) return false;
+            var topCell = (Excel.Range)worksheet.Cells[firstRow, col];
+            var botCell = (Excel.Range)worksheet.Cells[firstRow + rowCount - 1, col];
+            var range   = worksheet.get_Range(topCell, botCell);
+            object v    = range.Value2;
+            if (v == null) return false;
+            if (v is object[,] arr)
+            {
+                foreach (object item in arr)
+                    if (item != null && !(item is string s && s.Length == 0))
+                        return true;
+                return false;
+            }
+            return !(v is string str && str.Length == 0);
         }
 
         private static string ColNumberToLetter(int colNumber)

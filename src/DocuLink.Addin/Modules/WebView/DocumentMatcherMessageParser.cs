@@ -17,6 +17,17 @@ namespace DocuLink.Addin.Modules.WebView
             return GetStringOrEmpty(dict, "message");
         }
 
+        public static List<int> ParseCheckOutputContent(string json)
+        {
+            var dict = Deserialize(json);
+            var raw = dict["colNumbers"] as System.Collections.ArrayList;
+            if (raw == null) return new List<int>();
+            var result = new List<int>();
+            foreach (var item in raw)
+                result.Add(ToInt(item));
+            return result;
+        }
+
         public static MatcherGeometryPreparedPayload ParseMatcherGeometryPrepared(string json)
         {
             var dict = Deserialize(json);

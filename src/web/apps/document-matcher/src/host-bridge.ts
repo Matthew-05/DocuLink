@@ -14,7 +14,10 @@ type InboundMessage =
   | { type: "matcher-ready"; rowCount: number; keyColumns: KeyColumnInfo[]; outputColumns: OutputColumnInfo[]; folders: FolderInfo[] }
   | { type: "matcher-selection-changed"; rowCount: number; keyColumns: KeyColumnInfo[]; outputColumns: OutputColumnInfo[] }
   | { type: "matcher-data-loaded"; rows: MatcherRow[]; pdfs: MatcherPdf[] }
-  | { type: "links-created"; results: Array<{ rowIndex: number; outputColNumber: number; success: boolean }> };
+  | { type: "links-created"; results: Array<{ rowIndex: number; outputColNumber: number; success: boolean }> }
+  | { type: "matcher-confirm-overwrite-result"; confirmed: boolean };
+
+let _confirmOverwriteResolve: ((confirmed: boolean) => void) | null = null;
 
 function send(msg: object): void {
   (window as { chrome?: { webview?: { postMessage?: (s: string) => void } } }).chrome?.webview?.postMessage?.(
@@ -57,6 +60,12 @@ export function initHostBridge(callbacks: HostBridgeCallbacks): void {
       case "links-created":
         callbacks.onLinksCreated(msg.results);
         break;
+      case "matcher-confirm-overwrite-result": {
+        const resolve = _confirmOverwriteResolve;
+        _confirmOverwriteResolve = null;
+        resolve?.(msg.confirmed);
+        break;
+      }
     }
   });
 
@@ -89,4 +98,11 @@ export function sendCreateLinks(links: LinkCreationRequest[]): void {
 
 export function sendClose(): void {
   send({ type: "matcher-close" });
+}
+
+export function sendCheckOutputContent(colNumbers: number[]): Promise<boolean> {
+  return new Promise((resolve) => {
+    _confirmOverwriteResolve = resolve;
+    send({ type: "check-output-content", colNumbers });
+  });
 }
