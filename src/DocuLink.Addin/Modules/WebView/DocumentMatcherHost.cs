@@ -132,6 +132,10 @@ namespace DocuLink.Addin.Modules.WebView
                 case "create-links":
                     HandleCreateLinks(raw);
                     break;
+
+                case "matcher-close":
+                    Hide();
+                    break;
             }
         }
 
@@ -496,6 +500,18 @@ namespace DocuLink.Addin.Modules.WebView
             {
                 DocuLinkLog.Trace($"Post failed: {ex.Message}");
             }
+        }
+
+        /// <summary>
+        /// Resets the wizard to step 1 by re-sending matcher-ready with the current
+        /// Excel selection. Instant — no page reload required.
+        /// </summary>
+        internal void Reset()
+        {
+            if (!_webViewReady) return;
+            UnsubscribeSelectionChanged();
+            _selectionLocked = false;
+            HandleAppReady();
         }
 
         protected override void OnFormClosing(FormClosingEventArgs e)

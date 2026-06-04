@@ -586,7 +586,7 @@ namespace DocuLink.Addin.Modules.WebView
 
         internal void NotifyViewerShown()
         {
-            if (!_viewerShown)
+            if (!_viewerShown && !_contentReady)
             {
                 _cacheProgress?.Dispose();
                 _cacheProgress = ThreadedProgressController.Show("Preparing document viewer...");
