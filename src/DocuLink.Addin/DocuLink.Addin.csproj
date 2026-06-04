@@ -216,6 +216,7 @@
     <Compile Include="Modules\CustomXml\WorkbookStorageSession.cs" />
     <Compile Include="Modules\DocuLinkLog.cs" />
     <Compile Include="Modules\Services\AddPdfDocumentService.cs" />
+    <Compile Include="Modules\Services\AutoDateFormatting.cs" />
     <Compile Include="Modules\Services\CellFormattingService.cs" />
     <Compile Include="Modules\Services\CreateLinkService.cs" />
     <Compile Include="Modules\Services\TextValueFormatter.cs" />
