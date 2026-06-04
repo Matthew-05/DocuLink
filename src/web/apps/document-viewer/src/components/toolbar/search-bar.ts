@@ -67,6 +67,13 @@ export class SearchBar {
     return this._input.value;
   }
 
+  focus(): void {
+    if (this._input.disabled) return;
+    this._input.focus();
+    this._input.select();
+    this._showResults();
+  }
+
   onQuery(cb: (query: string) => void): void {
     this._onQueryCallbacks.push(cb);
   }
