@@ -42,10 +42,15 @@ namespace DocuLink.Addin
 
         private FileManagerHost _fileManagerWindow;
 
+        private DocumentMatcherHost _matcherWindow;
+
         private ViewerWindowHost _viewerWindow;
 
         private readonly Dictionary<string, WorkbookStorageSession> _storageSessions =
             new Dictionary<string, WorkbookStorageSession>(StringComparer.OrdinalIgnoreCase);
+
+        private readonly Dictionary<string, Dictionary<string, string>> _transientPdfGeometry =
+            new Dictionary<string, Dictionary<string, string>>(StringComparer.OrdinalIgnoreCase);
 
 
 
@@ -143,8 +148,36 @@ namespace DocuLink.Addin
 
             if (workbook == null) return;
 
-            _storageSessions.Remove(GetWorkbookSessionKey(workbook));
+            string key = GetWorkbookSessionKey(workbook);
+            _storageSessions.Remove(key);
+            _transientPdfGeometry.Remove(key);
 
+        }
+
+        internal bool TryGetTransientPdfGeometry(Excel.Workbook workbook, string pdfId, out string geometryBase64)
+        {
+            geometryBase64 = null;
+            if (workbook == null || string.IsNullOrWhiteSpace(pdfId)) return false;
+
+            string key = GetWorkbookSessionKey(workbook);
+            return _transientPdfGeometry.TryGetValue(key, out var byPdf)
+                && byPdf.TryGetValue(pdfId, out geometryBase64)
+                && !string.IsNullOrWhiteSpace(geometryBase64);
+        }
+
+        internal void StoreTransientPdfGeometry(Excel.Workbook workbook, string pdfId, string geometryBase64)
+        {
+            if (workbook == null || string.IsNullOrWhiteSpace(pdfId) || string.IsNullOrWhiteSpace(geometryBase64))
+                return;
+
+            string key = GetWorkbookSessionKey(workbook);
+            if (!_transientPdfGeometry.TryGetValue(key, out var byPdf))
+            {
+                byPdf = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                _transientPdfGeometry[key] = byPdf;
+            }
+
+            byPdf[pdfId] = geometryBase64;
         }
 
 
@@ -347,6 +380,26 @@ namespace DocuLink.Addin
 
 
 
+        internal void ShowDocumentMatcherWindow()
+
+        {
+
+            if (_matcherWindow == null || _matcherWindow.IsDisposed)
+
+                _matcherWindow = new DocumentMatcherHost();
+
+            else
+
+                _matcherWindow.Reset();
+
+            _matcherWindow.Show();
+
+            _matcherWindow.BringToFront();
+
+        }
+
+
+
         internal void NotifyFileManagerLinksChanged()
         {
             _fileManagerWindow?.RefreshDataIfReady();
@@ -410,12 +463,26 @@ namespace DocuLink.Addin
 
         }
 
+
+
+        internal void PreloadMatcherWindow()
+
+        {
+
+            _matcherWindow = new DocumentMatcherHost();
+
+            _ = _matcherWindow.Handle;
+
+        }
+
         internal void CloseAllApplicationWindows()
         {
             if (_fileManagerWindow != null && !_fileManagerWindow.IsDisposed)
                 _fileManagerWindow.Close();
             if (_viewerWindow != null && !_viewerWindow.IsDisposed)
                 _viewerWindow.Close();
+            if (_matcherWindow != null && !_matcherWindow.IsDisposed)
+                _matcherWindow.Close();
         }
 
 
@@ -736,6 +803,32 @@ namespace DocuLink.Addin
 
                 _viewerWindow = null;
 
+                try
+
+                {
+
+                    if (_matcherWindow != null && !_matcherWindow.IsDisposed)
+
+                    {
+
+                        Modules.DocuLinkLog.Trace("disposing document matcher window");
+
+                        _matcherWindow.Dispose();
+
+                    }
+
+                }
+
+                catch (Exception ex)
+
+                {
+
+                    Modules.DocuLinkLog.Trace($"document matcher window dispose failed: {ex.GetType().FullName}: {ex.Message}");
+
+                }
+
+                _matcherWindow = null;
+
                 _storageSessions.Clear();
 
                 Modules.DocuLinkLog.Trace("EXIT");
@@ -988,7 +1081,7 @@ namespace DocuLink.Addin
 
         {
 
-            Modules.DocuLinkLog.Trace($"ENTER addr={target?.get_Address() ?? "null"} SuppressNext={SuppressNextSelectionNav} SuppressDepth={_suppressSelectionNavDepth}");
+            Modules.DocuLinkLog.Trace($"ENTER addr={target?.Address ?? "null"} SuppressNext={SuppressNextSelectionNav} SuppressDepth={_suppressSelectionNavDepth}");
 
             if (SuppressNextSelectionNav)
 

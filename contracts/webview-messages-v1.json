@@ -662,6 +662,157 @@
         { "type": "ocr-status", "pdfId": "3fa85f64-5717-4562-b3fc-2c963f66afa6", "status": "ocr" },
         { "type": "ocr-status", "pdfId": "3fa85f64-5717-4562-b3fc-2c963f66afa6", "status": "error", "message": "Tesseract not found" }
       ]
+    },
+
+    "MatcherAppReadyMessage": {
+      "description": "Sent by the document-matcher web app once mounted. The host responds with MatcherReadyMessage.",
+      "type": "object",
+      "required": ["type"],
+      "additionalProperties": false,
+      "properties": { "type": { "const": "matcher-app-ready" } }
+    },
+
+    "MatcherKeyColumnPayload": {
+      "description": "A selected Excel key column range used for document matching.",
+      "type": "object",
+      "required": ["colNumber", "header", "rangeAddress"],
+      "additionalProperties": false,
+      "properties": {
+        "colNumber": { "type": "integer" },
+        "header": { "type": "string" },
+        "rangeAddress": { "type": "string" }
+      }
+    },
+
+    "MatcherOutputColumnPayload": {
+      "description": "An Excel output column available to receive created links.",
+      "type": "object",
+      "required": ["colNumber", "header"],
+      "additionalProperties": false,
+      "properties": {
+        "colNumber": { "type": "integer" },
+        "header": { "type": "string" }
+      }
+    },
+
+    "MatcherReadyMessage": {
+      "description": "Sent by C# host in response to matcher-app-ready. Contains Excel selection metadata and available folders.",
+      "type": "object",
+      "required": ["type", "rowCount", "keyColumns", "outputColumns", "folders"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "const": "matcher-ready" },
+        "rowCount": { "type": "integer" },
+        "keyColumns": { "type": "array", "items": { "$ref": "#/definitions/MatcherKeyColumnPayload" } },
+        "outputColumns": { "type": "array", "items": { "$ref": "#/definitions/MatcherOutputColumnPayload" } },
+        "folders": { "type": "array", "items": { "$ref": "#/definitions/FolderPayload" } }
+      }
+    },
+
+    "MatcherSelectionLockedMessage": {
+      "description": "Sent by the document-matcher web app when the user leaves Step 1. The host freezes the current Excel selection for matching.",
+      "type": "object",
+      "required": ["type"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "const": "matcher-selection-locked" }
+      }
+    },
+
+    "MatcherSelectionUnlockedMessage": {
+      "description": "Sent by the document-matcher web app when the user returns to Step 1. The host resumes live Excel selection updates.",
+      "type": "object",
+      "required": ["type"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "const": "matcher-selection-unlocked" }
+      }
+    },
+
+    "MatcherLogMessage": {
+      "description": "Diagnostic message sent by the document-matcher web app for host-side logging.",
+      "type": "object",
+      "required": ["type", "message"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "const": "matcher-log" },
+        "message": { "type": "string" }
+      }
+    },
+
+    "MatcherGeometryPreparedMessage": {
+      "description": "Sent by the document-matcher web app after preparing transient text geometry from a text-layer PDF. The host caches this geometry in memory for the workbook session only.",
+      "type": "object",
+      "required": ["type", "pdfId", "geometryBase64"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "const": "matcher-geometry-prepared" },
+        "pdfId": { "type": "string" },
+        "geometryBase64": { "type": "string", "description": "Gzip-compressed text-geometry-v1 JSON, base64-encoded. Not persisted to workbook storage." }
+      }
+    },
+
+    "MatcherSelectionChangedMessage": {
+      "description": "Sent by C# host when the Excel selection changes while the matcher wizard is open.",
+      "type": "object",
+      "required": ["type", "rowCount", "keyColumns", "outputColumns"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "const": "matcher-selection-changed" },
+        "rowCount": { "type": "integer" },
+        "keyColumns": { "type": "array", "items": { "$ref": "#/definitions/MatcherKeyColumnPayload" } },
+        "outputColumns": { "type": "array", "items": { "$ref": "#/definitions/MatcherOutputColumnPayload" } }
+      }
+    },
+
+    "StartMatchingMessage": {
+      "description": "Sent by the document-matcher web app when the user clicks Start. The host responds with MatcherDataLoadedMessage.",
+      "type": "object",
+      "required": ["type", "outputColNumbers", "folderIds"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "const": "start-matching" },
+        "outputColNumbers": { "type": "array", "items": { "type": "integer" } },
+        "folderIds": {
+          "type": "array",
+          "description": "Folder ids to search. The reserved value __all__, or an empty array, means search every PDF in the workbook.",
+          "items": { "type": "string" }
+        }
+      }
+    },
+
+    "MatcherDataLoadedMessage": {
+      "description": "Sent by C# host with key column values per data row and PDF geometry for matching.",
+      "type": "object",
+      "required": ["type", "rows", "pdfs"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "const": "matcher-data-loaded" },
+        "rows": { "type": "array", "items": { "type": "object", "required": ["rowIndex", "keyValues"], "properties": { "rowIndex": { "type": "integer" }, "keyValues": { "type": "array", "items": { "type": "string" } } } } },
+        "pdfs": { "type": "array", "items": { "type": "object", "required": ["id", "name", "folderId"], "properties": { "id": { "type": "string" }, "name": { "type": "string" }, "folderId": { "type": "string" }, "geometryBase64": { "type": ["string", "null"], "description": "Stored OCR/Enhance geometry or transient session-cached geometry." }, "base64": { "type": ["string", "null"], "description": "PDF bytes as base64, present only when geometryBase64 is unavailable and the web matcher must prepare transient text-layer geometry." } } } }
+      }
+    },
+
+    "CreateLinksMessage": {
+      "description": "Sent by the document-matcher web app after matching is complete. C# creates the links and responds with LinksCreatedMessage.",
+      "type": "object",
+      "required": ["type", "links"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "const": "create-links" },
+        "links": { "type": "array", "items": { "type": "object", "required": ["rowIndex", "outputColNumber", "pdfId", "pageIndex", "rect", "text"], "additionalProperties": false, "properties": { "rowIndex": { "type": "integer" }, "outputColNumber": { "type": "integer" }, "pdfId": { "type": "string" }, "pageIndex": { "type": "integer" }, "rect": { "$ref": "#/definitions/RectPayload" }, "text": { "type": "string" } } } }
+      }
+    },
+
+    "LinksCreatedMessage": {
+      "description": "Sent by C# host after all link creation requests have been processed.",
+      "type": "object",
+      "required": ["type", "results"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "const": "links-created" },
+        "results": { "type": "array", "items": { "type": "object", "required": ["rowIndex", "outputColNumber", "success"], "additionalProperties": false, "properties": { "rowIndex": { "type": "integer" }, "outputColNumber": { "type": "integer" }, "success": { "type": "boolean" } } } }
+      }
     }
 
   },
@@ -702,6 +853,18 @@
     { "$ref": "#/definitions/OcrPdfsMessage" },
     { "$ref": "#/definitions/OcrStatusMessage" },
     { "$ref": "#/definitions/RotatePageMessage" },
-    { "$ref": "#/definitions/PageRotationsUpdatedMessage" }
+    { "$ref": "#/definitions/PageRotationsUpdatedMessage" },
+
+    { "$ref": "#/definitions/MatcherAppReadyMessage" },
+    { "$ref": "#/definitions/MatcherReadyMessage" },
+    { "$ref": "#/definitions/MatcherSelectionLockedMessage" },
+    { "$ref": "#/definitions/MatcherSelectionUnlockedMessage" },
+    { "$ref": "#/definitions/MatcherLogMessage" },
+    { "$ref": "#/definitions/MatcherGeometryPreparedMessage" },
+    { "$ref": "#/definitions/MatcherSelectionChangedMessage" },
+    { "$ref": "#/definitions/StartMatchingMessage" },
+    { "$ref": "#/definitions/MatcherDataLoadedMessage" },
+    { "$ref": "#/definitions/CreateLinksMessage" },
+    { "$ref": "#/definitions/LinksCreatedMessage" }
   ]
 }

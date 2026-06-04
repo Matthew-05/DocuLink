@@ -268,8 +268,8 @@ namespace DocuLink.Addin.Modules.WebView
                 try
                 {
                     var sel = Globals.ThisAddIn.Application?.Selection as Excel.Range;
-                    DocuLinkLog.Trace($"selection before CreateLink: {sel?.get_Address() ?? "null"}");
-                    DocuLinkLog.Trace($"active cell before CreateLink: {(Globals.ThisAddIn.Application?.ActiveCell as Excel.Range)?.get_Address() ?? "null"}, value={((Globals.ThisAddIn.Application?.ActiveCell as Excel.Range)?.Value2 ?? "(null)")}");
+                    DocuLinkLog.Trace($"selection before CreateLink: {sel?.Address ?? "null"}");
+                    DocuLinkLog.Trace($"active cell before CreateLink: {(Globals.ThisAddIn.Application?.ActiveCell as Excel.Range)?.Address ?? "null"}, value={((Globals.ThisAddIn.Application?.ActiveCell as Excel.Range)?.Value2 ?? "(null)")}");
                 }
                 catch (Exception ex) { DocuLinkLog.Trace($"pre-create cell read failed: {ex.Message}"); }
 
@@ -303,7 +303,7 @@ namespace DocuLink.Addin.Modules.WebView
                 try
                 {
                     var ac = Globals.ThisAddIn.Application?.ActiveCell as Excel.Range;
-                    DocuLinkLog.Trace($"active cell after CreateLink: {ac?.get_Address() ?? "null"}, value={ac?.Value2 ?? "(null)"}");
+                    DocuLinkLog.Trace($"active cell after CreateLink: {ac?.Address ?? "null"}, value={ac?.Value2 ?? "(null)"}");
                 }
                 catch (Exception ex) { DocuLinkLog.Trace($"post-create cell read failed: {ex.Message}"); }
 
@@ -586,7 +586,7 @@ namespace DocuLink.Addin.Modules.WebView
 
         internal void NotifyViewerShown()
         {
-            if (!_viewerShown)
+            if (!_viewerShown && !_contentReady)
             {
                 _cacheProgress?.Dispose();
                 _cacheProgress = ThreadedProgressController.Show("Preparing document viewer...");

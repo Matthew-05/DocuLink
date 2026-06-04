@@ -56,19 +56,46 @@ namespace DocuLink.Addin.Modules.Services
 
             WorkbookProtectionGuard.ThrowIfStructureProtected(workbook);
 
-            Excel.XmlMap map = EnsureMap(workbook, trackIndex);
+            Excel.XmlMap map = EnsureMap(workbook, trackIndex, out bool created);
+            ConfigureMapFormatting(map);
 
             // If the map was orphaned (e.g. prior delete that left the XmlMap behind),
             // its XPath is still bound to the old cell. Excel rejects a second SetValue
             // on the same map+XPath, so clear the stale binding first.
-            Excel.Range stale = FindRangeForMap(workbook, map);
-            if (stale != null)
+            if (!created)
             {
-                try { stale.XPath.Clear(); }
-                catch (COMException) { }
+                Excel.Range stale = FindRangeForMap(workbook, map);
+                if (stale != null)
+                {
+                    try { stale.XPath.Clear(); }
+                    catch (COMException) { }
+                }
             }
 
-            cell.XPath.SetValue(map, LinkXPath, Type.Missing, false);
+            Excel.Application app = null;
+            bool restoreDisplayAlerts = false;
+            bool previousDisplayAlerts = true;
+
+            try
+            {
+                app = workbook.Application as Excel.Application;
+                if (app != null)
+                {
+                    previousDisplayAlerts = app.DisplayAlerts;
+                    app.DisplayAlerts = false;
+                    restoreDisplayAlerts = true;
+                }
+
+                cell.XPath.SetValue(map, LinkXPath, Type.Missing, false);
+            }
+            finally
+            {
+                if (restoreDisplayAlerts && app != null)
+                {
+                    try { app.DisplayAlerts = previousDisplayAlerts; }
+                    catch (COMException) { }
+                }
+            }
         }
 
         /// <summary>
@@ -103,20 +130,43 @@ namespace DocuLink.Addin.Modules.Services
 
             try
             {
-                Excel.XmlMap map = cell.XPath.Map;
-                if (map == null) return 0;
+                var worksheet = cell.Worksheet as Excel.Worksheet;
+                if (worksheet == null) return 0;
+                var workbook = worksheet.Parent as Excel.Workbook;
+                if (workbook == null) return 0;
 
-                string name = map.Name;
-                if (name == null || !name.StartsWith(MapNamePrefix, StringComparison.Ordinal))
-                    return 0;
+                int cellRow = cell.Row;
+                int cellCol = cell.Column;
 
-                string suffix = name.Substring(MapNamePrefix.Length);
-                return int.TryParse(suffix, out int idx) && idx > 0 ? idx : 0;
-            }
-            catch (COMException)
-            {
+                // Reverse lookup: probe each DocuLink XmlMap via XmlDataQuery rather than
+                // calling cell.XPath.Map, which throws a COMException on unbound cells in
+                // some Excel versions.
+                foreach (Excel.XmlMap map in workbook.XmlMaps)
+                {
+                    string name;
+                    try { name = map.Name; } catch (COMException) { continue; }
+
+                    if (string.IsNullOrEmpty(name) ||
+                        !name.StartsWith(MapNamePrefix, StringComparison.Ordinal))
+                        continue;
+
+                    string suffix = name.Substring(MapNamePrefix.Length);
+                    if (!int.TryParse(suffix, out int idx) || idx <= 0) continue;
+
+                    try
+                    {
+                        object result = worksheet.XmlDataQuery(LinkXPath, Type.Missing, map);
+                        if (result is Excel.Range boundRange &&
+                            boundRange.Row == cellRow &&
+                            boundRange.Column == cellCol)
+                            return idx;
+                    }
+                    catch (COMException) { }
+                }
+
                 return 0;
             }
+            catch (COMException) { return 0; }
         }
 
         /// <summary>
@@ -171,7 +221,7 @@ namespace DocuLink.Addin.Modules.Services
                 }
 
                 string newSheet = ((Excel.Worksheet)foundRange.Worksheet).Name;
-                string newAddress = foundRange.get_Address(true, true);
+                string newAddress = foundRange.Address;
 
                 if (!string.Equals(newSheet, linkedRect.LinkedCell.SheetName, StringComparison.Ordinal) ||
                     !string.Equals(newAddress, linkedRect.LinkedCell.Address, StringComparison.Ordinal))
@@ -198,14 +248,31 @@ namespace DocuLink.Addin.Modules.Services
 
         // ── Private helpers ───────────────────────────────────────────────────
 
-        private static Excel.XmlMap EnsureMap(Excel.Workbook workbook, int trackIndex)
+        private static Excel.XmlMap EnsureMap(Excel.Workbook workbook, int trackIndex, out bool created)
         {
             Excel.XmlMap existing = FindMap(workbook, trackIndex);
-            if (existing != null) return existing;
+            if (existing != null)
+            {
+                created = false;
+                return existing;
+            }
 
             Excel.XmlMap map = workbook.XmlMaps.Add(MapSchemaXml, Type.Missing);
             map.Name = MapNamePrefix + trackIndex;
+            ConfigureMapFormatting(map);
+            created = true;
             return map;
+        }
+
+        private static void ConfigureMapFormatting(Excel.XmlMap map)
+        {
+            if (map == null) return;
+
+            try { map.PreserveNumberFormatting = true; }
+            catch (COMException) { }
+
+            try { map.AdjustColumnWidth = false; }
+            catch (COMException) { }
         }
 
         private static Excel.XmlMap FindMap(Excel.Workbook workbook, int trackIndex)

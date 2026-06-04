@@ -1,4 +1,3 @@
-/** Decoded text-geometry-v1 document (contracts/text-geometry-v1.json). */
 export interface TextGeometry {
   version: 1;
   coordinateSpace: "normalized";
@@ -27,10 +26,9 @@ function base64ToBytes(base64: string): Uint8Array {
   return bytes;
 }
 
-/** Decompresses gzip-compressed text-geometry-v1 JSON from a base64 persistence blob. */
 export async function decodeTextGeometry(base64: string): Promise<TextGeometry> {
   const compressed = base64ToBytes(base64);
-  const stream = new Blob([compressed]).stream().pipeThrough(new DecompressionStream("gzip"));
+  const stream = new Blob([compressed.buffer as ArrayBuffer]).stream().pipeThrough(new DecompressionStream("gzip"));
   const json = await new Response(stream).text();
   return JSON.parse(json) as TextGeometry;
 }
