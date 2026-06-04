@@ -41,7 +41,7 @@ namespace DocuLink.Addin.Modules.Services
 
             Excel.Range startCell = (Excel.Range)selection.Cells[1, 1];
 
-            Trace($"startCell={startCell.get_Address()}");
+            Trace($"startCell={startCell.Address}");
 
             WorkbookStorageSession session = Globals.ThisAddIn.GetStorageSession(workbook);
 
@@ -67,7 +67,7 @@ namespace DocuLink.Addin.Modules.Services
 
                 cell = cell.get_Offset(0, 1);
             }
-            Trace($"target cell={cell.get_Address()} (moved={cell.Column != startCell.Column})");
+            Trace($"target cell={cell.Address} (moved={cell.Column != startCell.Column})");
 
             if (cell.Row != startCell.Row || cell.Column != startCell.Column)
             {
@@ -82,7 +82,7 @@ namespace DocuLink.Addin.Modules.Services
             }
 
             string sheetName = ((Excel.Worksheet)cell.Worksheet).Name;
-            string address   = cell.get_Address(true, true);
+            string address   = cell.Address;
 
             IList<LinkedRectangle> links;
             int trackIndex;
@@ -143,12 +143,12 @@ namespace DocuLink.Addin.Modules.Services
             if (targetCell == null) throw new ArgumentNullException(nameof(targetCell));
             WorkbookProtectionGuard.ThrowIfStructureProtected(workbook);
 
-            Trace($"CreateLinkAtCell cell={targetCell.get_Address()}");
+            Trace($"CreateLinkAtCell cell={targetCell.Address}");
 
             WorkbookStorageSession session = Globals.ThisAddIn.GetStorageSession(workbook);
 
             string sheetName = ((Excel.Worksheet)targetCell.Worksheet).Name;
-            string address   = targetCell.get_Address(true, true);
+            string address   = targetCell.Address;
 
             IList<LinkedRectangle> links;
             int trackIndex;
@@ -206,7 +206,7 @@ namespace DocuLink.Addin.Modules.Services
             WorkbookStorageSession session,
             Excel.Workbook workbook)
         {
-            string startAddress = startCell.get_Address(true, true);
+            string startAddress = startCell.Address;
             string startSheet   = ((Excel.Worksheet)startCell.Worksheet).Name;
 
             IList<LinkedRectangle> links = session.GetLinks();
@@ -221,7 +221,7 @@ namespace DocuLink.Addin.Modules.Services
 
                 string resolvedSheet = ((Excel.Worksheet)resolved.Worksheet).Name;
                 if (string.Equals(resolvedSheet, startSheet, StringComparison.OrdinalIgnoreCase)
-                    && string.Equals(resolved.get_Address(true, true), startAddress, StringComparison.Ordinal))
+                    && string.Equals(resolved.Address, startAddress, StringComparison.Ordinal))
                 {
                     existingSum = link;
                     break;

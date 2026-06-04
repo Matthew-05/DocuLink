@@ -1081,7 +1081,7 @@ namespace DocuLink.Addin
 
         {
 
-            Modules.DocuLinkLog.Trace($"ENTER addr={target?.get_Address() ?? "null"} SuppressNext={SuppressNextSelectionNav} SuppressDepth={_suppressSelectionNavDepth}");
+            Modules.DocuLinkLog.Trace($"ENTER addr={target?.Address ?? "null"} SuppressNext={SuppressNextSelectionNav} SuppressDepth={_suppressSelectionNavDepth}");
 
             if (SuppressNextSelectionNav)
 
