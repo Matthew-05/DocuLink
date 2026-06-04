@@ -94,6 +94,16 @@
   outline-offset: 1px;
 }
 
+.config-view__col-select--error {
+  border-color: var(--color-error, #d93025);
+}
+
+.step-output-columns__error {
+  margin: 4px 0 0;
+  font-size: var(--font-size-sm);
+  color: var(--color-error, #d93025);
+}
+
 .config-view__arrow {
   text-align: center;
   color: var(--color-text-muted);
