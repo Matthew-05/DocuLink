@@ -461,7 +461,7 @@ namespace DocuLink.Addin.Modules.WebView
                     onStatusUpdate: (pdfId, status, message) =>
                     {
                         string json = FileManagerMessageSerializer.BuildOcrStatus(pdfId, status, message);
-                        _webView.CoreWebView2?.PostWebMessageAsString(json);
+                        PostToWebView(json);
 
                         if (status == PdfStatus.Ocr)
                         {
@@ -653,6 +653,20 @@ namespace DocuLink.Addin.Modules.WebView
         /// <summary>Reads the active workbook's file list and pushes it to the web UI.</summary>
         public void SendFilesToWebView(DocuLinkContent preloaded = null)
         {
+            if (InvokeRequired)
+            {
+                if (!IsHandleCreated || IsDisposed) return;
+                try
+                {
+                    BeginInvoke(new Action(() => SendFilesToWebView(preloaded)));
+                }
+                catch (InvalidOperationException ex)
+                {
+                    DocuLinkLog.Trace($"SendFilesToWebView marshal failed: {ex.Message}");
+                }
+                return;
+            }
+
             using (DocuLinkLog.Time("SendFilesToWebView file manager"))
             {
             if (_disposed) return;
@@ -688,7 +702,7 @@ namespace DocuLink.Addin.Modules.WebView
                 catch { /* non-fatal; link counts default to 0 */ }
 
                 string json = FileManagerMessageSerializer.BuildFilesLoaded(content.Folders, content.Pdfs, linkCounts);
-                _webView.CoreWebView2?.PostWebMessageAsString(json);
+                PostToWebView(json);
             }
             catch (Exception ex)
             {
@@ -706,6 +720,34 @@ namespace DocuLink.Addin.Modules.WebView
         private bool RequireWritable(Excel.Workbook workbook)
         {
             return WorkbookProtectionGuard.TryRequireWritable(workbook, this);
+        }
+
+        private void PostToWebView(string json)
+        {
+            if (_disposed || string.IsNullOrEmpty(json)) return;
+
+            if (InvokeRequired)
+            {
+                if (!IsHandleCreated || IsDisposed) return;
+                try
+                {
+                    BeginInvoke(new Action(() => PostToWebView(json)));
+                }
+                catch (InvalidOperationException ex)
+                {
+                    DocuLinkLog.Trace($"PostToWebView marshal failed: {ex.Message}");
+                }
+                return;
+            }
+
+            try
+            {
+                _webView.CoreWebView2?.PostWebMessageAsString(json);
+            }
+            catch (Exception ex)
+            {
+                DocuLinkLog.Trace($"PostToWebView failed: {ex.GetType().FullName}: {ex.Message}");
+            }
         }
 
         protected override void OnFormClosing(FormClosingEventArgs e)
@@ -785,8 +827,7 @@ namespace DocuLink.Addin.Modules.WebView
 
             try
             {
-                _webView.CoreWebView2?.PostWebMessageAsString(
-                    HostMessageSerializer.BuildResetUi());
+                PostToWebView(HostMessageSerializer.BuildResetUi());
             }
             catch (Exception ex)
             {

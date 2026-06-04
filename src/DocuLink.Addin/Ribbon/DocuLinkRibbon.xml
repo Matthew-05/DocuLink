@@ -34,6 +34,11 @@
                   size="large"
                   getImage="GetManageFilesImage"
                   onAction="OnManageFiles" />
+          <button id="DocuLink.BtnMatchDocuments"
+                  label="Match Documents"
+                  size="large"
+                  getImage="GetMatchDocumentsImage"
+                  onAction="OnMatchDocuments" />
         </group>
         <group id="DocuLink.Group.Help" label=" ">
           <button id="DocuLink.BtnSettings"

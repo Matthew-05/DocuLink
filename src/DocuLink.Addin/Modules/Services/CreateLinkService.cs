@@ -41,7 +41,7 @@ namespace DocuLink.Addin.Modules.Services
 
             Excel.Range startCell = (Excel.Range)selection.Cells[1, 1];
 
-            Trace($"startCell={startCell.get_Address()}");
+            Trace($"startCell={startCell.Address}");
 
             WorkbookStorageSession session = Globals.ThisAddIn.GetStorageSession(workbook);
 
@@ -67,7 +67,7 @@ namespace DocuLink.Addin.Modules.Services
 
                 cell = cell.get_Offset(0, 1);
             }
-            Trace($"target cell={cell.get_Address()} (moved={cell.Column != startCell.Column})");
+            Trace($"target cell={cell.Address} (moved={cell.Column != startCell.Column})");
 
             if (cell.Row != startCell.Row || cell.Column != startCell.Column)
             {
@@ -82,7 +82,7 @@ namespace DocuLink.Addin.Modules.Services
             }
 
             string sheetName = ((Excel.Worksheet)cell.Worksheet).Name;
-            string address   = cell.get_Address(true, true);
+            string address   = cell.Address;
 
             IList<LinkedRectangle> links;
             int trackIndex;
@@ -126,6 +126,76 @@ namespace DocuLink.Addin.Modules.Services
         }
 
         /// <summary>
+        /// Creates a link writing directly to <paramref name="targetCell"/>, bypassing the
+        /// "search rightward for empty cell" logic used in the interactive flow.
+        /// Used by the document-matcher batch workflow.
+        /// </summary>
+        public (LinkedRectangle LinkedRect, IList<LinkedRectangle> AllRects) CreateLinkAtCell(
+            string pdfId,
+            int page,
+            double x, double y, double width, double height,
+            string text,
+            LinkType linkType,
+            Excel.Range targetCell,
+            Excel.Workbook workbook)
+        {
+            if (workbook == null)   throw new ArgumentNullException(nameof(workbook));
+            if (targetCell == null) throw new ArgumentNullException(nameof(targetCell));
+            WorkbookProtectionGuard.ThrowIfStructureProtected(workbook);
+
+            Trace($"CreateLinkAtCell cell={targetCell.Address}");
+
+            IList<string> replacedIds = new DeleteLinkService().DeleteLinksInSelection(targetCell, workbook);
+            if (replacedIds.Count > 0)
+                Trace($"CreateLinkAtCell replaced existing links count={replacedIds.Count}");
+
+            WorkbookStorageSession session = Globals.ThisAddIn.GetStorageSession(workbook);
+
+            string sheetName = ((Excel.Worksheet)targetCell.Worksheet).Name;
+            string address   = targetCell.Address;
+
+            IList<LinkedRectangle> links;
+            int trackIndex;
+            using (Time("GetLinks + NextTrackIndex"))
+            {
+                links = session.GetLinks();
+                trackIndex = LinkCellTracker.NextTrackIndex(links);
+            }
+
+            var linkedCell = new LinkedCell(sheetName, address, trackIndex);
+            var rect       = new PdfRectangle(page, x, y, width, height, RectangleCoordinateSpace.Normalized);
+            var linkedRect = new LinkedRectangle(Guid.NewGuid().ToString("D"), pdfId, linkedCell, rect)
+            {
+                LinkType   = linkType,
+                SourceText = linkType == LinkType.Sum ? text : null,
+            };
+
+            Trace("calling BindCell");
+            LinkCellTracker.BindCell(workbook, targetCell, trackIndex);
+            Trace("BindCell done");
+
+            try
+            {
+                WriteToCell(targetCell, text, linkType);
+                CellFormattingService.ApplyLinkStyle(targetCell, linkType);
+                Trace("style applied");
+            }
+            catch
+            {
+                LinkCellTracker.UnbindCell(workbook, targetCell, trackIndex);
+                throw;
+            }
+
+            using (Time("SaveLinks"))
+            {
+                session.AddLink(linkedRect);
+            }
+            Trace("returning");
+
+            return (linkedRect, session.GetLinks());
+        }
+
+        /// <summary>
         /// If <paramref name="startCell"/> is already a DocuLink Sum link cell (verified via
         /// storage lookup), appends the new rectangle's numbers to the existing formula and
         /// adds a new <see cref="LinkedRectangle"/> pointing to the same cell.
@@ -140,7 +210,7 @@ namespace DocuLink.Addin.Modules.Services
             WorkbookStorageSession session,
             Excel.Workbook workbook)
         {
-            string startAddress = startCell.get_Address(true, true);
+            string startAddress = startCell.Address;
             string startSheet   = ((Excel.Worksheet)startCell.Worksheet).Name;
 
             IList<LinkedRectangle> links = session.GetLinks();
@@ -155,7 +225,7 @@ namespace DocuLink.Addin.Modules.Services
 
                 string resolvedSheet = ((Excel.Worksheet)resolved.Worksheet).Name;
                 if (string.Equals(resolvedSheet, startSheet, StringComparison.OrdinalIgnoreCase)
-                    && string.Equals(resolved.get_Address(true, true), startAddress, StringComparison.Ordinal))
+                    && string.Equals(resolved.Address, startAddress, StringComparison.Ordinal))
                 {
                     existingSum = link;
                     break;

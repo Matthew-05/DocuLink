@@ -61,6 +61,11 @@ namespace DocuLink.Addin.Ribbon
             Globals.ThisAddIn.ShowManageFilesWindow();
         }
 
+        public void OnMatchDocuments(IRibbonControl control)
+        {
+            Globals.ThisAddIn.ShowDocumentMatcherWindow();
+        }
+
         public void OnOpenSettings(IRibbonControl control)
         {
             using (var dialog = new SettingsDialog())
@@ -228,6 +233,11 @@ namespace DocuLink.Addin.Ribbon
         public System.Drawing.Bitmap GetManageFilesImage(IRibbonControl control)
         {
             return LoadEmbeddedSvgAsIcon("icon-manage-files.svg");
+        }
+
+        public System.Drawing.Bitmap GetMatchDocumentsImage(IRibbonControl control)
+        {
+            return LoadEmbeddedSvgAsIcon("icon-match-documents.svg");
         }
 
         public System.Drawing.Bitmap GetSettingsImage(IRibbonControl control)

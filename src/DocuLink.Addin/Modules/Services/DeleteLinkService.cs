@@ -127,6 +127,8 @@ namespace DocuLink.Addin.Modules.Services
             WorkbookStorageSession session = Globals.ThisAddIn.GetStorageSession(workbook);
             IList<LinkedRectangle> links = session.GetLinks();
             var idsToDelete = new HashSet<string>(StringComparer.Ordinal);
+            var orphanBindings = new List<(Excel.Range cell, int trackIndex)>();
+            var orphanTrackIndexes = new HashSet<int>();
 
             try
             {
@@ -136,21 +138,21 @@ namespace DocuLink.Addin.Modules.Services
                 if (areaCount > 1)
                 {
                     foreach (Excel.Range area in areas)
-                        CollectLinkedRectIds(area, links, idsToDelete);
+                        CollectLinkedRectIds(workbook, area, links, idsToDelete, orphanBindings, orphanTrackIndexes);
                 }
                 else
                 {
-                    CollectLinkedRectIds(selection, links, idsToDelete);
+                    CollectLinkedRectIds(workbook, selection, links, idsToDelete, orphanBindings, orphanTrackIndexes);
                 }
             }
             catch (COMException ex)
             {
                 System.Diagnostics.Debug.WriteLine(
                     $"[DocuLink] DeleteLinksInSelection iteration failed: {ex.Message}");
-                CollectLinkedRectIds(selection, links, idsToDelete);
+                CollectLinkedRectIds(workbook, selection, links, idsToDelete, orphanBindings, orphanTrackIndexes);
             }
 
-            if (idsToDelete.Count == 0)
+            if (idsToDelete.Count == 0 && orphanBindings.Count == 0)
                 return Array.Empty<string>();
 
             using (Globals.ThisAddIn.EnterSelectionNavSuppress())
@@ -160,6 +162,7 @@ namespace DocuLink.Addin.Modules.Services
                     session,
                     links,
                     idsToDelete,
+                    orphanBindings,
                     "DeleteLinksInSelection");
             }
         }
@@ -189,14 +192,18 @@ namespace DocuLink.Addin.Modules.Services
                     session,
                     links,
                     idsToDelete,
+                    new List<(Excel.Range cell, int trackIndex)>(),
                     "DeleteLinksForPdf");
             }
         }
 
         private static void CollectLinkedRectIds(
+            Excel.Workbook workbook,
             Excel.Range range,
             IList<LinkedRectangle> links,
-            HashSet<string> idsToDelete)
+            HashSet<string> idsToDelete,
+            List<(Excel.Range cell, int trackIndex)> orphanBindings,
+            HashSet<int> orphanTrackIndexes)
         {
             int rows = range.Rows.Count;
             int cols = range.Columns.Count;
@@ -209,14 +216,41 @@ namespace DocuLink.Addin.Modules.Services
                     try
                     {
                         cell = (Excel.Range)range.Cells[r, c];
+
+                        string cellSheet = ((Excel.Worksheet)cell.Worksheet).Name;
+                        string cellAddress = cell.Address;
+
                         int trackIndex = LinkCellTracker.FindTrackIndexForCell(cell);
-                        if (trackIndex <= 0)
-                            continue;
+                        bool foundStoredLink = false;
+
+                        if (trackIndex > 0)
+                        {
+                            foreach (LinkedRectangle lr in links)
+                            {
+                                if (lr.LinkedCell.TrackIndex == trackIndex)
+                                {
+                                    idsToDelete.Add(lr.Id);
+                                    foundStoredLink = true;
+                                }
+                            }
+
+                            if (!foundStoredLink && orphanTrackIndexes.Add(trackIndex))
+                                orphanBindings.Add((cell, trackIndex));
+                        }
 
                         foreach (LinkedRectangle lr in links)
                         {
-                            if (lr.LinkedCell.TrackIndex == trackIndex)
-                                idsToDelete.Add(lr.Id);
+                            if (!SameCellAddress(lr, cellSheet, cellAddress))
+                                continue;
+
+                            Excel.Range liveCell = LinkCellResolver.TryResolveCellViaXmlMap(
+                                workbook,
+                                lr.LinkedCell.TrackIndex);
+
+                            if (liveCell != null && !SameCellAddress(liveCell, cellSheet, cellAddress))
+                                continue;
+
+                            idsToDelete.Add(lr.Id);
                         }
                     }
                     catch (COMException ex)
@@ -228,11 +262,38 @@ namespace DocuLink.Addin.Modules.Services
             }
         }
 
+        private static bool SameCellAddress(LinkedRectangle link, string sheetName, string address)
+        {
+            if (link?.LinkedCell == null) return false;
+
+            return string.Equals(link.LinkedCell.SheetName, sheetName, StringComparison.OrdinalIgnoreCase)
+                && string.Equals(link.LinkedCell.Address, address, StringComparison.Ordinal);
+        }
+
+        private static bool SameCellAddress(Excel.Range cell, string sheetName, string address)
+        {
+            if (cell == null) return false;
+
+            try
+            {
+                string resolvedSheet = ((Excel.Worksheet)cell.Worksheet).Name;
+                string resolvedAddress = cell.Address;
+
+                return string.Equals(resolvedSheet, sheetName, StringComparison.OrdinalIgnoreCase)
+                    && string.Equals(resolvedAddress, address, StringComparison.Ordinal);
+            }
+            catch (COMException)
+            {
+                return false;
+            }
+        }
+
         private static IList<string> DeleteLinksByIdCore(
             Excel.Workbook workbook,
             WorkbookStorageSession session,
             IList<LinkedRectangle> links,
             HashSet<string> idsToDelete,
+            IList<(Excel.Range cell, int trackIndex)> orphanBindings,
             string operationName)
         {
             var cellsToClear = new List<Excel.Range>();
@@ -254,8 +315,15 @@ namespace DocuLink.Addin.Modules.Services
                 deletedIds.Add(id);
             }
 
-            if (deletedIds.Count == 0)
+            if (deletedIds.Count == 0 && (orphanBindings == null || orphanBindings.Count == 0))
                 return Array.Empty<string>();
+
+            if (orphanBindings != null)
+            {
+                foreach ((Excel.Range cell, int _) in orphanBindings)
+                    if (cell != null)
+                        cellsToClear.Add(cell);
+            }
 
             Excel.Application app = Globals.ThisAddIn.Application;
             bool prevEnableEvents = app?.EnableEvents ?? true;
@@ -284,12 +352,28 @@ namespace DocuLink.Addin.Modules.Services
                             $"[DocuLink] {operationName} UnbindCell failed: {ex.Message}");
                     }
                 }
+
+                if (orphanBindings != null)
+                {
+                    foreach ((Excel.Range cell, int trackIndex) in orphanBindings)
+                    {
+                        try { LinkCellTracker.UnbindCell(workbook, cell, trackIndex); }
+                        catch (COMException ex)
+                        {
+                            System.Diagnostics.Debug.WriteLine(
+                                $"[DocuLink] {operationName} orphan UnbindCell failed: {ex.Message}");
+                        }
+                    }
+                }
             }
             finally
             {
                 if (app != null)
                     app.EnableEvents = prevEnableEvents;
             }
+
+            if (deletedIds.Count == 0)
+                return Array.Empty<string>();
 
             var remaining = links
                 .Where(r => !idsToDelete.Contains(r.Id))

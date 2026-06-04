@@ -245,6 +245,11 @@
       <SubType>Form</SubType>
     </Compile>
     <Compile Include="Modules\UI\ThreadedProgressController.cs" />
+    <Compile Include="Modules\WebView\DocumentMatcherHost.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="Modules\WebView\DocumentMatcherMessageParser.cs" />
+    <Compile Include="Modules\WebView\DocumentMatcherMessageSerializer.cs" />
     <Compile Include="Modules\WebView\DocumentViewerController.cs" />
     <Compile Include="Modules\WebView\ExcelGridFocusRestoreService.cs" />
     <Compile Include="Modules\WebView\FileManagerHost.cs" />
@@ -285,6 +290,7 @@
     <EmbeddedResource Include="..\resources\icons\icon-add-document.svg" />
     <EmbeddedResource Include="..\resources\icons\icon-delete-links.svg" />
     <EmbeddedResource Include="..\resources\icons\icon-manage-files.svg" />
+    <EmbeddedResource Include="..\resources\icons\icon-match-documents.svg" />
     <EmbeddedResource Include="..\resources\icons\icon-settings.svg" />
     <EmbeddedResource Include="..\resources\icons\icon-viewer.svg" />
     <AppDesigner Include="Properties\" />
@@ -317,12 +323,12 @@
   <Target Name="GenerateVersionFile" BeforeTargets="CoreCompile">
     <Exec Command="powershell -NonInteractive -ExecutionPolicy Bypass -File &quot;$(MSBuildProjectDirectory)\generate-version.ps1&quot; -Version &quot;$(AppVersion)&quot; -OutputPath &quot;$(GeneratedVersionPath)&quot;" />
   </Target>
-
   <!-- ── Web asset build ── -->
   <PropertyGroup>
     <WebRootDir>$(MSBuildProjectDirectory)\..\web</WebRootDir>
     <ViewerDistDir>$(WebRootDir)\apps\document-viewer\dist</ViewerDistDir>
     <FileManagerDistDir>$(WebRootDir)\apps\file-manager\dist</FileManagerDistDir>
+    <DocumentMatcherDistDir>$(WebRootDir)\apps\document-matcher\dist</DocumentMatcherDistDir>
   </PropertyGroup>
   <!-- Enumerate web source files so MSBuild can skip npm build when nothing changed -->
   <ItemGroup>
@@ -330,9 +336,11 @@
     <WebSourceFiles Include="$(WebRootDir)\apps\document-viewer\build.mjs" />
     <WebSourceFiles Include="$(WebRootDir)\apps\file-manager\src\**\*.*" />
     <WebSourceFiles Include="$(WebRootDir)\apps\file-manager\build.mjs" />
+    <WebSourceFiles Include="$(WebRootDir)\apps\document-matcher\src\**\*.*" />
+    <WebSourceFiles Include="$(WebRootDir)\apps\document-matcher\build.mjs" />
     <WebSourceFiles Include="$(WebRootDir)\packages\**\src\**\*.*" />
   </ItemGroup>
-  <Target Name="BuildWebAssets" BeforeTargets="Build" Inputs="@(WebSourceFiles)" Outputs="$(ViewerDistDir)\index.js;$(ViewerDistDir)\index.css;$(FileManagerDistDir)\index.js;$(FileManagerDistDir)\index.css">
+  <Target Name="BuildWebAssets" BeforeTargets="Build" Inputs="@(WebSourceFiles)" Outputs="$(ViewerDistDir)\index.js;$(ViewerDistDir)\index.css;$(FileManagerDistDir)\index.js;$(FileManagerDistDir)\index.css;$(DocumentMatcherDistDir)\index.js;$(DocumentMatcherDistDir)\index.css">
     <Message Text="[DocuLink] Installing web dependencies…" Importance="high" />
     <Exec Command="cmd /c npm install" WorkingDirectory="$(WebRootDir)" Condition="!Exists('$(WebRootDir)\node_modules')" />
     <Message Text="[DocuLink] Building web assets…" Importance="high" />
@@ -345,9 +353,12 @@
       <ViewerUiFiles Include="$(ViewerDistDir)\**\*.*" />
       <!-- file-manager dist → webui/file-manager/ -->
       <FileManagerUiFiles Include="$(FileManagerDistDir)\**\*.*" />
+      <!-- document-matcher dist → webui/document-matcher/ -->
+      <DocumentMatcherUiFiles Include="$(DocumentMatcherDistDir)\**\*.*" />
     </ItemGroup>
     <Copy SourceFiles="@(ViewerUiFiles)" DestinationFiles="@(ViewerUiFiles->'$(OutputPath)webui\%(RecursiveDir)%(Filename)%(Extension)')" />
     <Copy SourceFiles="@(FileManagerUiFiles)" DestinationFiles="@(FileManagerUiFiles->'$(OutputPath)webui\file-manager\%(RecursiveDir)%(Filename)%(Extension)')" />
+    <Copy SourceFiles="@(DocumentMatcherUiFiles)" DestinationFiles="@(DocumentMatcherUiFiles->'$(OutputPath)webui\document-matcher\%(RecursiveDir)%(Filename)%(Extension)')" />
   </Target>
   <!-- ── Python OCR worker copy ── -->
   <PropertyGroup>
