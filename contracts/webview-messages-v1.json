@@ -589,7 +589,7 @@
     },
 
     "OcrPdfsMessage": {
-      "description": "Sent by the file-manager web app when the user clicks 'OCR'. The host runs full OCR on scanned PDFs and geometry-only extraction on PDFs with an embedded text layer, replying with one or more OcrStatusMessages.",
+      "description": "Sent by the file-manager web app when the user clicks 'OCR'. The host runs full OCR on scanned PDFs and replaces embedded text layers on PDFs that already contain text, replying with one or more OcrStatusMessages.",
       "type": "object",
       "required": ["type", "pdfIds"],
       "additionalProperties": false,

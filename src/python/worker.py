@@ -50,7 +50,11 @@ def _handle_job(job: OcrJob) -> None:
             return
 
         on_progress("Starting OCR…")
-        result_bytes = ocr_pdf_bytes(pdf_bytes, progress_callback=on_progress)
+        result_bytes = ocr_pdf_bytes(
+            pdf_bytes,
+            force_ocr=True,
+            progress_callback=on_progress,
+        )
         geometry = extract_text_geometry(result_bytes, progress_callback=on_progress)
         geometry_b64 = geometry_to_base64(geometry)
         result_b64 = base64.b64encode(result_bytes).decode("ascii")
