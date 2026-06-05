@@ -1,5 +1,12 @@
-import { buildCharEntriesFromGeometry, decodeTextGeometry, extractTextGeometryFromPdfDocument, extractTextGeometryFromPdfUrl } from "@doculink/shared";
+import {
+  buildCharEntriesFromGeometry,
+  buildSearchPageIndexFromEntries,
+  decodeTextGeometry,
+  extractTextGeometryFromPdfDocument,
+  extractTextGeometryFromPdfUrl,
+} from "@doculink/shared";
 import * as pdfjsLib from "pdfjs-dist";
+import type { SearchPageIndex } from "@doculink/shared";
 
 export interface CharacterEntry {
   char: string;
@@ -17,6 +24,7 @@ export interface CharacterEntry {
 
 export class TextContentCache {
   private readonly _cache = new Map<string, Map<number, CharacterEntry[]>>();
+  private readonly _searchIndexCache = new Map<string, Map<number, SearchPageIndex>>();
   private readonly _geometryByPdfId = new Map<string, string>();
 
   /**
@@ -88,13 +96,34 @@ export class TextContentCache {
     return this._cache.get(pdfId)?.get(pageIndex) ?? null;
   }
 
+  getSearchIndex(pdfId: string, pageIndex: number): SearchPageIndex | null {
+    const entries = this.get(pdfId, pageIndex);
+    if (!entries) return null;
+
+    let pageMap = this._searchIndexCache.get(pdfId);
+    if (!pageMap) {
+      pageMap = new Map<number, SearchPageIndex>();
+      this._searchIndexCache.set(pdfId, pageMap);
+    }
+
+    let searchIndex = pageMap.get(pageIndex);
+    if (!searchIndex) {
+      searchIndex = buildSearchPageIndexFromEntries(entries);
+      pageMap.set(pageIndex, searchIndex);
+    }
+
+    return searchIndex;
+  }
+
   /** Removes a single PDF from the cache (e.g. after OCR update). */
   clearPdf(pdfId: string): void {
     this._cache.delete(pdfId);
+    this._searchIndexCache.delete(pdfId);
   }
 
   clear(): void {
     this._cache.clear();
+    this._searchIndexCache.clear();
     this._geometryByPdfId.clear();
   }
 

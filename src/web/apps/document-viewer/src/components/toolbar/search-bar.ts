@@ -10,10 +10,12 @@ export class SearchBar {
   private readonly _input: HTMLInputElement;
   private readonly _resultsPanel: SearchResultsPanel;
   private _debounceTimer: ReturnType<typeof setTimeout> | null = null;
+  private _resultsDismissed = false;
 
   private readonly _onQueryCallbacks: Array<(query: string) => void> = [];
   private readonly _onMatchClickedCallbacks: Array<(match: SearchMatch) => void> = [];
   private readonly _onResultsShownCallbacks: Array<() => void> = [];
+  private readonly _onShowMoreCallbacks: Array<() => void> = [];
 
   constructor() {
     this.element = document.createElement("div");
@@ -28,8 +30,12 @@ export class SearchBar {
 
     this._resultsPanel = new SearchResultsPanel();
     this._resultsPanel.onMatchClicked((match) => {
+      this._resultsDismissed = true;
       this._resultsPanel.hide();
       for (const cb of this._onMatchClickedCallbacks) cb(match);
+    });
+    this._resultsPanel.onShowMore(() => {
+      for (const cb of this._onShowMoreCallbacks) cb();
     });
 
     this.element.append(this._input, this._resultsPanel.element);
@@ -38,13 +44,18 @@ export class SearchBar {
       "mousedown",
       (e) => {
         if (!this.element.contains(e.target as Node)) {
-          this._resultsPanel.hide();
+          this.hideResults();
         }
       },
       true
     );
 
     const reopenIfDismissed = (): void => {
+      const shouldRefresh = this._resultsPanel.element.hidden || this._resultsDismissed;
+      if (shouldRefresh) {
+        this._resultsDismissed = false;
+        this._emitCurrentQuery();
+      }
       this._showResults();
     };
 
@@ -90,13 +101,23 @@ export class SearchBar {
     this._onResultsShownCallbacks.push(cb);
   }
 
+  onShowMore(cb: () => void): void {
+    this._onShowMoreCallbacks.push(cb);
+  }
+
   hideResults(): void {
+    this._resultsDismissed = true;
     this._resultsPanel.hide();
   }
 
-  setResults(matches: SearchMatch[]): void {
+  setResults(matches: SearchMatch[], hasMore = false, canLoadMore = hasMore): void {
     const wasHidden = this._resultsPanel.element.hidden;
-    this._resultsPanel.setResults(matches);
+    this._resultsPanel.setResults({ matches, hasMore, canLoadMore });
+    if (this._resultsDismissed) {
+      this._resultsPanel.hide();
+      return;
+    }
+
     if (!this._resultsPanel.element.hidden && wasHidden) {
       this._notifyResultsShown();
     }
@@ -109,6 +130,7 @@ export class SearchBar {
   private _showResults(): void {
     if (!this._resultsPanel.hasResults()) return;
 
+    this._resultsDismissed = false;
     const wasHidden = this._resultsPanel.element.hidden;
     this._resultsPanel.show();
     if (wasHidden) {
@@ -121,14 +143,20 @@ export class SearchBar {
   }
 
   private _handleInput(): void {
+    this._resultsDismissed = false;
+
     if (this._debounceTimer !== null) {
       clearTimeout(this._debounceTimer);
     }
 
     this._debounceTimer = setTimeout(() => {
       this._debounceTimer = null;
-      const query = normalizeSearchQuery(this._input.value);
-      for (const cb of this._onQueryCallbacks) cb(query);
+      this._emitCurrentQuery();
     }, DEBOUNCE_MS);
+  }
+
+  private _emitCurrentQuery(): void {
+    const query = normalizeSearchQuery(this._input.value);
+    for (const cb of this._onQueryCallbacks) cb(query);
   }
 }

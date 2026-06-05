@@ -1,28 +1,46 @@
 import type { SearchMatch } from "../../types/index.js";
 
+export interface SearchResultsPanelState {
+  matches: SearchMatch[];
+  hasMore: boolean;
+  canLoadMore?: boolean;
+}
+
 export class SearchResultsPanel {
   readonly element: HTMLElement;
 
   private readonly _callbacks: Array<(match: SearchMatch) => void> = [];
+  private readonly _showMoreCallbacks: Array<() => void> = [];
   private _matches: SearchMatch[] = [];
+  private _hasMore = false;
+  private _canLoadMore = false;
 
   constructor() {
     this.element = document.createElement("div");
     this.element.className = "search-results-panel";
     this.element.hidden = true;
+    this.element.addEventListener("click", (e) => this._handleClick(e));
   }
 
   onMatchClicked(cb: (match: SearchMatch) => void): void {
     this._callbacks.push(cb);
   }
 
-  setResults(matches: SearchMatch[]): void {
-    this._matches = matches;
+  onShowMore(cb: () => void): void {
+    this._showMoreCallbacks.push(cb);
+  }
+
+  setResults(state: SearchResultsPanelState): void {
+    this._matches = state.matches;
+    this._hasMore = state.hasMore;
+    this._canLoadMore = state.canLoadMore ?? state.hasMore;
     this._render();
   }
 
   clearResults(): void {
     this._matches = [];
+    this._hasMore = false;
+    this._canLoadMore = false;
     this.element.replaceChildren();
     this.element.hidden = true;
   }
@@ -44,12 +62,21 @@ export class SearchResultsPanel {
   private _render(): void {
     this.element.replaceChildren();
 
-    if (this._matches.length === 0) {
+    if (this._matches.length === 0 && !this._hasMore) {
       this.element.hidden = true;
       return;
     }
 
     this.element.hidden = false;
+
+    const summary = document.createElement("div");
+    summary.className = "search-results-panel__summary";
+    summary.textContent = this._matches.length === 0 && this._hasMore
+      ? "Searching..."
+      : this._hasMore
+      ? `${this._matches.length}+ results`
+      : `${this._matches.length} result${this._matches.length === 1 ? "" : "s"}`;
+    this.element.appendChild(summary);
 
     const grouped = groupByPdf(this._matches);
     for (const [pdfName, pdfMatches] of grouped) {
@@ -70,6 +97,15 @@ export class SearchResultsPanel {
 
       this.element.appendChild(section);
     }
+
+    if (this._canLoadMore) {
+      const more = document.createElement("button");
+      more.type = "button";
+      more.className = "search-results-panel__more";
+      more.dataset["action"] = "show-more";
+      more.textContent = "Show more";
+      this.element.appendChild(more);
+    }
   }
 
   private _createItem(match: SearchMatch, pageIndex: number): HTMLElement {
@@ -79,16 +115,14 @@ export class SearchResultsPanel {
 
     const pageLabel = document.createElement("span");
     pageLabel.className = "search-results-panel__page";
-    pageLabel.textContent = `${pageIndex + 1}`;
+    pageLabel.textContent = `Page ${pageIndex + 1}`;
 
     const context = document.createElement("span");
     context.className = "search-results-panel__context";
     context.append(this._buildContextFragment(match));
 
     item.append(context, pageLabel);
-    item.addEventListener("click", () => {
-      for (const cb of this._callbacks) cb(match);
-    });
+    item.dataset["matchId"] = match.id;
 
     return item;
   }
@@ -110,6 +144,24 @@ export class SearchResultsPanel {
     if (after) frag.append(document.createTextNode(after));
 
     return frag;
+  }
+
+  private _handleClick(e: MouseEvent): void {
+    const target = e.target as HTMLElement | null;
+    const showMore = target?.closest<HTMLElement>("[data-action='show-more']");
+    if (showMore) {
+      for (const cb of this._showMoreCallbacks) cb();
+      return;
+    }
+
+    const item = target?.closest<HTMLElement>("[data-match-id]");
+    const matchId = item?.dataset["matchId"];
+    if (!matchId) return;
+
+    const match = this._matches.find((candidate) => candidate.id === matchId);
+    if (!match) return;
+
+    for (const cb of this._callbacks) cb(match);
   }
 }
 
