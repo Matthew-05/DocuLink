@@ -74,6 +74,10 @@ export class SearchBar {
     this._showResults();
   }
 
+  blur(): void {
+    this._input.blur();
+  }
+
   onQuery(cb: (query: string) => void): void {
     this._onQueryCallbacks.push(cb);
   }

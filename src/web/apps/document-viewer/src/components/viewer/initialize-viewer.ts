@@ -131,6 +131,8 @@ export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLEleme
 
   viewer.element.addEventListener("scroll", updatePageFromScroll, { passive: true });
 
+  viewer.element.addEventListener("mousedown", () => search.blur(), { passive: true });
+
   // ── Text cache & rect-draw overlay ────────────────────────────────────────
 
   let _currentRects: LinkedRectEntry[] = [];
