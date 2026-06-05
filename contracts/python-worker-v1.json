@@ -9,7 +9,7 @@
     "OcrMode": {
       "type": "string",
       "enum": ["full", "geometry-only"],
-      "description": "full: OCR PDF bytes + geometry. geometry-only: extract geometry without replacing PDF bytes."
+      "description": "full: OCR all pages, replacing any existing text layer, then return PDF bytes + geometry. geometry-only: extract geometry without replacing PDF bytes."
     },
 
     "OcrJob": {

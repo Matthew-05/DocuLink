@@ -39,7 +39,7 @@ namespace DocuLink.Addin.Modules.CustomXml.Models
 
         /// <summary>
         /// Gzip-compressed text-geometry-v1 JSON, base64-encoded.
-        /// Populated after full OCR or geometry-only Enhance.
+        /// Populated after OCR or legacy geometry-only Enhance.
         /// </summary>
         public string GeometryBase64 { get; set; }
 

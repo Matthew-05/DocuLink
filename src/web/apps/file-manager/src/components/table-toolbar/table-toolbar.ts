@@ -71,7 +71,7 @@ export class TableToolbar {
     this._processBtn.disabled = true;
     this._processBtn.textContent = "OCR";
     this._processBtn.title =
-      "OCR scanned PDFs or extract text geometry from PDFs with an embedded text layer";
+      "OCR scanned PDFs or replace an embedded text layer";
     this._processBtn.addEventListener("click", () => options.onProcessSelected());
 
     // Remove button (rightmost)

@@ -93,7 +93,8 @@ def ocr_pdf_bytes(
 
     Pages that already contain selectable text are skipped (skip_text=True)
     unless force_ocr=True, which re-OCRs all pages regardless of any existing
-    text layer (needed when PyMuPDF cannot extract chars from the existing layer).
+    text layer (needed when the embedded text is missing, unextractable, or
+    known to be wrong).
     When enabled, ocrmypdf uses Tesseract orientation detection to rotate pages
     that appear sideways or upside down before writing the output PDF. The
     default OCRmyPDF threshold is conservative, so use a lower value to avoid

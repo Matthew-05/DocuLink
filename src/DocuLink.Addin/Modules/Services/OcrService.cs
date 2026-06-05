@@ -60,8 +60,9 @@ namespace DocuLink.Addin.Modules.Services
         }
 
         /// <summary>
-        /// Queues OCR or geometry extraction for the given PDF ids. Scanned PDFs (status none)
-        /// receive full OCR; PDFs with an embedded text layer (status text) receive geometry-only.
+        /// Queues OCR for the given PDF ids. Scanned PDFs (status none) and PDFs
+        /// with an embedded text layer (status text) both receive full OCR so a
+        /// stale or mismatched text layer is replaced rather than trusted.
         /// Already-processed PDFs (status ocr) are skipped.
         /// </summary>
         public Task RunOcrAsync(
@@ -343,7 +344,7 @@ namespace DocuLink.Addin.Modules.Services
 
         /// <summary>
         /// Reads the base64 bytes for the requested PDFs from the workbook and assigns
-        /// full OCR vs geometry-only mode per PDF. Must be called on the UI thread.
+        /// full OCR mode. Must be called on the UI thread.
         /// </summary>
         private static IList<OcrJobEntry> LoadJobData(IList<string> pdfIds, Excel.Workbook workbook)
         {
@@ -362,13 +363,11 @@ namespace DocuLink.Addin.Modules.Services
 
                 // Load binary only for PDFs that actually need OCR
                 store.TryLoadPdfBinary(id, out string base64, out _);
-                string mode = string.Equals(status, PdfStatus.Text, StringComparison.Ordinal)
-                    ? "geometry-only" : "full";
                 result.Add(new OcrJobEntry
                 {
                     PdfId = id,
                     Base64 = base64 ?? string.Empty,
-                    Mode = mode,
+                    Mode = "full",
                     OriginalStatus = status,
                 });
             }
