@@ -46,6 +46,7 @@ function entriesFromText(text, lineBreaks = new Set()) {
 }
 
 assert.equal(normalizeSearchQuery(" 1,000 "), "1000");
+assert.equal(normalizeSearchQuery(" (1,000) "), "-1000");
 
 {
   const entries = entriesFromText("total 1,000 due");
@@ -53,6 +54,15 @@ assert.equal(normalizeSearchQuery(" 1,000 "), "1000");
   assert.equal(matches.length, 1);
   assert.equal(matches[0].id, "pdf-1:0:6");
   assert.equal(matches[0].contextText, "1,000");
+}
+
+{
+  const entries = entriesFromText("variance (1,000) due");
+  const matches = searchPage("pdf-1", "Invoice", 0, entries, normalizeSearchQuery("-1000"));
+  assert.equal(matches.length, 1);
+  assert.equal(matches[0].id, "pdf-1:0:9");
+  assert.equal(matches[0].contextText, "(1,000)");
+  assert.deepEqual(matches[0].matchInContext, { start: 0, end: 7 });
 }
 
 {
