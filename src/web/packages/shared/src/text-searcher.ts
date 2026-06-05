@@ -15,10 +15,37 @@ function isNumericComma(text: string, i: number): boolean {
   return text[i] === "," && /\d/.test(text[i - 1] ?? "") && /\d/.test(text[i + 1] ?? "");
 }
 
+function findAccountingNumberEnd(text: string, start: number): number {
+  if (text[start] !== "(") return -1;
+
+  let hasDigit = false;
+  let i = start + 1;
+  while (i < text.length && /[\d,.]/.test(text[i] ?? "")) {
+    if (/\d/.test(text[i] ?? "")) hasDigit = true;
+    i++;
+  }
+
+  return hasDigit && text[i] === ")" ? i : -1;
+}
+
+function isAccountingNumberClose(text: string, i: number): boolean {
+  if (text[i] !== ")") return false;
+
+  const openIndex = text.lastIndexOf("(", i);
+  return openIndex !== -1 && findAccountingNumberEnd(text, openIndex) === i;
+}
+
 export function normalizeSearchQuery(raw: string): string {
   const lower = raw.trim().toLowerCase();
   let result = "";
   for (let i = 0; i < lower.length; i++) {
+    const accountingEnd = findAccountingNumberEnd(lower, i);
+    if (accountingEnd !== -1) {
+      result += "-";
+      continue;
+    }
+
+    if (isAccountingNumberClose(lower, i)) continue;
     if (!isNumericComma(lower, i)) result += lower[i];
   }
   return result;
@@ -32,6 +59,15 @@ function buildNormalizedPageText(text: string): { normalizedPageText: string; in
   const indexMap: number[] = [];
   let normalizedPageText = "";
   for (let i = 0; i < text.length; i++) {
+    const accountingEnd = findAccountingNumberEnd(text, i);
+    if (accountingEnd !== -1) {
+      indexMap.push(i);
+      normalizedPageText += "-";
+      continue;
+    }
+
+    if (isAccountingNumberClose(text, i)) continue;
+
     if (!isNumericComma(text, i)) {
       indexMap.push(i);
       normalizedPageText += text[i];
@@ -117,6 +153,19 @@ function rectFromEntries(
   return { x: normLeft, y: normTop, width: normRight - normLeft, height: normBottom - normTop };
 }
 
+function resolveOriginalMatchSpan(
+  pageText: string,
+  originalStart: number,
+  originalEnd: number,
+): { originalStart: number; originalEnd: number } {
+  const accountingEnd = findAccountingNumberEnd(pageText.toLowerCase(), originalStart);
+  if (accountingEnd !== -1 && accountingEnd >= originalEnd) {
+    return { originalStart, originalEnd: accountingEnd + 1 };
+  }
+
+  return { originalStart, originalEnd };
+}
+
 export function searchPage(
   pdfId: string,
   pdfName: string,
@@ -153,8 +202,12 @@ export function searchPageWithIndex(
     const hitIndex = normalizedPageText.indexOf(normalizedQuery, offset);
     if (hitIndex === -1) break;
 
-    const originalStart = indexMap[hitIndex]!;
-    const originalEnd = indexMap[hitIndex + queryLen - 1]! + 1;
+    const span = resolveOriginalMatchSpan(
+      pageText,
+      indexMap[hitIndex]!,
+      indexMap[hitIndex + queryLen - 1]! + 1,
+    );
+    const { originalStart, originalEnd } = span;
 
     if (!matchSpansSingleLine(entries, originalStart, originalEnd)) {
       offset = hitIndex + 1;
