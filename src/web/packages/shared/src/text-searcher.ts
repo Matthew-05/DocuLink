@@ -1,6 +1,16 @@
 import type { CharacterEntry } from "./char-entries.js";
 import type { NormalizedRect, SearchMatch } from "./types.js";
 
+export interface SearchPageIndex {
+  pageText: string;
+  normalizedPageText: string;
+  indexMap: number[];
+}
+
+export interface SearchPageOptions {
+  limit?: number;
+}
+
 function isNumericComma(text: string, i: number): boolean {
   return text[i] === "," && /\d/.test(text[i - 1] ?? "") && /\d/.test(text[i + 1] ?? "");
 }
@@ -15,24 +25,28 @@ export function normalizeSearchQuery(raw: string): string {
 }
 
 export function pageTextMatchesQuery(pageText: string, normalizedQuery: string): boolean {
-  const lower = pageText.toLowerCase();
-  let stripped = "";
-  for (let i = 0; i < lower.length; i++) {
-    if (!isNumericComma(lower, i)) stripped += lower[i];
-  }
-  return stripped.includes(normalizedQuery);
+  return buildSearchPageIndex(pageText).normalizedPageText.includes(normalizedQuery);
 }
 
-function buildNormalizedPageText(text: string): { normalized: string; indexMap: number[] } {
+function buildNormalizedPageText(text: string): { normalizedPageText: string; indexMap: number[] } {
   const indexMap: number[] = [];
-  let normalized = "";
+  let normalizedPageText = "";
   for (let i = 0; i < text.length; i++) {
     if (!isNumericComma(text, i)) {
       indexMap.push(i);
-      normalized += text[i];
+      normalizedPageText += text[i];
     }
   }
-  return { normalized, indexMap };
+  return { normalizedPageText, indexMap };
+}
+
+export function buildSearchPageIndex(pageText: string): SearchPageIndex {
+  const { normalizedPageText, indexMap } = buildNormalizedPageText(pageText.toLowerCase());
+  return { pageText, normalizedPageText, indexMap };
+}
+
+export function buildSearchPageIndexFromEntries(entries: CharacterEntry[]): SearchPageIndex {
+  return buildSearchPageIndex(entries.map((e) => e.char).join(""));
 }
 
 function matchSpansSingleLine(entries: CharacterEntry[], start: number, end: number): boolean {
@@ -81,13 +95,24 @@ function rectFromEntries(
   startIndex: number,
   endIndex: number,
 ): NormalizedRect {
-  const slice = entries.slice(startIndex, endIndex + 1);
-  if (slice.length === 0) return { x: 0, y: 0, width: 0, height: 0 };
+  if (startIndex > endIndex) return { x: 0, y: 0, width: 0, height: 0 };
 
-  const normLeft   = Math.min(...slice.map((e) => e.normLeft));
-  const normTop    = Math.min(...slice.map((e) => e.normTop));
-  const normRight  = Math.max(...slice.map((e) => e.normRight));
-  const normBottom = Math.max(...slice.map((e) => e.normBottom));
+  let normLeft = Number.POSITIVE_INFINITY;
+  let normTop = Number.POSITIVE_INFINITY;
+  let normRight = Number.NEGATIVE_INFINITY;
+  let normBottom = Number.NEGATIVE_INFINITY;
+
+  for (let i = startIndex; i <= endIndex; i++) {
+    const entry = entries[i];
+    if (!entry) continue;
+
+    normLeft = Math.min(normLeft, entry.normLeft);
+    normTop = Math.min(normTop, entry.normTop);
+    normRight = Math.max(normRight, entry.normRight);
+    normBottom = Math.max(normBottom, entry.normBottom);
+  }
+
+  if (!Number.isFinite(normLeft)) return { x: 0, y: 0, width: 0, height: 0 };
 
   return { x: normLeft, y: normTop, width: normRight - normLeft, height: normBottom - normTop };
 }
@@ -98,18 +123,33 @@ export function searchPage(
   pageIndex: number,
   entries: CharacterEntry[],
   normalizedQuery: string,
+  options: SearchPageOptions = {},
 ): SearchMatch[] {
   if (!normalizedQuery || entries.length === 0) return [];
 
-  const pageText = entries.map((e) => e.char).join("");
-  if (!pageTextMatchesQuery(pageText, normalizedQuery)) return [];
+  const searchIndex = buildSearchPageIndexFromEntries(entries);
+  return searchPageWithIndex(pdfId, pdfName, pageIndex, entries, searchIndex, normalizedQuery, options);
+}
 
-  const { normalized: normalizedPageText, indexMap } = buildNormalizedPageText(pageText.toLowerCase());
+export function searchPageWithIndex(
+  pdfId: string,
+  pdfName: string,
+  pageIndex: number,
+  entries: CharacterEntry[],
+  searchIndex: SearchPageIndex,
+  normalizedQuery: string,
+  options: SearchPageOptions = {},
+): SearchMatch[] {
+  if (!normalizedQuery || entries.length === 0) return [];
+  if (!searchIndex.normalizedPageText.includes(normalizedQuery)) return [];
+
+  const { pageText, normalizedPageText, indexMap } = searchIndex;
   const queryLen = normalizedQuery.length;
   const matches: SearchMatch[] = [];
+  const limit = options.limit ?? Number.POSITIVE_INFINITY;
 
   let offset = 0;
-  while (offset <= normalizedPageText.length - queryLen) {
+  while (matches.length < limit && offset <= normalizedPageText.length - queryLen) {
     const hitIndex = normalizedPageText.indexOf(normalizedQuery, offset);
     if (hitIndex === -1) break;
 

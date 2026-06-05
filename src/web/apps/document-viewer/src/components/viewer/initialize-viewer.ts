@@ -22,7 +22,26 @@ import {
   sendRotatePage,
 } from "../../host-bridge.js";
 import type { SearchMatch, LinkedRectEntry } from "../../types/index.js";
+import type { PdfEntry } from "../../types/index.js";
 import type { PdfViewer } from "./pdf-viewer.js";
+
+const INITIAL_SEARCH_RESULT_LIMIT = 150;
+const SEARCH_RESULT_BATCH_SIZE = 50;
+const SEARCH_PAGE_BATCH_SIZE = 12;
+const SEARCH_RESULTS_PANEL_LIMIT = 500;
+const SEARCH_BATCH_DELAY_MS = 20;
+
+function prioritizePdfEntries(entries: PdfEntry[], preferredPdfId: string | null): PdfEntry[] {
+  if (!preferredPdfId) return entries;
+
+  const preferred = entries.find((entry) => entry.id === preferredPdfId);
+  if (!preferred) return entries;
+
+  return [
+    preferred,
+    ...entries.filter((entry) => entry.id !== preferredPdfId),
+  ];
+}
 
 interface DocuLinkDebugApi {
   toggleCharBboxes: () => boolean;
@@ -47,6 +66,7 @@ export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLEleme
   });
 
   let currentPage = 1;
+  let onVisiblePageChanged = (): void => {};
 
   zoom.onChange((scale, anchor) => {
     viewer.setZoom(scale, anchor);
@@ -59,6 +79,7 @@ export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLEleme
   page.onChange((pageNum) => {
     currentPage = pageNum;
     viewer.scrollToPage(pageNum);
+    onVisiblePageChanged();
   });
 
   zoom.onFitPage(() => {
@@ -102,6 +123,7 @@ export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLEleme
   const onNavigateToPage = (pageNumber: number): void => {
     currentPage = pageNumber;
     page.setCurrentPage(pageNumber);
+    onVisiblePageChanged();
   };
 
   const updatePageFromScroll = (): void => {
@@ -131,7 +153,10 @@ export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLEleme
 
   viewer.element.addEventListener("scroll", updatePageFromScroll, { passive: true });
 
-  viewer.element.addEventListener("mousedown", () => search.blur(), { passive: true });
+  viewer.element.addEventListener("mousedown", () => {
+    search.blur();
+    search.hideResults();
+  }, { passive: true });
 
   // ── Text cache & rect-draw overlay ────────────────────────────────────────
 
@@ -157,7 +182,36 @@ export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLEleme
   }, onNavigateToPage);
 
   let lastSearchResults: SearchMatch[] = [];
+  let highlightSearchResults: SearchMatch[] = [];
   let focusedMatch: SearchMatch | null = null;
+  let searchGeneration = 0;
+  let activeSearchSession: ReturnType<PdfTextSearcher["createSession"]> | null = null;
+  let searchHasMore = false;
+  let searchBatchTimer: ReturnType<typeof setTimeout> | null = null;
+
+  const clearSearchBatchTimer = (): void => {
+    if (searchBatchTimer === null) return;
+    clearTimeout(searchBatchTimer);
+    searchBatchTimer = null;
+  };
+
+  const getActivePdfHighlightMatches = (activePdfId: string): SearchMatch[] => {
+    const matches = new Map<string, SearchMatch>();
+
+    for (const match of highlightSearchResults) {
+      if (match.pdfId === activePdfId) matches.set(match.id, match);
+    }
+
+    const query = search.getQuery();
+    const entry = selector.getEntry(activePdfId);
+    if (query && entry) {
+      for (const match of searcher.searchPage(query, entry, currentPage - 1)) {
+        matches.set(match.id, match);
+      }
+    }
+
+    return Array.from(matches.values());
+  };
 
   const applyActivePdfHighlights = (): void => {
     const activePdfId = viewer.getActivePdfId();
@@ -166,7 +220,11 @@ export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLEleme
       return;
     }
 
-    if (focusedMatch && focusedMatch.pdfId === activePdfId) {
+    if (
+      focusedMatch
+      && focusedMatch.pdfId === activePdfId
+      && focusedMatch.pageIndex === currentPage - 1
+    ) {
       matchRenderer.setMatches([focusedMatch]);
       matchRenderer.highlightMatch(focusedMatch.id);
       return;
@@ -176,25 +234,82 @@ export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLEleme
       focusedMatch = null;
     }
 
-    matchRenderer.setMatches(lastSearchResults.filter((m) => m.pdfId === activePdfId));
+    matchRenderer.setMatches(getActivePdfHighlightMatches(activePdfId));
+  };
+
+  onVisiblePageChanged = () => {
+    if (!normalizeSearchQuery(search.getQuery())) return;
+    applyActivePdfHighlights();
+  };
+
+  const publishSearchResults = (): void => {
+    search.setResults(
+      lastSearchResults,
+      searchHasMore,
+      searchHasMore && lastSearchResults.length < SEARCH_RESULTS_PANEL_LIMIT,
+    );
+    applyActivePdfHighlights();
+  };
+
+  const loadSearchBatch = (
+    generation: number,
+    limit: number,
+    scheduleNext: boolean,
+  ): void => {
+    if (generation !== searchGeneration || !activeSearchSession) return;
+
+    const batch = activeSearchSession.nextBatch(limit, SEARCH_PAGE_BATCH_SIZE);
+    if (generation !== searchGeneration) return;
+
+    if (batch.matches.length > 0) {
+      highlightSearchResults = highlightSearchResults.concat(batch.matches);
+
+      if (lastSearchResults.length < SEARCH_RESULTS_PANEL_LIMIT) {
+        const remainingListSlots = SEARCH_RESULTS_PANEL_LIMIT - lastSearchResults.length;
+        lastSearchResults = lastSearchResults.concat(batch.matches.slice(0, remainingListSlots));
+      }
+    }
+
+    searchHasMore = batch.hasMore || highlightSearchResults.length > lastSearchResults.length;
+    publishSearchResults();
+
+    if (!scheduleNext || !batch.hasMore) return;
+
+    searchBatchTimer = setTimeout(() => {
+      searchBatchTimer = null;
+      loadSearchBatch(generation, SEARCH_RESULT_BATCH_SIZE, true);
+    }, SEARCH_BATCH_DELAY_MS);
   };
 
   const runSearch = (query: string): void => {
+    const generation = ++searchGeneration;
+    clearSearchBatchTimer();
     focusedMatch = null;
+    activeSearchSession = null;
+    searchHasMore = false;
 
     if (!query) {
       search.clearResults();
       matchRenderer.clearMatches();
       lastSearchResults = [];
+      highlightSearchResults = [];
       return;
     }
 
-    lastSearchResults = searcher.search(query, selector.getEntries());
-    search.setResults(lastSearchResults);
-    applyActivePdfHighlights();
+    lastSearchResults = [];
+    highlightSearchResults = [];
+    activeSearchSession = searcher.createSession(
+      query,
+      prioritizePdfEntries(selector.getEntries(), viewer.getActivePdfId()),
+    );
+    loadSearchBatch(generation, INITIAL_SEARCH_RESULT_LIMIT, true);
   };
 
   search.onQuery(runSearch);
+  search.onShowMore(() => {
+    clearSearchBatchTimer();
+    loadSearchBatch(searchGeneration, SEARCH_RESULT_BATCH_SIZE, false);
+  });
 
   search.onMatchClicked((match) => {
     focusedMatch = match;
