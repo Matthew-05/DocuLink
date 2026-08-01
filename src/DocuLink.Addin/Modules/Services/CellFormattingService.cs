@@ -1,8 +1,6 @@
 using System.Collections.Generic;
 using System.Drawing;
-using System.Globalization;
 using System.Text;
-using System.Text.RegularExpressions;
 using DocuLink.Addin.Modules.CustomXml.Models;
 using Excel = Microsoft.Office.Interop.Excel;
 
@@ -14,18 +12,6 @@ namespace DocuLink.Addin.Modules.Services
         private static readonly int AutoFill = ColorTranslator.ToOle(Color.FromArgb(221, 235, 255));
         private static readonly int RawFill  = ColorTranslator.ToOle(Color.FromArgb(220, 252, 231));
         private static readonly int SumFill  = ColorTranslator.ToOle(Color.FromArgb(254, 243, 199));
-
-        private static readonly Regex _parentheticalNumber =
-            new Regex(@"^\(([\d,]+(?:\.\d+)?)\)$", RegexOptions.Compiled);
-
-        private static readonly Regex _plainNumber =
-            new Regex(@"^([\d,]+(?:\.\d+)?)$", RegexOptions.Compiled);
-
-        private static readonly Regex _anyParenthetical =
-            new Regex(@"\(([\d,]+(?:\.\d+)?)\)", RegexOptions.Compiled);
-
-        private static readonly Regex _anyPlain =
-            new Regex(@"\b([\d,]+(?:\.\d+)?)\b", RegexOptions.Compiled);
 
         private static readonly IAutoDateFormatPolicy AutoDateFormatPolicy =
             new DefaultAutoDateFormatPolicy();
@@ -150,6 +136,9 @@ namespace DocuLink.Addin.Modules.Services
                 sb.Append('0', info.DecimalPlaces);
             }
 
+            if (info.IsPercent)
+                sb.Append("%");
+
             string positiveFormat = sb.ToString();
             return info.UsesParenthesesForNegative
                 ? positiveFormat + ";(" + positiveFormat + ")"
@@ -158,37 +147,9 @@ namespace DocuLink.Addin.Modules.Services
 
         private static bool TryReadAutoNumberFormat(string text, out AutoNumberFormatInfo formatInfo)
         {
-            formatInfo = null;
-            if (string.IsNullOrEmpty(text)) return false;
-
-            string trimmed = NormalizeAutoNumberText(text);
-            bool isParenthetical = false;
-
-            Match match = _parentheticalNumber.Match(trimmed);
-            if (match.Success)
-            {
-                isParenthetical = true;
-            }
-            else
-            {
-                match = _plainNumber.Match(trimmed);
-            }
-
-            if (!match.Success) return false;
-
-            string sourceNumber = match.Groups[1].Value;
-            string digits = sourceNumber.Replace(",", "");
-            if (!double.TryParse(digits, NumberStyles.Any, CultureInfo.InvariantCulture, out _))
-                return false;
-
-            int decimalIndex = sourceNumber.IndexOf('.');
-            formatInfo = new AutoNumberFormatInfo
-            {
-                HasThousandsSeparator = sourceNumber.IndexOf(',') >= 0,
-                DecimalPlaces = decimalIndex >= 0 ? sourceNumber.Length - decimalIndex - 1 : 0,
-                UsesParenthesesForNegative = isParenthetical,
-            };
-            return true;
+            ParsedNumber number = NumberTextParser.TryParseWhole(text);
+            formatInfo = number == null ? null : AutoNumberFormatInfo.From(number);
+            return number != null;
         }
 
         private static bool TryReadSumNumberFormat(
@@ -205,12 +166,13 @@ namespace DocuLink.Addin.Modules.Services
             {
                 if (string.IsNullOrEmpty(text)) continue;
 
-                foreach (AutoNumberFormatInfo numberInfo in ReadNumberFormats(text))
+                foreach (ParsedNumber number in NumberTextParser.FindAll(text))
                 {
                     found = true;
-                    info.HasThousandsSeparator |= numberInfo.HasThousandsSeparator;
-                    info.DecimalPlaces = System.Math.Max(info.DecimalPlaces, numberInfo.DecimalPlaces);
-                    info.UsesParenthesesForNegative |= numberInfo.UsesParenthesesForNegative;
+                    info.HasThousandsSeparator |= number.HasThousandsSeparator;
+                    info.DecimalPlaces = System.Math.Max(info.DecimalPlaces, number.DecimalPlaces);
+                    info.UsesParenthesesForNegative |= number.UsesParenthesesForNegative;
+                    info.IsPercent |= number.IsPercent;
                 }
             }
 
@@ -218,63 +180,20 @@ namespace DocuLink.Addin.Modules.Services
             return found;
         }
 
-        private static IEnumerable<AutoNumberFormatInfo> ReadNumberFormats(string text)
-        {
-            var consumed = new bool[text.Length];
-
-            foreach (Match match in _anyParenthetical.Matches(text))
-            {
-                if (TryReadNumberFormat(match.Groups[1].Value, true, out AutoNumberFormatInfo info))
-                {
-                    yield return info;
-                    for (int i = match.Index; i < match.Index + match.Length; i++)
-                        consumed[i] = true;
-                }
-            }
-
-            foreach (Match match in _anyPlain.Matches(text))
-            {
-                if (consumed[match.Index]) continue;
-
-                if (TryReadNumberFormat(match.Groups[1].Value, false, out AutoNumberFormatInfo info))
-                    yield return info;
-            }
-        }
-
-        private static bool TryReadNumberFormat(
-            string sourceNumber,
-            bool isParenthetical,
-            out AutoNumberFormatInfo formatInfo)
-        {
-            formatInfo = null;
-
-            string digits = sourceNumber.Replace(",", "");
-            if (!double.TryParse(digits, NumberStyles.Any, CultureInfo.InvariantCulture, out _))
-                return false;
-
-            int decimalIndex = sourceNumber.IndexOf('.');
-            formatInfo = new AutoNumberFormatInfo
-            {
-                HasThousandsSeparator = sourceNumber.IndexOf(',') >= 0,
-                DecimalPlaces = decimalIndex >= 0 ? sourceNumber.Length - decimalIndex - 1 : 0,
-                UsesParenthesesForNegative = isParenthetical,
-            };
-            return true;
-        }
-
-        private static string NormalizeAutoNumberText(string text)
-        {
-            string normalized = Regex.Replace(text.Trim(), @"\s+", "");
-            return normalized.StartsWith("$", System.StringComparison.Ordinal)
-                ? normalized.Substring(1)
-                : normalized;
-        }
-
         private sealed class AutoNumberFormatInfo
         {
             public bool HasThousandsSeparator { get; set; }
             public int DecimalPlaces { get; set; }
             public bool UsesParenthesesForNegative { get; set; }
+            public bool IsPercent { get; set; }
+
+            public static AutoNumberFormatInfo From(ParsedNumber number) => new AutoNumberFormatInfo
+            {
+                HasThousandsSeparator = number.HasThousandsSeparator,
+                DecimalPlaces = number.DecimalPlaces,
+                UsesParenthesesForNegative = number.UsesParenthesesForNegative,
+                IsPercent = number.IsPercent,
+            };
         }
     }
 }

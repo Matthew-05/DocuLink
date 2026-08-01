@@ -224,6 +224,7 @@
     <Compile Include="Modules\Services\LinkCellResolver.cs" />
     <Compile Include="Modules\Services\LinkCellTracker.cs" />
     <Compile Include="Modules\Services\ManageFilesService.cs" />
+    <Compile Include="Modules\Services\NumberTextParser.cs" />
     <Compile Include="Modules\Services\OcrService.cs" />
     <Compile Include="Modules\Services\PdfImportService.cs" />
     <Compile Include="Modules\Services\PdfStatus.cs" />

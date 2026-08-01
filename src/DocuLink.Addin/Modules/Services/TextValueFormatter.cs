@@ -1,4 +1,3 @@
-using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Text;
@@ -11,76 +10,23 @@ namespace DocuLink.Addin.Modules.Services
     /// </summary>
     internal static class TextValueFormatter
     {
-        // Matches an entire string that is a parenthetical number: (1,234.56)
-        private static readonly Regex _parentheticalNumber =
-            new Regex(@"^\(([\d,]+(?:\.\d+)?)\)$", RegexOptions.Compiled);
-
-        // Matches an entire string that is a plain positive number: 1,234.56
-        private static readonly Regex _plainNumber =
-            new Regex(@"^([\d,]+(?:\.\d+)?)$", RegexOptions.Compiled);
-
-        // Finds all numbers inside a string (parenthetical or plain) for Sum parsing
-        private static readonly Regex _anyParenthetical =
-            new Regex(@"\(([\d,]+(?:\.\d+)?)\)", RegexOptions.Compiled);
-
-        private static readonly Regex _anyPlain =
-            new Regex(@"\b([\d,]+(?:\.\d+)?)\b", RegexOptions.Compiled);
-
         /// <summary>
         /// Auto format: converts date-like values to Excel date serials, converts
-        /// parenthetical numbers to negatives, and strips numeric thousand-separator
-        /// commas. Returns a <see cref="double"/> when the entire trimmed text is a
-        /// date or number; otherwise returns normalized text.
+        /// parenthetical numbers to negatives, converts percentages ("1.15%") to their
+        /// decimal fraction (0.0115) as Excel expects for percent-formatted cells, and
+        /// strips numeric thousand-separator commas. Returns a <see cref="double"/> when
+        /// the entire trimmed text is a date or number; otherwise returns normalized text.
         /// </summary>
         public static object FormatAuto(string text)
         {
             if (AutoDateParser.TryParse(text, out AutoDateParseResult dateResult))
                 return dateResult.Value.ToOADate();
 
-            if (TryParseAutoNumber(text, out double value, out _))
-                return value;
+            ParsedNumber number = NumberTextParser.TryParseWhole(text);
+            if (number != null)
+                return number.Value;
 
             return NormalizeAutoTextContent(text);
-        }
-
-        private static bool TryParseAutoNumber(
-            string text,
-            out double value,
-            out bool isParenthetical)
-        {
-            value = 0;
-            isParenthetical = false;
-            if (string.IsNullOrEmpty(text)) return false;
-
-            string trimmed = NormalizeAutoNumberText(text);
-
-            Match match = _parentheticalNumber.Match(trimmed);
-            if (match.Success)
-            {
-                isParenthetical = true;
-            }
-            else
-            {
-                match = _plainNumber.Match(trimmed);
-            }
-
-            if (!match.Success) return false;
-
-            string sourceNumber = match.Groups[1].Value;
-            string digits = sourceNumber.Replace(",", "");
-            if (!double.TryParse(digits, NumberStyles.Any, CultureInfo.InvariantCulture, out double parsed))
-                return false;
-
-            value = isParenthetical ? -parsed : parsed;
-            return true;
-        }
-
-        private static string NormalizeAutoNumberText(string text)
-        {
-            string normalized = Regex.Replace(text.Trim(), @"\s+", "");
-            return normalized.StartsWith("$", StringComparison.Ordinal)
-                ? normalized.Substring(1)
-                : normalized;
         }
 
         private static string NormalizeAutoTextContent(string text)
@@ -126,29 +72,10 @@ namespace DocuLink.Addin.Modules.Services
             var result = new List<double>();
             if (string.IsNullOrEmpty(text)) return result;
 
-            // Work on a copy; mark positions consumed by parenthetical matches to avoid double-counting
-            var consumed = new bool[text.Length];
-
-            foreach (Match m in _anyParenthetical.Matches(text))
-            {
-                string digits = m.Groups[1].Value.Replace(",", "");
-                if (double.TryParse(digits, NumberStyles.Any, CultureInfo.InvariantCulture, out double val))
-                {
-                    result.Add(-val);
-                    for (int i = m.Index; i < m.Index + m.Length; i++)
-                        consumed[i] = true;
-                }
-            }
-
-            // Find plain numbers not inside already-consumed ranges
-            foreach (Match m in _anyPlain.Matches(text))
-            {
-                if (consumed[m.Index]) continue;
-
-                string digits = m.Groups[1].Value.Replace(",", "");
-                if (double.TryParse(digits, NumberStyles.Any, CultureInfo.InvariantCulture, out double val))
-                    result.Add(val);
-            }
+            // Percentages are resolved to their decimal fraction (1.15% -> 0.0115) so they
+            // sum correctly alongside plain and parenthetical-negative numbers.
+            foreach (ParsedNumber number in NumberTextParser.FindAll(text))
+                result.Add(number.Value);
 
             return result;
         }
