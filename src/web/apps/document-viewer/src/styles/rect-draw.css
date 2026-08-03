@@ -43,9 +43,17 @@
   z-index: 2;
 }
 
+/* Member of a multi-cell Excel selection: tinted, but not the focused rectangle. */
+.rect-draw__link--selected {
+  background: var(--rect-link-selected-fill, rgba(37, 99, 235, 0.28));
+  border-color: var(--rect-link-selected-border, rgba(37, 99, 235, 0.85));
+  border-style: dashed;
+}
+
 .rect-draw__link--highlighted {
   background: var(--rect-link-selected-fill, rgba(37, 99, 235, 0.28));
   border-color: var(--rect-link-selected-border, rgba(37, 99, 235, 0.85));
+  border-style: solid;
 }
 
 .rect-draw__link--removed {

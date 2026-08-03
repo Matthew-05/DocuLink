@@ -1,6 +1,7 @@
 import { initHostBridge, sendViewerContentReady } from "../../host-bridge.js";
+import type { HostMessageHandlers } from "../../host-bridge.js";
 import type { TextContentCache } from "../../services/text-content-cache.js";
-import type { PdfEntry, LinkedRectEntry } from "../../types/index.js";
+import type { PdfEntry } from "../../types/index.js";
 import type { PdfSelector } from "../toolbar/pdf-selector.js";
 import type { PdfViewer } from "./pdf-viewer.js";
 
@@ -30,17 +31,22 @@ async function indexAllPdfs(
  * active PDF is reloaded (falling back to the first entry when none is active)
  * so OCR updates and other storage changes are reflected in the viewer.
  */
+/**
+ * Handlers supplied by the caller. PDF lifecycle messages (`onPdfsLoaded`,
+ * `onPdfUpdated`, `onPdfNameUpdated`, `onPdfRemoved`) are owned by this module
+ * because they drive the selector, cache, and document loading.
+ */
+export type ViewerHostHandlers = Omit<
+  HostMessageHandlers,
+  "onPdfsLoaded" | "onPdfUpdated" | "onPdfNameUpdated" | "onPdfRemoved"
+>;
+
 export function connectViewerToHostBridge(
   viewer: PdfViewer,
   selector: PdfSelector,
   cache: TextContentCache,
   onIndexingStateChange: (indexing: boolean) => void,
-  onLinkedRectangles?: (rects: LinkedRectEntry[]) => void,
-  onNavigateToRectangle?: (id: string, pdfId: string, page: number) => void,
-  onClearRectangleHighlight?: () => void,
-  onHighlightRectangle?: (id: string) => void,
-  onLinkRectanglesRemoved?: (ids: string[]) => void,
-  onPageRotationsUpdated?: (pdfId: string, rotations: Record<number, number>) => void,
+  handlers: ViewerHostHandlers = {},
 ): void {
   let indexingCount = 0;
 
@@ -61,8 +67,10 @@ export function connectViewerToHostBridge(
     viewer.startBackgroundRender();
   };
 
-  initHostBridge(
-    (entries) => {
+  initHostBridge({
+    ...handlers,
+
+    onPdfsLoaded: (entries) => {
       void (async () => {
         try {
           selector.setEntries(entries);
@@ -82,11 +90,8 @@ export function connectViewerToHostBridge(
         }
       })();
     },
-    onLinkedRectangles,
-    onNavigateToRectangle,
-    onClearRectangleHighlight,
-    onHighlightRectangle,
-    (entry) => {
+
+    onPdfUpdated: (entry) => {
       selector.upsertEntry(entry);
 
       startIndexing();
@@ -99,11 +104,12 @@ export function connectViewerToHostBridge(
         void reloadEntry(entry);
       }
     },
-    onLinkRectanglesRemoved,
-    (id, name) => {
+
+    onPdfNameUpdated: (id, name) => {
       selector.updateEntryName(id, name);
     },
-    (id) => {
+
+    onPdfRemoved: (id) => {
       cache.clearPdf(id);
       selector.removeEntry(id);
       if (viewer.getActivePdfId() === id) {
@@ -112,6 +118,5 @@ export function connectViewerToHostBridge(
         else viewer.showNoPdfsState();
       }
     },
-    onPageRotationsUpdated,
-  );
+  });
 }

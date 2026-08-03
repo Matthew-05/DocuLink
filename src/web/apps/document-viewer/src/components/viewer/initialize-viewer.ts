@@ -6,6 +6,7 @@ import { RectDrawOverlay } from "./rect-draw-overlay.js";
 import { RectEditOverlay } from "./rect-edit-overlay.js";
 import { RectRenderer } from "./rect-renderer.js";
 import { RectContextMenu } from "./rect-context-menu.js";
+import { LinkSelectionPanel } from "./link-selection-panel.js";
 import { CharBboxOverlay } from "./char-bbox-overlay.js";
 import { createRectNavigator } from "./rect-navigator.js";
 import { PdfTextSearcher, normalizeSearchQuery } from "./pdf-text-searcher.js";
@@ -21,7 +22,7 @@ import {
   sendCacheBuildComplete,
   sendRotatePage,
 } from "../../host-bridge.js";
-import type { SearchMatch, LinkedRectEntry } from "../../types/index.js";
+import type { SearchMatch, LinkedRectEntry, LinkSelectionEntry } from "../../types/index.js";
 import type { PdfEntry } from "../../types/index.js";
 import type { PdfViewer } from "./pdf-viewer.js";
 
@@ -161,6 +162,7 @@ export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLEleme
   // ── Text cache & rect-draw overlay ────────────────────────────────────────
 
   let _currentRects: LinkedRectEntry[] = [];
+  let _currentSelection: LinkSelectionEntry[] = [];
 
   const computeLinkCounts = (rects: LinkedRectEntry[]): Record<string, number> => {
     const counts: Record<string, number> = {};
@@ -171,6 +173,7 @@ export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLEleme
   const cache           = new TextContentCache();
   const renderer        = new RectRenderer(viewer);
   const contextMenu     = new RectContextMenu();
+  const selectionPanel  = new LinkSelectionPanel();
   const overlay         = new RectDrawOverlay(viewer, cache);
   const editOverlay     = new RectEditOverlay(viewer, cache, renderer);
   const charBboxDebug   = new CharBboxOverlay(viewer, cache);
@@ -180,6 +183,14 @@ export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLEleme
     zoom.setScale(scale);
     viewer.setZoom(scale);
   }, onNavigateToPage);
+
+  const setLinkSelection = (entries: LinkSelectionEntry[]): void => {
+    _currentSelection = entries;
+    selectionPanel.setEntries(entries);
+    renderer.setSelectedRectangles(entries.map((e) => e.id));
+  };
+
+  const clearLinkSelection = (): void => setLinkSelection([]);
 
   let lastSearchResults: SearchMatch[] = [];
   let highlightSearchResults: SearchMatch[] = [];
@@ -350,7 +361,12 @@ export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLEleme
 
   renderer.setClickGuard(() => editOverlay.consumeClickSuppression());
 
-  renderer.onRectClicked((id) => sendLinkRectangleClicked(id));
+  renderer.onRectClicked((id) => {
+    // Clicking a rectangle selects its single cell in Excel, which ends any
+    // multi-cell selection the panel was describing.
+    clearLinkSelection();
+    sendLinkRectangleClicked(id);
+  });
 
   renderer.onRectContextMenu((id, x, y) => {
     contextMenu.show(x, y, id);
@@ -412,6 +428,10 @@ export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLEleme
     viewer.setZoom(scale);
   }, onNavigateToPage);
 
+  selectionPanel.onEntryClicked((entry) => {
+    navigate(entry.id, entry.pdfId, entry.page);
+  });
+
   connectViewerToHostBridge(
     viewer,
     selector,
@@ -425,33 +445,40 @@ export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLEleme
         if (query) runSearch(query);
       }
     },
-    (rects) => {
-      contextMenu.hide();
-      _currentRects = rects;
-      renderer.setRectangles(rects);
-      selector.updateLinkCounts(computeLinkCounts(rects));
-    },
-    navigate,
-    () => { renderer.clearHighlight(); },
-    (id) => { renderer.highlightRectangle(id); },
-    (ids) => {
-      contextMenu.hide();
-      renderer.removeRectangles(ids);
-      const removed = new Set(ids);
-      _currentRects = _currentRects.filter((r) => !removed.has(r.id));
-      selector.updateLinkCounts(computeLinkCounts(_currentRects));
-    },
-    (pdfId, rotations) => {
-      selector.updatePdfRotations(pdfId, rotations);
-      if (pdfId === viewer.getActivePdfId()) {
-        for (const [k, v] of Object.entries(rotations)) {
-          viewer.setPageRotation(Number(k), v);
+    {
+      onLinkedRectangles: (rects) => {
+        contextMenu.hide();
+        _currentRects = rects;
+        renderer.setRectangles(rects);
+        selector.updateLinkCounts(computeLinkCounts(rects));
+      },
+      onNavigateToRectangle: (id, pdfId, page) => {
+        selectionPanel.setActiveEntry(id);
+        navigate(id, pdfId, page);
+      },
+      onClearRectangleHighlight: () => { renderer.clearHighlight(); },
+      onHighlightRectangle: (id) => { renderer.highlightRectangle(id); },
+      onLinkSelectionChanged: setLinkSelection,
+      onLinkRectanglesRemoved: (ids) => {
+        contextMenu.hide();
+        renderer.removeRectangles(ids);
+        const removed = new Set(ids);
+        _currentRects = _currentRects.filter((r) => !removed.has(r.id));
+        selector.updateLinkCounts(computeLinkCounts(_currentRects));
+        setLinkSelection(_currentSelection.filter((e) => !removed.has(e.id)));
+      },
+      onPageRotationsUpdated: (pdfId, rotations) => {
+        selector.updatePdfRotations(pdfId, rotations);
+        if (pdfId === viewer.getActivePdfId()) {
+          for (const [k, v] of Object.entries(rotations)) {
+            viewer.setPageRotation(Number(k), v);
+          }
         }
-      }
+      },
     },
   );
 
-  // ── Floating link-type bar ────────────────────────────────────────────────
+  // ── Floating link-type bar & selection panel ──────────────────────────────
 
   const linkTypeBar = document.createElement("div");
   linkTypeBar.className = "link-type-bar";
@@ -460,7 +487,7 @@ export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLEleme
 
   const viewerWrapper = document.createElement("div");
   viewerWrapper.className = "viewer-wrapper";
-  viewerWrapper.append(viewer.element, linkTypeBar);
+  viewerWrapper.append(viewer.element, linkTypeBar, selectionPanel.element);
 
   return { toolbarElement, viewerWrapper };
 }

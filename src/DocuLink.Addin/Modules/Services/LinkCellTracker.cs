@@ -120,53 +120,92 @@ namespace DocuLink.Addin.Modules.Services
             catch (COMException) { }
         }
 
+        /// <summary>A linked cell discovered inside a selection, with its TrackIndex.</summary>
+        public sealed class TrackedCell
+        {
+            public TrackedCell(int trackIndex, Excel.Range cell)
+            {
+                TrackIndex = trackIndex;
+                Cell = cell;
+            }
+
+            public int TrackIndex { get; }
+
+            public Excel.Range Cell { get; }
+        }
+
+        /// <summary>
+        /// Returns every DocuLink-bound cell that lies inside <paramref name="target"/>,
+        /// ordered by row then column. Enumerates the workbook's XmlMaps once, so it is
+        /// the cheap way to resolve a multi-cell selection.
+        /// </summary>
+        public static IList<TrackedCell> FindTrackedCellsInRange(Excel.Range target)
+        {
+            var found = new List<TrackedCell>();
+            if (target == null) return found;
+
+            Excel.Workbook workbook;
+            Excel.Application app;
+            try
+            {
+                var worksheet = target.Worksheet as Excel.Worksheet;
+                if (worksheet == null) return found;
+                workbook = worksheet.Parent as Excel.Workbook;
+                if (workbook == null) return found;
+                app = workbook.Application as Excel.Application;
+                if (app == null) return found;
+            }
+            catch (COMException) { return found; }
+
+            // Reverse lookup: probe each DocuLink XmlMap via XmlDataQuery rather than
+            // calling cell.XPath.Map, which throws a COMException on unbound cells in
+            // some Excel versions.
+            foreach (Excel.XmlMap map in workbook.XmlMaps)
+            {
+                string name;
+                try { name = map.Name; } catch (COMException) { continue; }
+
+                if (string.IsNullOrEmpty(name) ||
+                    !name.StartsWith(MapNamePrefix, StringComparison.Ordinal))
+                    continue;
+
+                if (!int.TryParse(name.Substring(MapNamePrefix.Length), out int idx) || idx <= 0)
+                    continue;
+
+                Excel.Range boundRange = FindRangeForMap(workbook, map);
+                if (boundRange == null) continue;
+
+                try
+                {
+                    // Intersect throws when the ranges live on different sheets.
+                    if (app.Intersect(boundRange, target) == null) continue;
+                }
+                catch (COMException) { continue; }
+
+                found.Add(new TrackedCell(idx, boundRange));
+            }
+
+            found.Sort((a, b) =>
+            {
+                try
+                {
+                    int rowCompare = a.Cell.Row.CompareTo(b.Cell.Row);
+                    return rowCompare != 0 ? rowCompare : a.Cell.Column.CompareTo(b.Cell.Column);
+                }
+                catch (COMException) { return 0; }
+            });
+
+            return found;
+        }
+
         /// <summary>
         /// Returns the TrackIndex encoded in the XmlMap bound to <paramref name="cell"/>,
         /// or 0 if the cell carries no DocuLink XPath binding.
         /// </summary>
         public static int FindTrackIndexForCell(Excel.Range cell)
         {
-            if (cell == null) return 0;
-
-            try
-            {
-                var worksheet = cell.Worksheet as Excel.Worksheet;
-                if (worksheet == null) return 0;
-                var workbook = worksheet.Parent as Excel.Workbook;
-                if (workbook == null) return 0;
-
-                int cellRow = cell.Row;
-                int cellCol = cell.Column;
-
-                // Reverse lookup: probe each DocuLink XmlMap via XmlDataQuery rather than
-                // calling cell.XPath.Map, which throws a COMException on unbound cells in
-                // some Excel versions.
-                foreach (Excel.XmlMap map in workbook.XmlMaps)
-                {
-                    string name;
-                    try { name = map.Name; } catch (COMException) { continue; }
-
-                    if (string.IsNullOrEmpty(name) ||
-                        !name.StartsWith(MapNamePrefix, StringComparison.Ordinal))
-                        continue;
-
-                    string suffix = name.Substring(MapNamePrefix.Length);
-                    if (!int.TryParse(suffix, out int idx) || idx <= 0) continue;
-
-                    try
-                    {
-                        object result = worksheet.XmlDataQuery(LinkXPath, Type.Missing, map);
-                        if (result is Excel.Range boundRange &&
-                            boundRange.Row == cellRow &&
-                            boundRange.Column == cellCol)
-                            return idx;
-                    }
-                    catch (COMException) { }
-                }
-
-                return 0;
-            }
-            catch (COMException) { return 0; }
+            IList<TrackedCell> tracked = FindTrackedCellsInRange(cell);
+            return tracked.Count > 0 ? tracked[0].TrackIndex : 0;
         }
 
         /// <summary>

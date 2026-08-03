@@ -510,6 +510,22 @@ namespace DocuLink.Addin.Modules.WebView
             }
         }
 
+        internal void SendLinkSelectionChanged(IList<LinkSelectionEntry> entries)
+        {
+            if (!_webViewReady) return;
+
+            try
+            {
+                _webView.CoreWebView2.PostWebMessageAsString(
+                    HostMessageSerializer.BuildLinkSelectionChanged(entries));
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine(
+                    $"[DocuLink] SendLinkSelectionChanged failed: {ex.Message}");
+            }
+        }
+
         internal void SendNavigateToRectangle(string id, string pdfId, int page)
         {
             if (!_webViewReady)

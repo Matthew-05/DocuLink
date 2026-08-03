@@ -18,6 +18,9 @@ namespace DocuLink.Addin.Modules.WebView
 
         public void SendClearRectangleHighlight() => _controller.SendClearRectangleHighlight();
 
+        public void SendLinkSelectionChanged(System.Collections.Generic.IList<LinkSelectionEntry> entries) =>
+            _controller.SendLinkSelectionChanged(entries);
+
         public void SendLinkRectanglesRemoved(System.Collections.Generic.IList<string> ids) =>
             _controller.SendLinkRectanglesRemoved(ids);
 

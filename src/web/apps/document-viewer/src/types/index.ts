@@ -47,6 +47,17 @@ export interface LinkedRectEntry {
   linkType?: LinkType;
 }
 
+/** One linked cell inside the current Excel selection. */
+export interface LinkSelectionEntry {
+  id: string;
+  pdfId: string;
+  /** Display name of the owning PDF; shown only when the selection spans documents. */
+  pdfName: string;
+  page: number; // 0-based
+  /** Displayed text of the linked Excel cell. */
+  value: string;
+}
+
 export interface SearchMatch {
   id: string;
   pdfId: string;

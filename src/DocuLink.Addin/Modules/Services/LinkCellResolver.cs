@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using DocuLink.Addin.Modules.CustomXml.Models;
 using Excel = Microsoft.Office.Interop.Excel;
@@ -10,6 +11,50 @@ namespace DocuLink.Addin.Modules.Services
     /// </summary>
     internal static class LinkCellResolver
     {
+        /// <summary>A persisted link paired with the Excel cell currently bound to it.</summary>
+        internal sealed class SelectedLink
+        {
+            internal SelectedLink(LinkedRectangle rectangle, Excel.Range cell)
+            {
+                Rectangle = rectangle;
+                Cell = cell;
+            }
+
+            internal LinkedRectangle Rectangle { get; }
+
+            internal Excel.Range Cell { get; }
+        }
+
+        /// <summary>
+        /// Returns every link in <paramref name="links"/> whose tracked cell lies inside
+        /// <paramref name="selection"/>, ordered top-to-bottom then left-to-right.
+        /// Resolves the whole selection in a single pass over the workbook's XmlMaps.
+        /// </summary>
+        internal static IList<SelectedLink> ResolveLinksInSelection(
+            IList<LinkedRectangle> links,
+            Excel.Range selection)
+        {
+            var result = new List<SelectedLink>();
+            if (links == null || links.Count == 0 || selection == null)
+                return result;
+
+            var byTrackIndex = new Dictionary<int, LinkedRectangle>();
+            foreach (LinkedRectangle link in links)
+            {
+                if (link?.LinkedCell != null && link.LinkedCell.TrackIndex > 0)
+                    byTrackIndex[link.LinkedCell.TrackIndex] = link;
+            }
+
+            foreach (LinkCellTracker.TrackedCell tracked in
+                     LinkCellTracker.FindTrackedCellsInRange(selection))
+            {
+                if (byTrackIndex.TryGetValue(tracked.TrackIndex, out LinkedRectangle link))
+                    result.Add(new SelectedLink(link, tracked.Cell));
+            }
+
+            return result;
+        }
+
         internal static Excel.Range TryResolveCell(Excel.Workbook workbook, LinkedRectangle rect)
         {
             // PRIMARY: Query XmlMap binding (always current through cell moves and worksheet renames)

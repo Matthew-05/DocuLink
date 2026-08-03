@@ -1111,49 +1111,21 @@ namespace DocuLink.Addin
 
             {
 
-                Excel.Range firstCell = (Excel.Range)target.Cells[1, 1];
-
-                int trackIndex = LinkCellTracker.FindTrackIndexForCell(firstCell);
-
-
-
-                if (trackIndex <= 0)
-
-                {
-
-                    GetActiveViewerHost()?.SendClearRectangleHighlight();
-
-                    return;
-
-                }
-
-
-
                 Excel.Workbook wb = Application?.ActiveWorkbook;
 
                 if (wb == null) return;
 
 
 
-                IList<LinkedRectangle> links = GetStorageSession(wb).GetLinks();
+                WorkbookStorageSession session = GetStorageSession(wb);
 
-                LinkedRectangle rect = null;
+                IList<LinkSelectionEntry> selectedLinks = BuildLinkSelection(session, target, out LinkedRectangle rect);
 
-                foreach (LinkedRectangle r in links)
 
-                {
 
-                    if (r.LinkedCell.TrackIndex == trackIndex)
+                // Always publish the selection so the viewer can show or hide its panel.
 
-                    {
-
-                        rect = r;
-
-                        break;
-
-                    }
-
-                }
+                GetActiveViewerHost()?.SendLinkSelectionChanged(selectedLinks);
 
 
 
@@ -1202,6 +1174,100 @@ namespace DocuLink.Addin
                     $"[DocuLink] Application_SheetSelectionChange failed: {ex.Message}");
 
             }
+
+        }
+
+
+
+        /// <summary>
+
+        /// Maps the linked cells inside <paramref name="target"/> to viewer payload entries and
+
+        /// reports the first one via <paramref name="firstRect"/> for navigation.
+
+        /// Entries are only populated for multi-link selections — a single linked cell is
+
+        /// handled by navigation alone, so the viewer keeps its selection panel hidden.
+
+        /// </summary>
+
+        private IList<LinkSelectionEntry> BuildLinkSelection(
+
+            WorkbookStorageSession session,
+
+            Excel.Range target,
+
+            out LinkedRectangle firstRect)
+
+        {
+
+            firstRect = null;
+
+            var entries = new List<LinkSelectionEntry>();
+
+
+
+            IList<LinkCellResolver.SelectedLink> selected =
+
+                LinkCellResolver.ResolveLinksInSelection(session.GetLinks(), target);
+
+            if (selected.Count == 0) return entries;
+
+
+
+            firstRect = selected[0].Rectangle;
+
+            if (selected.Count < 2) return entries;
+
+
+
+            var pdfNames = new Dictionary<string, string>(StringComparer.Ordinal);
+
+            foreach (PdfMetadata pdf in session.Store.LoadContent().Pdfs)
+
+            {
+
+                if (!string.IsNullOrEmpty(pdf?.Id))
+
+                    pdfNames[pdf.Id] = pdf.Name ?? string.Empty;
+
+            }
+
+
+
+            foreach (LinkCellResolver.SelectedLink link in selected)
+
+            {
+
+                string value = string.Empty;
+
+                try { value = link.Cell.Text?.ToString() ?? string.Empty; }
+
+                catch (COMException) { }
+
+
+
+                pdfNames.TryGetValue(link.Rectangle.PdfId ?? string.Empty, out string pdfName);
+
+
+
+                entries.Add(new LinkSelectionEntry(
+
+                    link.Rectangle.Id,
+
+                    link.Rectangle.PdfId,
+
+                    pdfName ?? string.Empty,
+
+                    link.Rectangle.Rectangle.PageIndex,
+
+                    value));
+
+            }
+
+
+
+            return entries;
 
         }
 

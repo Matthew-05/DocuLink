@@ -562,6 +562,55 @@
       ]
     },
 
+    "LinkSelectionEntryPayload": {
+      "description": "One linked cell contained in the current Excel selection.",
+      "type": "object",
+      "required": ["id", "pdfId", "pdfName", "page", "value"],
+      "additionalProperties": false,
+      "properties": {
+        "id":      { "type": "string", "description": "GUID of the LinkedRectangle." },
+        "pdfId":   { "type": "string", "description": "GUID of the PDF containing the rectangle." },
+        "pdfName": { "type": "string", "description": "Display name of the PDF, shown only when the selection spans multiple documents." },
+        "page":    { "type": "integer", "minimum": 0, "description": "0-based page index of the rectangle." },
+        "value":   { "type": "string", "description": "Displayed text of the linked Excel cell (Range.Text), empty when unavailable." }
+      }
+    },
+
+    "LinkSelectionChangedMessage": {
+      "description": "Sent by the C# host on every Excel selection change while a viewer is open. Entries list every linked cell inside the selection, ordered top-to-bottom then left-to-right. The host only populates entries when the selection contains at least two linked cells; an empty list tells the viewer to hide the multi-selection panel. Navigation and highlighting of the first selected link continue to use navigate-to-rectangle.",
+      "type": "object",
+      "required": ["type", "entries"],
+      "additionalProperties": false,
+      "properties": {
+        "type":    { "const": "link-selection-changed" },
+        "entries": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/LinkSelectionEntryPayload" }
+        }
+      },
+      "examples": [
+        {
+          "type": "link-selection-changed",
+          "entries": [
+            {
+              "id":      "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+              "pdfId":   "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+              "pdfName": "Invoice-2024.pdf",
+              "page":    0,
+              "value":   "$1,234.00"
+            },
+            {
+              "id":      "b2c3d4e5-f6a7-8901-bcde-f23456789012",
+              "pdfId":   "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+              "pdfName": "Invoice-2024.pdf",
+              "page":    2,
+              "value":   "$98.00"
+            }
+          ]
+        }
+      ]
+    },
+
     "ResetUiMessage": {
       "description": "Sent by the C# host when the file-manager window is hidden. The web app should reset transient UI state so the next show starts fresh.",
       "type": "object",
@@ -848,6 +897,7 @@
     { "$ref": "#/definitions/NavigateToRectangleMessage" },
     { "$ref": "#/definitions/ClearRectangleHighlightMessage" },
     { "$ref": "#/definitions/HighlightRectangleMessage" },
+    { "$ref": "#/definitions/LinkSelectionChangedMessage" },
     { "$ref": "#/definitions/ResetUiMessage" },
     { "$ref": "#/definitions/CancelOcrMessage" },
     { "$ref": "#/definitions/OcrPdfsMessage" },

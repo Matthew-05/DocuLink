@@ -1,4 +1,30 @@
-import type { PdfEntry, LinkRectPayload, LinkRectUpdatedPayload, LinkedRectEntry, LinkType, NormalizedRect } from "./types/index.js";
+import type {
+  PdfEntry,
+  LinkRectPayload,
+  LinkRectUpdatedPayload,
+  LinkedRectEntry,
+  LinkSelectionEntry,
+  LinkType,
+  NormalizedRect,
+} from "./types/index.js";
+
+/**
+ * Callbacks invoked for each host→viewer message type.
+ * Every handler except `onPdfsLoaded` is optional; unhandled messages are ignored.
+ */
+export interface HostMessageHandlers {
+  onPdfsLoaded: (entries: PdfEntry[]) => void;
+  onLinkedRectangles?: (rects: LinkedRectEntry[]) => void;
+  onNavigateToRectangle?: (id: string, pdfId: string, page: number) => void;
+  onClearRectangleHighlight?: () => void;
+  onHighlightRectangle?: (id: string) => void;
+  onLinkSelectionChanged?: (entries: LinkSelectionEntry[]) => void;
+  onPdfUpdated?: (entry: PdfEntry) => void;
+  onLinkRectanglesRemoved?: (ids: string[]) => void;
+  onPdfNameUpdated?: (id: string, name: string) => void;
+  onPdfRemoved?: (id: string) => void;
+  onPageRotationsUpdated?: (pdfId: string, rotations: Record<number, number>) => void;
+}
 
 interface PdfPayload {
   id: string;
@@ -64,6 +90,19 @@ interface HighlightRectangleMessage {
   id: string;
 }
 
+interface LinkSelectionEntryPayload {
+  id: string;
+  pdfId: string;
+  pdfName: string;
+  page: number;
+  value: string;
+}
+
+interface LinkSelectionChangedMessage {
+  type: "link-selection-changed";
+  entries: LinkSelectionEntryPayload[];
+}
+
 interface PageRotationsUpdatedMessage {
   type: "page-rotations-updated";
   pdfId: string;
@@ -124,19 +163,21 @@ function normalizeLinkType(value: unknown): LinkType {
   return value === "raw" || value === "sum" ? value : "auto";
 }
 
-function handleMessage(
-  raw: unknown,
-  onEntries: (entries: PdfEntry[]) => void,
-  onLinkedRectangles?: (rects: LinkedRectEntry[]) => void,
-  onNavigateToRectangle?: (id: string, pdfId: string, page: number) => void,
-  onClearRectangleHighlight?: () => void,
-  onHighlightRectangle?: (id: string) => void,
-  onPdfUpdated?: (entry: PdfEntry) => void,
-  onLinkRectanglesRemoved?: (ids: string[]) => void,
-  onPdfNameUpdated?: (id: string, name: string) => void,
-  onPdfRemoved?: (id: string) => void,
-  onPageRotationsUpdated?: (pdfId: string, rotations: Record<number, number>) => void,
-): void {
+function handleMessage(raw: unknown, handlers: HostMessageHandlers): void {
+  const {
+    onPdfsLoaded,
+    onLinkedRectangles,
+    onNavigateToRectangle,
+    onClearRectangleHighlight,
+    onHighlightRectangle,
+    onLinkSelectionChanged,
+    onPdfUpdated,
+    onLinkRectanglesRemoved,
+    onPdfNameUpdated,
+    onPdfRemoved,
+    onPageRotationsUpdated,
+  } = handlers;
+
   try {
     const parsed: unknown =
       typeof raw === "string" ? (JSON.parse(raw) as unknown) : raw;
@@ -155,7 +196,7 @@ function handleMessage(
 
       revokeAllUrls();
       const entries: PdfEntry[] = msg.pdfs.map((pdf) => toPdfEntry(pdf));
-      onEntries(entries);
+      onPdfsLoaded(entries);
       return;
     }
 
@@ -191,6 +232,20 @@ function handleMessage(
       if (!onHighlightRectangle) return;
       const msg = parsed as HighlightRectangleMessage;
       onHighlightRectangle(msg.id);
+      return;
+    }
+
+    if (type === "link-selection-changed") {
+      if (!onLinkSelectionChanged) return;
+      const msg = parsed as LinkSelectionChangedMessage;
+      const entries: LinkSelectionEntry[] = (msg.entries ?? []).map((e) => ({
+        id:      e.id,
+        pdfId:   e.pdfId,
+        pdfName: e.pdfName,
+        page:    e.page,
+        value:   e.value,
+      }));
+      onLinkSelectionChanged(entries);
       return;
     }
 
@@ -260,18 +315,7 @@ function postToHost(message: object): void {
  * Safe to call in non-WebView2 environments — does nothing when
  * `window.chrome.webview` is absent.
  */
-export function initHostBridge(
-  onEntries: (entries: PdfEntry[]) => void,
-  onLinkedRectangles?: (rects: LinkedRectEntry[]) => void,
-  onNavigateToRectangle?: (id: string, pdfId: string, page: number) => void,
-  onClearRectangleHighlight?: () => void,
-  onHighlightRectangle?: (id: string) => void,
-  onPdfUpdated?: (entry: PdfEntry) => void,
-  onLinkRectanglesRemoved?: (ids: string[]) => void,
-  onPdfNameUpdated?: (id: string, name: string) => void,
-  onPdfRemoved?: (id: string) => void,
-  onPageRotationsUpdated?: (pdfId: string, rotations: Record<number, number>) => void,
-): void {
+export function initHostBridge(handlers: HostMessageHandlers): void {
   const webview = (
     window as unknown as { chrome?: { webview?: WebView2Bridge } }
   ).chrome?.webview;
@@ -283,20 +327,7 @@ export function initHostBridge(
   _webview = webview;
 
   webview.addEventListener("message", (event: Event) => {
-    const data = (event as MessageEvent<unknown>).data;
-    handleMessage(
-      data,
-      onEntries,
-      onLinkedRectangles,
-      onNavigateToRectangle,
-      onClearRectangleHighlight,
-      onHighlightRectangle,
-      onPdfUpdated,
-      onLinkRectanglesRemoved,
-      onPdfNameUpdated,
-      onPdfRemoved,
-      onPageRotationsUpdated,
-    );
+    handleMessage((event as MessageEvent<unknown>).data, handlers);
   });
 
   postToHost({ type: "viewer-ready" });

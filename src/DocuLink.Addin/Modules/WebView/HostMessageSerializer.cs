@@ -174,6 +174,36 @@ namespace DocuLink.Addin.Modules.WebView
             return sb.ToString();
         }
 
+        /// <summary>
+        /// Returns the JSON payload for a <c>link-selection-changed</c> message.
+        /// An empty list is valid and tells the viewer to hide the selection panel.
+        /// </summary>
+        public static string BuildLinkSelectionChanged(IList<LinkSelectionEntry> entries)
+        {
+            var sb = new StringBuilder();
+            sb.Append("{\"type\":\"link-selection-changed\",\"entries\":[");
+
+            if (entries != null)
+            {
+                for (int i = 0; i < entries.Count; i++)
+                {
+                    LinkSelectionEntry entry = entries[i];
+                    if (i > 0) sb.Append(',');
+
+                    sb.Append('{');
+                    sb.Append("\"id\":"); AppendString(sb, entry.Id ?? string.Empty);
+                    sb.Append(",\"pdfId\":"); AppendString(sb, entry.PdfId ?? string.Empty);
+                    sb.Append(",\"pdfName\":"); AppendString(sb, entry.PdfName ?? string.Empty);
+                    sb.Append(",\"page\":"); sb.Append(entry.Page);
+                    sb.Append(",\"value\":"); AppendString(sb, entry.Value ?? string.Empty);
+                    sb.Append('}');
+                }
+            }
+
+            sb.Append("]}");
+            return sb.ToString();
+        }
+
         /// <summary>Returns the JSON payload for a <c>page-rotations-updated</c> message.</summary>
         public static string BuildPageRotationsUpdated(string pdfId, Dictionary<int, int> rotations)
         {
@@ -248,5 +278,33 @@ namespace DocuLink.Addin.Modules.WebView
             }
             sb.Append('"');
         }
+    }
+
+    /// <summary>
+    /// One linked cell inside the current Excel selection, as sent to the viewer in a
+    /// <c>link-selection-changed</c> message.
+    /// </summary>
+    public sealed class LinkSelectionEntry
+    {
+        public LinkSelectionEntry(string id, string pdfId, string pdfName, int page, string value)
+        {
+            Id = id;
+            PdfId = pdfId;
+            PdfName = pdfName;
+            Page = page;
+            Value = value;
+        }
+
+        public string Id { get; }
+
+        public string PdfId { get; }
+
+        public string PdfName { get; }
+
+        /// <summary>0-based page index of the rectangle.</summary>
+        public int Page { get; }
+
+        /// <summary>Displayed text of the linked Excel cell.</summary>
+        public string Value { get; }
     }
 }
