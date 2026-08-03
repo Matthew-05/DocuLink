@@ -563,21 +563,24 @@
     },
 
     "LinkSelectionEntryPayload": {
-      "description": "One linked cell contained in the current Excel selection.",
+      "description": "One linked rectangle contained in the current Excel selection. A Sum cell contributes one entry per contributing rectangle, all sharing the same cellAddress and cellValue.",
       "type": "object",
-      "required": ["id", "pdfId", "pdfName", "page", "value"],
+      "required": ["id", "pdfId", "pdfName", "page", "value", "valueCount", "cellAddress", "cellValue"],
       "additionalProperties": false,
       "properties": {
         "id":      { "type": "string", "description": "GUID of the LinkedRectangle." },
         "pdfId":   { "type": "string", "description": "GUID of the PDF containing the rectangle." },
         "pdfName": { "type": "string", "description": "Display name of the PDF, shown only when the selection spans multiple documents." },
         "page":    { "type": "integer", "minimum": 0, "description": "0-based page index of the rectangle." },
-        "value":   { "type": "string", "description": "Displayed text of the linked Excel cell (Range.Text), empty when unavailable." }
+        "value":   { "type": "string", "description": "Value attributable to this rectangle: for a Sum link the subtotal of the numbers it captured, formatted with the linked cell's number format; otherwise the displayed text of the linked cell. Falls back to the raw captured text when no numbers were found. Empty when unavailable." },
+        "valueCount": { "type": "integer", "minimum": 0, "description": "How many numbers this rectangle contributes to its Sum cell. 1 for a single value and for non-Sum links; greater than 1 when one rectangle captured several numbers, in which case the viewer shows the subtotal followed by this count rather than the individual items." },
+        "cellAddress": { "type": "string", "description": "Sheet-qualified address of the linked cell, e.g. \"Sheet1!B4\". Entries sharing an address belong to the same cell." },
+        "cellValue":   { "type": "string", "description": "Displayed text of the linked Excel cell (Range.Text) — the computed total for a Sum cell. Identical across entries of the same cell." }
       }
     },
 
     "LinkSelectionChangedMessage": {
-      "description": "Sent by the C# host on every Excel selection change while a viewer is open. Entries list every linked cell inside the selection, ordered top-to-bottom then left-to-right. The host only populates entries when the selection contains at least two linked cells; an empty list tells the viewer to hide the multi-selection panel. Navigation and highlighting of the first selected link continue to use navigate-to-rectangle.",
+      "description": "Sent by the C# host on every Excel selection change while a viewer is open. Entries list every linked rectangle inside the selection, ordered by cell (top-to-bottom then left-to-right) and, within a Sum cell, by creation order. The host only populates entries when the selection contains at least two rectangles — which covers both several linked cells and a single Sum cell built from several rectangles. An empty list tells the viewer to hide the selection panel. Navigation and highlighting of the first selected rectangle continue to use navigate-to-rectangle.",
       "type": "object",
       "required": ["type", "entries"],
       "additionalProperties": false,
@@ -593,18 +596,24 @@
           "type": "link-selection-changed",
           "entries": [
             {
-              "id":      "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
-              "pdfId":   "3fa85f64-5717-4562-b3fc-2c963f66afa6",
-              "pdfName": "Invoice-2024.pdf",
-              "page":    0,
-              "value":   "$1,234.00"
+              "id":          "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+              "pdfId":       "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+              "pdfName":     "Invoice-2024.pdf",
+              "page":        0,
+              "value":       "$1,200.00",
+              "valueCount":  1,
+              "cellAddress": "Sheet1!B4",
+              "cellValue":   "$1,298.00"
             },
             {
-              "id":      "b2c3d4e5-f6a7-8901-bcde-f23456789012",
-              "pdfId":   "3fa85f64-5717-4562-b3fc-2c963f66afa6",
-              "pdfName": "Invoice-2024.pdf",
-              "page":    2,
-              "value":   "$98.00"
+              "id":          "b2c3d4e5-f6a7-8901-bcde-f23456789012",
+              "pdfId":       "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+              "pdfName":     "Invoice-2024.pdf",
+              "page":        2,
+              "value":       "$98.00",
+              "valueCount":  2,
+              "cellAddress": "Sheet1!B4",
+              "cellValue":   "$1,298.00"
             }
           ]
         }

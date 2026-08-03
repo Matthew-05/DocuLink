@@ -1,5 +1,7 @@
 using System.Collections.Generic;
 using System.Drawing;
+using System.Globalization;
+using System.Runtime.InteropServices;
 using System.Text;
 using DocuLink.Addin.Modules.CustomXml.Models;
 using Excel = Microsoft.Office.Interop.Excel;
@@ -34,6 +36,30 @@ namespace DocuLink.Addin.Modules.Services
             string numberFormat = BuildSumNumberFormat(sourceTexts);
             if (numberFormat != null)
                 cell.NumberFormat = numberFormat;
+        }
+
+        /// <summary>
+        /// Renders <paramref name="value"/> the way <paramref name="cell"/> displays its own
+        /// contents, by running Excel's TEXT function with the cell's number format. Keeps
+        /// figures shown outside the grid consistent with the sheet. Falls back to the
+        /// invariant representation when Excel cannot format the value.
+        /// </summary>
+        public static string FormatLikeCell(Excel.Range cell, double value)
+        {
+            try
+            {
+                string numberFormat = cell?.NumberFormat as string;
+                if (!string.IsNullOrEmpty(numberFormat))
+                {
+                    var app = cell.Application as Excel.Application;
+                    string text = app?.WorksheetFunction.Text(value, numberFormat);
+                    if (!string.IsNullOrWhiteSpace(text))
+                        return text.Trim();
+                }
+            }
+            catch (COMException) { }
+
+            return value.ToString("G", CultureInfo.InvariantCulture);
         }
 
         /// <summary>Applies Sum-link number formatting inferred from one source text.</summary>

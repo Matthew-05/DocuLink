@@ -184,13 +184,22 @@ export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLEleme
     viewer.setZoom(scale);
   }, onNavigateToPage);
 
+  /** Rectangle the viewer is currently showing; marked as active in the panel. */
+  let _focusedRectId: string | null = null;
+
   const setLinkSelection = (entries: LinkSelectionEntry[]): void => {
     _currentSelection = entries;
     selectionPanel.setEntries(entries);
+    selectionPanel.setActiveEntry(_focusedRectId);
     renderer.setSelectedRectangles(entries.map((e) => e.id));
   };
 
   const clearLinkSelection = (): void => setLinkSelection([]);
+
+  const focusRectangle = (id: string): void => {
+    _focusedRectId = id;
+    selectionPanel.setActiveEntry(id);
+  };
 
   let lastSearchResults: SearchMatch[] = [];
   let highlightSearchResults: SearchMatch[] = [];
@@ -362,8 +371,10 @@ export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLEleme
   renderer.setClickGuard(() => editOverlay.consumeClickSuppression());
 
   renderer.onRectClicked((id) => {
-    // Clicking a rectangle selects its single cell in Excel, which ends any
-    // multi-cell selection the panel was describing.
+    // Clicking a rectangle selects its own cell in Excel, ending any multi-cell
+    // selection. The host re-publishes that cell's links, so a sum cell backed by
+    // several rectangles repopulates the panel straight away.
+    focusRectangle(id);
     clearLinkSelection();
     sendLinkRectangleClicked(id);
   });
@@ -429,6 +440,7 @@ export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLEleme
   }, onNavigateToPage);
 
   selectionPanel.onEntryClicked((entry) => {
+    _focusedRectId = entry.id;
     navigate(entry.id, entry.pdfId, entry.page);
   });
 
@@ -453,7 +465,7 @@ export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLEleme
         selector.updateLinkCounts(computeLinkCounts(rects));
       },
       onNavigateToRectangle: (id, pdfId, page) => {
-        selectionPanel.setActiveEntry(id);
+        focusRectangle(id);
         navigate(id, pdfId, page);
       },
       onClearRectangleHighlight: () => { renderer.clearHighlight(); },

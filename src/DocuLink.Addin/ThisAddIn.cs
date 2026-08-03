@@ -1181,13 +1181,67 @@ namespace DocuLink.Addin
 
         /// <summary>
 
-        /// Maps the linked cells inside <paramref name="target"/> to viewer payload entries and
+        /// Publishes the link selection for <paramref name="target"/> without navigating.
 
-        /// reports the first one via <paramref name="firstRect"/> for navigation.
+        /// Used when the viewer itself drives the Excel selection (a rectangle click), where
 
-        /// Entries are only populated for multi-link selections — a single linked cell is
+        /// navigation is suppressed but the panel still has to reflect the new cell — a Sum
 
-        /// handled by navigation alone, so the viewer keeps its selection panel hidden.
+        /// cell backed by several rectangles opens the panel just as a multi-cell drag does.
+
+        /// </summary>
+
+        internal void PublishLinkSelection(Excel.Range target)
+
+        {
+
+            if (target == null) return;
+
+
+
+            try
+
+            {
+
+                Excel.Workbook wb = Application?.ActiveWorkbook;
+
+                if (wb == null) return;
+
+
+
+                IList<LinkSelectionEntry> entries =
+
+                    BuildLinkSelection(GetStorageSession(wb), target, out _);
+
+                GetActiveViewerHost()?.SendLinkSelectionChanged(entries);
+
+            }
+
+            catch (Exception ex)
+
+            {
+
+                System.Diagnostics.Debug.WriteLine(
+
+                    $"[DocuLink] PublishLinkSelection failed: {ex.Message}");
+
+            }
+
+        }
+
+
+
+        /// <summary>
+
+        /// Maps the linked rectangles inside <paramref name="target"/> to viewer payload entries
+
+        /// and reports the first one via <paramref name="firstRect"/> for navigation.
+
+        /// Entries are only populated once the selection covers at least two rectangles, which
+
+        /// covers both several linked cells and a single Sum cell built from several rectangles;
+
+        /// a lone rectangle is handled by navigation alone and the panel stays hidden.
 
         /// </summary>
 
@@ -1239,11 +1293,59 @@ namespace DocuLink.Addin
 
             {
 
-                string value = string.Empty;
+                string cellValue = string.Empty;
 
-                try { value = link.Cell.Text?.ToString() ?? string.Empty; }
+                string cellAddress = string.Empty;
+
+                try
+
+                {
+
+                    cellValue = link.Cell.Text?.ToString() ?? string.Empty;
+
+                    cellAddress = ((Excel.Worksheet)link.Cell.Worksheet).Name
+
+                        + "!" + (link.Cell.Address ?? string.Empty).Replace("$", string.Empty);
+
+                }
 
                 catch (COMException) { }
+
+
+
+                // Sum cells hold several rectangles behind one total, so each row carries what
+
+                // its own rectangle contributes; the cell total stays on the cell. A rectangle
+
+                // holding several numbers reports their subtotal plus how many it summed,
+
+                // formatted like the cell so the figures line up with the sheet.
+
+                bool isSum = link.Rectangle.LinkType == LinkType.Sum;
+
+                string value = cellValue;
+
+                int valueCount = 1;
+
+
+
+                if (isSum)
+
+                {
+
+                    string sourceText = link.Rectangle.SourceText ?? string.Empty;
+
+                    valueCount = TextValueFormatter.CountValues(sourceText);
+
+                    double? subtotal = TextValueFormatter.SumValues(sourceText);
+
+                    value = subtotal.HasValue
+
+                        ? CellFormattingService.FormatLikeCell(link.Cell, subtotal.Value)
+
+                        : sourceText;
+
+                }
 
 
 
@@ -1261,7 +1363,13 @@ namespace DocuLink.Addin
 
                     link.Rectangle.Rectangle.PageIndex,
 
-                    value));
+                    value,
+
+                    valueCount,
+
+                    cellAddress,
+
+                    cellValue));
 
             }
 

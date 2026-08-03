@@ -196,6 +196,9 @@ namespace DocuLink.Addin.Modules.WebView
                     sb.Append(",\"pdfName\":"); AppendString(sb, entry.PdfName ?? string.Empty);
                     sb.Append(",\"page\":"); sb.Append(entry.Page);
                     sb.Append(",\"value\":"); AppendString(sb, entry.Value ?? string.Empty);
+                    sb.Append(",\"valueCount\":"); sb.Append(entry.ValueCount);
+                    sb.Append(",\"cellAddress\":"); AppendString(sb, entry.CellAddress ?? string.Empty);
+                    sb.Append(",\"cellValue\":"); AppendString(sb, entry.CellValue ?? string.Empty);
                     sb.Append('}');
                 }
             }
@@ -281,18 +284,31 @@ namespace DocuLink.Addin.Modules.WebView
     }
 
     /// <summary>
-    /// One linked cell inside the current Excel selection, as sent to the viewer in a
-    /// <c>link-selection-changed</c> message.
+    /// One linked rectangle inside the current Excel selection, as sent to the viewer in a
+    /// <c>link-selection-changed</c> message. A Sum cell contributes one entry per
+    /// contributing rectangle; those entries share <see cref="CellAddress"/> and
+    /// <see cref="CellValue"/>.
     /// </summary>
     public sealed class LinkSelectionEntry
     {
-        public LinkSelectionEntry(string id, string pdfId, string pdfName, int page, string value)
+        public LinkSelectionEntry(
+            string id,
+            string pdfId,
+            string pdfName,
+            int page,
+            string value,
+            int valueCount,
+            string cellAddress,
+            string cellValue)
         {
             Id = id;
             PdfId = pdfId;
             PdfName = pdfName;
             Page = page;
             Value = value;
+            ValueCount = valueCount;
+            CellAddress = cellAddress;
+            CellValue = cellValue;
         }
 
         public string Id { get; }
@@ -304,7 +320,22 @@ namespace DocuLink.Addin.Modules.WebView
         /// <summary>0-based page index of the rectangle.</summary>
         public int Page { get; }
 
-        /// <summary>Displayed text of the linked Excel cell.</summary>
+        /// <summary>
+        /// Value attributable to this rectangle: its captured source text for Sum links,
+        /// otherwise the displayed text of the linked cell.
+        /// </summary>
         public string Value { get; }
+
+        /// <summary>
+        /// How many numbers this rectangle contributes to its Sum cell. Greater than 1 when a
+        /// single rectangle captured several numbers, which the viewer shows as a count.
+        /// </summary>
+        public int ValueCount { get; }
+
+        /// <summary>Sheet-qualified address of the linked cell, e.g. "Sheet1!B4".</summary>
+        public string CellAddress { get; }
+
+        /// <summary>Displayed text of the linked cell — the computed total for a Sum cell.</summary>
+        public string CellValue { get; }
     }
 }

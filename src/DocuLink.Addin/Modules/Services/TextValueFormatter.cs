@@ -67,6 +67,31 @@ namespace DocuLink.Addin.Modules.Services
             return BuildFormulaFromNumbers(all);
         }
 
+        /// <summary>
+        /// Returns how many numbers <paramref name="text"/> contributes to a sum — the
+        /// count of terms this text adds to the formula. Zero when it holds no numbers.
+        /// </summary>
+        public static int CountValues(string text)
+        {
+            return ExtractNumbers(text).Count;
+        }
+
+        /// <summary>
+        /// Returns the total <paramref name="text"/> contributes to a sum, i.e. the sum of
+        /// every number it holds, or <c>null</c> when it holds none.
+        /// </summary>
+        public static double? SumValues(string text)
+        {
+            List<double> numbers = ExtractNumbers(text);
+            if (numbers.Count == 0) return null;
+
+            double total = 0;
+            foreach (double number in numbers)
+                total += number;
+
+            return total;
+        }
+
         private static List<double> ExtractNumbers(string text)
         {
             var result = new List<double>();

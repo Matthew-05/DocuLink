@@ -47,15 +47,27 @@ export interface LinkedRectEntry {
   linkType?: LinkType;
 }
 
-/** One linked cell inside the current Excel selection. */
+/**
+ * One linked rectangle inside the current Excel selection. A sum cell contributes
+ * one entry per contributing rectangle, all sharing `cellAddress` and `cellValue`.
+ */
 export interface LinkSelectionEntry {
   id: string;
   pdfId: string;
   /** Display name of the owning PDF; shown only when the selection spans documents. */
   pdfName: string;
   page: number; // 0-based
-  /** Displayed text of the linked Excel cell. */
+  /** Captured text for a sum rectangle, otherwise the linked cell's displayed text. */
   value: string;
+  /**
+   * How many numbers this rectangle contributes to its sum cell. 1 for a single
+   * value and for non-sum links; above 1 the panel shows the count, not the items.
+   */
+  valueCount: number;
+  /** Sheet-qualified cell address, e.g. "Sheet1!B4". Entries sharing it share a cell. */
+  cellAddress: string;
+  /** Displayed text of the linked cell — the computed total for a sum cell. */
+  cellValue: string;
 }
 
 export interface SearchMatch {

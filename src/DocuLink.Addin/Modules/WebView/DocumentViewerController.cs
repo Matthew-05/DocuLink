@@ -393,6 +393,11 @@ namespace DocuLink.Addin.Modules.WebView
             {
                 ((Excel.Worksheet)cell.Worksheet).Activate();
                 cell.Select();
+
+                // Selection nav is suppressed for this round-trip, so publish the selection
+                // explicitly: a Sum cell still has several rectangles to list.
+                Globals.ThisAddIn.PublishLinkSelection(cell);
+
                 RestoreExcelFocus();
             }
             catch (Exception ex)

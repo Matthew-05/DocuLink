@@ -1,11 +1,14 @@
 import type { LinkSelectionEntry } from "../../types/index.js";
 
 /**
- * Floating panel listing every linked cell in the current Excel selection.
+ * Floating panel listing every linked rectangle in the current Excel selection.
  *
- * Shown only for multi-cell selections (two or more linked cells); a single
- * linked cell is already communicated by rectangle navigation and highlight.
- * The document name is rendered only when the selection spans more than one PDF.
+ * Shown once the selection covers two or more rectangles — several linked cells,
+ * or a single sum cell built from several rectangles. A lone rectangle is already
+ * communicated by navigation and highlight, so the panel stays hidden.
+ *
+ * Rows are grouped under a cell header when the selection spans more than one
+ * cell, and carry their document name only when it spans more than one PDF.
  */
 export class LinkSelectionPanel {
   static readonly MIN_ENTRIES = 2;
@@ -61,20 +64,80 @@ export class LinkSelectionPanel {
 
     this.element.hidden = false;
 
+    const groups = groupByCell(this._entries);
+    const showDocument = new Set(this._entries.map((e) => e.pdfId)).size > 1;
+    // With a single cell selected the summary already names it, so no heading.
+    const showCellHeadings = groups.size > 1;
+
     const summary = document.createElement("div");
     summary.className = "link-selection-panel__summary";
-    summary.textContent = `${this._entries.length} linked cells selected`;
+    summary.textContent = this._summaryText(groups);
+    summary.title = summary.textContent;
     this.element.appendChild(summary);
 
     const list = document.createElement("div");
     list.className = "link-selection-panel__list";
 
-    const showDocument = new Set(this._entries.map((e) => e.pdfId)).size > 1;
-    for (const entry of this._entries) {
-      list.appendChild(this._createItem(entry, showDocument));
+    for (const [, groupEntries] of groups) {
+      const section = document.createElement("div");
+      section.className = "link-selection-panel__section";
+
+      // A cell only earns a heading when it contributes several rectangles — i.e. a
+      // sum cell, where the rows are parts and the heading carries their total.
+      // One-rectangle cells render as plain rows, so an ordinary selection of
+      // several linked cells stays a flat list.
+      if (showCellHeadings && groupEntries.length > 1) {
+        section.appendChild(this._createHeading(groupEntries[0]!));
+      }
+
+      for (const entry of groupEntries) {
+        section.appendChild(this._createItem(entry, showDocument));
+      }
+
+      list.appendChild(section);
     }
 
     this.element.appendChild(list);
+  }
+
+  /**
+   * Summarizes cells, not rectangles, unless a single sum cell is selected — then
+   * there is no heading to carry the cell and its total, so the summary does.
+   */
+  private _summaryText(groups: Map<string, LinkSelectionEntry[]>): string {
+    if (groups.size === 1 && this._entries.length > 1) {
+      const first = this._entries[0]!;
+      const cell = first.cellAddress || "selected cell";
+      return first.cellValue
+        ? `${this._entries.length} rectangles · ${cell} = ${first.cellValue}`
+        : `${this._entries.length} rectangles · ${cell}`;
+    }
+
+    return `${groups.size} linked cells selected`;
+  }
+
+  private _createHeading(entry: LinkSelectionEntry): HTMLElement {
+    const heading = document.createElement("div");
+    heading.className = "link-selection-panel__heading";
+
+    const address = document.createElement("span");
+    address.className = "link-selection-panel__address";
+    address.textContent = entry.cellAddress;
+
+    heading.append(address);
+
+    if (entry.cellValue) {
+      const total = document.createElement("span");
+      total.className = "link-selection-panel__total";
+      total.textContent = entry.cellValue;
+      heading.append(total);
+    }
+
+    heading.title = entry.cellValue
+      ? `${entry.cellAddress} · ${entry.cellValue}`
+      : entry.cellAddress;
+
+    return heading;
   }
 
   private _createItem(entry: LinkSelectionEntry, showDocument: boolean): HTMLElement {
@@ -90,6 +153,15 @@ export class LinkSelectionPanel {
     value.className = "link-selection-panel__value";
     value.textContent = entry.value || "(empty)";
     if (!entry.value) value.classList.add("link-selection-panel__value--empty");
+
+    if (entry.valueCount > 1) {
+      // One rectangle captured several numbers — show what it contributes, then how
+      // many numbers went into it rather than listing them all.
+      const count = document.createElement("span");
+      count.className = "link-selection-panel__count";
+      count.textContent = `${entry.valueCount} values`;
+      value.append(" ", count);
+    }
 
     const meta = document.createElement("span");
     meta.className = "link-selection-panel__meta";
@@ -113,4 +185,15 @@ export class LinkSelectionPanel {
     this.setActiveEntry(entry.id);
     for (const cb of this._callbacks) cb(entry);
   }
+}
+
+/** Groups entries by linked cell, preserving the host's ordering. */
+function groupByCell(entries: LinkSelectionEntry[]): Map<string, LinkSelectionEntry[]> {
+  const groups = new Map<string, LinkSelectionEntry[]>();
+  for (const entry of entries) {
+    const list = groups.get(entry.cellAddress) ?? [];
+    list.push(entry);
+    groups.set(entry.cellAddress, list);
+  }
+  return groups;
 }

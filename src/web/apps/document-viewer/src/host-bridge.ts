@@ -96,6 +96,9 @@ interface LinkSelectionEntryPayload {
   pdfName: string;
   page: number;
   value: string;
+  valueCount: number;
+  cellAddress: string;
+  cellValue: string;
 }
 
 interface LinkSelectionChangedMessage {
@@ -239,11 +242,14 @@ function handleMessage(raw: unknown, handlers: HostMessageHandlers): void {
       if (!onLinkSelectionChanged) return;
       const msg = parsed as LinkSelectionChangedMessage;
       const entries: LinkSelectionEntry[] = (msg.entries ?? []).map((e) => ({
-        id:      e.id,
-        pdfId:   e.pdfId,
-        pdfName: e.pdfName,
-        page:    e.page,
-        value:   e.value,
+        id:          e.id,
+        pdfId:       e.pdfId,
+        pdfName:     e.pdfName,
+        page:        e.page,
+        value:       e.value,
+        valueCount:  e.valueCount,
+        cellAddress: e.cellAddress,
+        cellValue:   e.cellValue,
       }));
       onLinkSelectionChanged(entries);
       return;

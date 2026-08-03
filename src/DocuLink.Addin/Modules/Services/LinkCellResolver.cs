@@ -27,8 +27,11 @@ namespace DocuLink.Addin.Modules.Services
 
         /// <summary>
         /// Returns every link in <paramref name="links"/> whose tracked cell lies inside
-        /// <paramref name="selection"/>, ordered top-to-bottom then left-to-right.
-        /// Resolves the whole selection in a single pass over the workbook's XmlMaps.
+        /// <paramref name="selection"/>, ordered by cell (top-to-bottom then left-to-right)
+        /// and, within a cell, in stored order. A Sum cell shares one
+        /// <see cref="LinkedCell"/> across its contributing rectangles, so it yields one
+        /// entry per rectangle. Resolves the whole selection in a single pass over the
+        /// workbook's XmlMaps.
         /// </summary>
         internal static IList<SelectedLink> ResolveLinksInSelection(
             IList<LinkedRectangle> links,
@@ -38,17 +41,28 @@ namespace DocuLink.Addin.Modules.Services
             if (links == null || links.Count == 0 || selection == null)
                 return result;
 
-            var byTrackIndex = new Dictionary<int, LinkedRectangle>();
+            var byTrackIndex = new Dictionary<int, List<LinkedRectangle>>();
             foreach (LinkedRectangle link in links)
             {
-                if (link?.LinkedCell != null && link.LinkedCell.TrackIndex > 0)
-                    byTrackIndex[link.LinkedCell.TrackIndex] = link;
+                if (link?.LinkedCell == null || link.LinkedCell.TrackIndex <= 0)
+                    continue;
+
+                if (!byTrackIndex.TryGetValue(link.LinkedCell.TrackIndex, out List<LinkedRectangle> forCell))
+                {
+                    forCell = new List<LinkedRectangle>();
+                    byTrackIndex[link.LinkedCell.TrackIndex] = forCell;
+                }
+
+                forCell.Add(link);
             }
 
             foreach (LinkCellTracker.TrackedCell tracked in
                      LinkCellTracker.FindTrackedCellsInRange(selection))
             {
-                if (byTrackIndex.TryGetValue(tracked.TrackIndex, out LinkedRectangle link))
+                if (!byTrackIndex.TryGetValue(tracked.TrackIndex, out List<LinkedRectangle> forCell))
+                    continue;
+
+                foreach (LinkedRectangle link in forCell)
                     result.Add(new SelectedLink(link, tracked.Cell));
             }
 
