@@ -320,19 +320,51 @@ namespace DocuLink.Addin.Modules.WebView
             var worksheet = (Excel.Worksheet)firstArea.Worksheet;
             int maxKeyColNumber = 0;
 
+            // A whole-column or Ctrl+A selection spans 1,048,576 rows and 16,384 columns.
+            // Analysing that literally costs one COM round trip per row and per column, which
+            // freezes Excel for minutes. Nothing outside UsedRange can contribute key data, so
+            // every span below is clamped to it before any per-row or per-column work happens.
+            var usedRange = worksheet.UsedRange;
+            int usedFirstRow = usedRange.Row;
+            int usedLastRow  = usedFirstRow + usedRange.Rows.Count - 1;
+            int usedFirstCol = usedRange.Column;
+            int usedLastCol  = usedFirstCol + usedRange.Columns.Count - 1;
+
+            // Row span of the first area, clamped; every key column is read over this span.
+            ClampSpan(firstArea.Row, firstArea.Rows.Count, usedFirstRow, usedLastRow,
+                      out int keyFirstRow, out int keyRowCount);
+
             for (int a = 1; a <= areas.Count; a++)
             {
                 var area = (Excel.Range)areas[a];
-                int areaColumnCount = area.Columns.Count;
-                int areaRowCount = area.Rows.Count;
+                int areaFirstCol = area.Column;
 
-                for (int offset = 0; offset < areaColumnCount; offset++)
+                ClampSpan(areaFirstCol, area.Columns.Count, usedFirstCol, usedLastCol,
+                          out int colStart, out int colCount);
+
+                // An area entirely outside UsedRange still shows its first column so the
+                // wizard reflects what the user picked — it will simply report zero rows.
+                if (colCount <= 0)
                 {
-                    int colNumber = area.Column + offset;
+                    colStart = areaFirstCol;
+                    colCount = 1;
+                }
+
+                ClampSpan(area.Row, area.Rows.Count, usedFirstRow, usedLastRow,
+                          out int areaFirstRow, out int areaRowCount);
+                if (areaRowCount <= 0)
+                {
+                    areaFirstRow = area.Row;
+                    areaRowCount = 1;
+                }
+
+                for (int offset = 0; offset < colCount; offset++)
+                {
+                    int colNumber = colStart + offset;
                     string header = ColNumberToLetter(colNumber);
 
-                    var startCell = (Excel.Range)worksheet.Cells[area.Row, colNumber];
-                    var endCell = (Excel.Range)worksheet.Cells[area.Row + areaRowCount - 1, colNumber];
+                    var startCell = (Excel.Range)worksheet.Cells[areaFirstRow, colNumber];
+                    var endCell = (Excel.Range)worksheet.Cells[areaFirstRow + areaRowCount - 1, colNumber];
                     var columnRange = worksheet.get_Range(startCell, endCell);
                     string rangeAddress = columnRange.get_Address(
                         RowAbsolute: true,
@@ -354,17 +386,36 @@ namespace DocuLink.Addin.Modules.WebView
 
             if (maxKeyColNumber > 0)
             {
-                var usedRange = worksheet.UsedRange;
-                int lastUsedCol = usedRange.Column + usedRange.Columns.Count - 1;
-                int outputEnd = Math.Max(lastUsedCol, maxKeyColNumber + 10);
+                int outputEnd = Math.Max(usedLastCol, maxKeyColNumber + 10);
                 for (int c = maxKeyColNumber + 1; c <= outputEnd; c++)
                 {
                     outputColumns.Add(new OutputColumnEntry { ColNumber = c, Header = ColNumberToLetter(c) });
                 }
             }
 
-            rowCount = CountRowsWithKeyData(worksheet, firstArea.Row, firstArea.Rows.Count, keyColumns);
+            rowCount = CountRowsWithKeyData(worksheet, keyFirstRow, keyRowCount, keyColumns);
             return true;
+        }
+
+        /// <summary>
+        /// Intersects the span starting at <paramref name="start"/> of length
+        /// <paramref name="count"/> with the inclusive bounds
+        /// <paramref name="boundFirst"/>..<paramref name="boundLast"/>.
+        /// Yields <paramref name="clampedCount"/> of 0 when the spans do not overlap.
+        /// </summary>
+        private static void ClampSpan(
+            int start,
+            int count,
+            int boundFirst,
+            int boundLast,
+            out int clampedStart,
+            out int clampedCount)
+        {
+            int last = start + Math.Max(count, 0) - 1;
+            clampedStart = Math.Max(start, boundFirst);
+            int clampedLast = Math.Min(last, boundLast);
+            clampedCount = clampedLast - clampedStart + 1;
+            if (clampedCount < 0) clampedCount = 0;
         }
 
         private void SubscribeSelectionChanged()
@@ -632,22 +683,40 @@ namespace DocuLink.Addin.Modules.WebView
         {
             if (rowCount <= 0 || keyColumns.Count == 0) return 0;
 
-            int count = 0;
-            for (int offset = 0; offset < rowCount; offset++)
+            // One bulk Value2 read per key column instead of one COM round trip per cell:
+            // a 50,000-row selection over 3 key columns costs 3 calls, not 150,000.
+            var rowHasData = new bool[rowCount];
+            int remaining = rowCount;
+
+            foreach (var keyColumn in keyColumns)
             {
-                int row = firstRow + offset;
-                foreach (var keyColumn in keyColumns)
+                if (remaining == 0) break; // every row already accounted for
+
+                var topCell = (Excel.Range)worksheet.Cells[firstRow, keyColumn.ColNumber];
+                var botCell = (Excel.Range)worksheet.Cells[firstRow + rowCount - 1, keyColumn.ColNumber];
+                object values = worksheet.get_Range(topCell, botCell).Value2;
+
+                if (values is object[,] block)
                 {
-                    var cell = (Excel.Range)worksheet.Cells[row, keyColumn.ColNumber];
-                    if (CellHasContent(cell.Value2))
+                    // Excel returns a 1-based [rows, cols] array.
+                    int lower = block.GetLowerBound(0);
+                    for (int i = 0; i < rowCount; i++)
                     {
-                        count++;
-                        break;
+                        if (rowHasData[i]) continue;
+                        if (!CellHasContent(block[lower + i, block.GetLowerBound(1)])) continue;
+                        rowHasData[i] = true;
+                        remaining--;
                     }
+                }
+                else if (!rowHasData[0] && CellHasContent(values))
+                {
+                    // Single-cell span: Value2 is a scalar rather than an array.
+                    rowHasData[0] = true;
+                    remaining--;
                 }
             }
 
-            return count;
+            return rowCount - remaining;
         }
 
         private static bool CellHasContent(object value)
