@@ -39,7 +39,11 @@ async function _navigate(
     const entry = selector.getEntry(match.pdfId);
     if (!entry) return;
     selector.setActiveId(match.pdfId);
-    await viewer.loadDocument(entry.url, match.pdfId, match.pageIndex + 1);
+    // Third argument is pageRotations, not a page number. Passing the page here meant
+    // Object.entries() saw a number, found no entries, and left the rotation map empty —
+    // so a document reached via cross-document search rendered unrotated. The page is
+    // navigated to further down via renderPageNow and scrollIntoView.
+    await viewer.loadDocument(entry.url, match.pdfId, entry.pageRotations);
   }
 
   matchRenderer.setMatches([match]);
