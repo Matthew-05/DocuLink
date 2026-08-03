@@ -495,6 +495,10 @@ namespace DocuLink.Addin
 
         {
 
+            // Clear out anything left by a workbook that has since closed, so a stale entry
+            // cannot cause a second pane to be built for the active workbook.
+            ReconcileClosedWorkbooks();
+
             Excel.Workbook wb = Application?.ActiveWorkbook;
 
             if (wb == null) return null;
@@ -626,6 +630,17 @@ namespace DocuLink.Addin
                         candidate = Marshal.GetIUnknownForObject(entry.Workbook);
 
                         if (candidate == target) return entry;
+
+                    }
+
+                    catch (Exception ex)
+
+                    {
+
+                        // A workbook that closed leaves an unusable wrapper behind, and entries
+                        // now survive until ReconcileClosedWorkbooks sweeps them. Skip rather
+                        // than let a dead entry break the lookup for a live workbook.
+                        Modules.DocuLinkLog.Trace($"FindEntryFor skipping unusable entry: {ex.Message}");
 
                     }
 
@@ -840,53 +855,124 @@ namespace DocuLink.Addin
 
 
         private void Application_WorkbookBeforeClose(Excel.Workbook wb, ref bool cancel)
-
         {
+            Modules.DocuLinkLog.Trace(
+                $"ENTER workbook={GetWorkbookDebugName(wb)} cancel={cancel} " +
+                $"panes={_workbookPanes.Count} sessions={_storageSessions.Count}");
 
-            string workbookName = GetWorkbookDebugName(wb);
-
-            Modules.DocuLinkLog.Trace($"ENTER workbook={workbookName} cancel={cancel} panes={_workbookPanes.Count} sessions={_storageSessions.Count}");
-
-            using (Modules.DocuLinkLog.Time("WorkbookBeforeClose total"))
-
-            {
-
-            Modules.DocuLinkLog.Trace("calling ReleaseStorageSession");
-
+            // Safe to drop even if the close is cancelled: the session is only a cache over
+            // the workbook's Custom XML, and GetStorageSession rebuilds it on next use.
             ReleaseStorageSession(wb);
 
-            Modules.DocuLinkLog.Trace($"ReleaseStorageSession done sessions={_storageSessions.Count}");
+            // The pane entry is deliberately left alone.
+            //
+            // This event fires *before* Excel asks about unsaved changes, so the close can
+            // still be cancelled — and if the user cancels, the workbook stays open. Removing
+            // the entry here left exactly that case broken: the CustomTaskPane was still on
+            // screen but no longer in _workbookPanes, so the next Show Task Pane built a
+            // second pane for the same workbook and the original host was never disposed.
+            //
+            // ReconcileClosedWorkbooks handles it instead, by checking which workbooks Excel
+            // actually still has open rather than guessing from this event.
+            Modules.DocuLinkLog.Trace("EXIT (pane cleanup deferred to reconcile)");
+        }
 
-            Modules.DocuLinkLog.Trace("calling FindEntryFor");
-
-            var entry = FindEntryFor(wb);
-
-            Modules.DocuLinkLog.Trace($"FindEntryFor done found={entry != null}");
-
-            if (entry == null)
-
-            {
-
-                Modules.DocuLinkLog.Trace("EXIT no pane entry");
-
+        /// <summary>
+        /// Drops pane entries and storage sessions belonging to workbooks Excel no longer has
+        /// open, disposing each orphaned host.
+        /// </summary>
+        /// <remarks>
+        /// Driven off the live workbook collection rather than the close event, because
+        /// WorkbookBeforeClose cannot tell a real close from one the user is about to cancel.
+        /// Called from the workbook lifecycle points that matter — activate, open, and pane
+        /// creation — but deliberately not from the selection-change path, which is hot.
+        /// </remarks>
+        private void ReconcileClosedWorkbooks()
+        {
+            if (_workbookPanes.Count == 0 && _storageSessions.Count == 0)
                 return;
 
+            var liveWorkbooks = new HashSet<IntPtr>();
+            var liveKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            try
+            {
+                foreach (Excel.Workbook open in Application.Workbooks)
+                {
+                    IntPtr unknown = IntPtr.Zero;
+                    try
+                    {
+                        unknown = Marshal.GetIUnknownForObject(open);
+                        liveWorkbooks.Add(unknown);
+                        liveKeys.Add(GetWorkbookSessionKey(open));
+                    }
+                    finally
+                    {
+                        if (unknown != IntPtr.Zero) Marshal.Release(unknown);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                // Excel is busy or mid-teardown. Retry on the next lifecycle event rather than
+                // risk disposing a pane whose workbook is in fact still open.
+                Modules.DocuLinkLog.Trace($"ReconcileClosedWorkbooks enumeration failed: {ex.Message}");
+                return;
             }
 
+            foreach (WorkbookPaneEntry entry in _workbookPanes.ToArray())
+            {
+                if (IsWorkbookStillOpen(entry.Workbook, liveWorkbooks))
+                    continue;
 
+                Modules.DocuLinkLog.Trace("reconcile: removing pane entry for closed workbook");
+                _workbookPanes.Remove(entry);
 
-            // Remove the entry before the window is destroyed so no subsequent code
-
-            // touches the soon-to-be-invalid CustomTaskPane COM object.
-
-            Modules.DocuLinkLog.Trace("removing pane entry");
-
-            _workbookPanes.Remove(entry);
-
-            Modules.DocuLinkLog.Trace($"EXIT pane entry removed panes={_workbookPanes.Count}");
-
+                try
+                {
+                    entry.Host?.Dispose();
+                }
+                catch (Exception ex)
+                {
+                    Modules.DocuLinkLog.Trace(
+                        $"reconcile: host dispose failed: {ex.GetType().FullName}: {ex.Message}");
+                }
             }
 
+            // Backstop for sessions WorkbookBeforeClose did not catch — a workbook closed
+            // without that event, or one whose key changed via Save As while it was open.
+            foreach (string key in new List<string>(_storageSessions.Keys))
+            {
+                if (liveKeys.Contains(key)) continue;
+                _storageSessions.Remove(key);
+                _transientPdfGeometry.Remove(key);
+                Modules.DocuLinkLog.Trace("reconcile: released storage session for closed workbook");
+            }
+        }
+
+        /// <summary>
+        /// COM-identity test against the set of open workbooks. A workbook that has closed
+        /// leaves behind an RCW that throws when touched, so failure here means closed too.
+        /// </summary>
+        private static bool IsWorkbookStillOpen(Excel.Workbook workbook, HashSet<IntPtr> liveWorkbooks)
+        {
+            if (workbook == null) return false;
+
+            IntPtr unknown = IntPtr.Zero;
+            try
+            {
+                unknown = Marshal.GetIUnknownForObject(workbook);
+                return liveWorkbooks.Contains(unknown);
+            }
+            catch (Exception ex)
+            {
+                Modules.DocuLinkLog.Trace($"reconcile: workbook handle unusable, treating as closed: {ex.Message}");
+                return false;
+            }
+            finally
+            {
+                if (unknown != IntPtr.Zero) Marshal.Release(unknown);
+            }
         }
 
 
@@ -894,6 +980,8 @@ namespace DocuLink.Addin
         private void Application_WorkbookActivate(Excel.Workbook wb)
 
         {
+
+            ReconcileClosedWorkbooks();
 
             try
 
@@ -942,6 +1030,8 @@ namespace DocuLink.Addin
         private async void Application_WorkbookOpen(Excel.Workbook wb)
 
         {
+
+            ReconcileClosedWorkbooks();
 
             WarmUpTaskPaneFor(wb);
 
