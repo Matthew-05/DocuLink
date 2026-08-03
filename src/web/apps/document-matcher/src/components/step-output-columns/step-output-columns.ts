@@ -1,4 +1,12 @@
+import { sendClearOutputRangePreview, sendPreviewOutputRange } from "../../host-bridge.js";
 import type { KeyColumnInfo, OutputColumnInfo } from "../../types/index.js";
+import { ColumnSelect } from "../column-select/column-select.js";
+
+/**
+ * Hover moves faster than Excel can select, so previews are coalesced: only the
+ * column the pointer settled on is sent.
+ */
+const PREVIEW_DEBOUNCE_MS = 40;
 
 export interface StepOutputColumnsCallbacks {
   onBack: () => void;
@@ -14,8 +22,9 @@ export class StepOutputColumns {
   private _nextBtn!: HTMLButtonElement;
   private _backBtn!: HTMLButtonElement;
   private _errorEl!: HTMLElement;
-  private _selects: HTMLSelectElement[] = [];
+  private _selects: ColumnSelect[] = [];
   private _callbacks: StepOutputColumnsCallbacks;
+  private _previewTimer: number | null = null;
 
   constructor(
     container: HTMLElement,
@@ -104,8 +113,15 @@ export class StepOutputColumns {
 
   private _renderPairs(): void {
     if (!this._pairsContainer) return;
+    this._cancelPendingPreview();
+    for (const select of this._selects) select.remove();
     this._pairsContainer.innerHTML = "";
     this._selects = [];
+
+    const options = this._outputColumns.map((col) => ({
+      value: col.colNumber,
+      label: col.header,
+    }));
 
     this._keyColumns.forEach((keyCol, i) => {
       const row = document.createElement("div");
@@ -120,24 +136,19 @@ export class StepOutputColumns {
       arrow.className = "config-view__arrow";
       arrow.textContent = "→";
 
-      const sel = document.createElement("select");
-      sel.className = "config-view__col-select";
-      for (const col of this._outputColumns) {
-        const opt = document.createElement("option");
-        opt.value = String(col.colNumber);
-        opt.textContent = col.header;
-        if (col.colNumber === this._outputColNumbers[i]) opt.selected = true;
-        sel.appendChild(opt);
-      }
-      sel.addEventListener("change", () => {
-        this._outputColNumbers[i] = Number(sel.value);
-        this._validate();
+      const sel = new ColumnSelect(options, this._outputColNumbers[i] ?? 0, {
+        onChange: (value) => {
+          this._outputColNumbers[i] = value;
+          this._validate();
+        },
+        onOptionHover: (value) => this._schedulePreview(value),
+        onHoverEnd: () => this._clearPreview(),
       });
 
       this._selects.push(sel);
       row.appendChild(keyLabel);
       row.appendChild(arrow);
-      row.appendChild(sel);
+      row.appendChild(sel.element);
       this._pairsContainer.appendChild(row);
     });
 
@@ -155,9 +166,9 @@ export class StepOutputColumns {
     }
     const hasDuplicates = duplicates.size > 0;
 
-    for (const sel of this._selects) {
-      sel.classList.toggle("config-view__col-select--error", duplicates.has(Number(sel.value)));
-    }
+    this._selects.forEach((sel, i) => {
+      sel.setError(duplicates.has(this._outputColNumbers[i] ?? -1));
+    });
 
     if (this._errorEl) this._errorEl.hidden = !hasDuplicates;
 
@@ -166,11 +177,34 @@ export class StepOutputColumns {
     }
   }
 
+  private _schedulePreview(colNumber: number): void {
+    this._cancelPendingPreview();
+    this._previewTimer = window.setTimeout(() => {
+      this._previewTimer = null;
+      sendPreviewOutputRange(colNumber);
+    }, PREVIEW_DEBOUNCE_MS);
+  }
+
+  private _clearPreview(): void {
+    this._cancelPendingPreview();
+    sendClearOutputRangePreview();
+  }
+
+  private _cancelPendingPreview(): void {
+    if (this._previewTimer === null) return;
+    window.clearTimeout(this._previewTimer);
+    this._previewTimer = null;
+  }
+
   get element(): HTMLElement {
     return this._el;
   }
 
   remove(): void {
+    // Leaving the step must put the user's selection back, whichever way they left.
+    this._clearPreview();
+    for (const select of this._selects) select.remove();
+    this._selects = [];
     this._el.remove();
   }
 }

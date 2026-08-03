@@ -1,0 +1,71 @@
+.column-select {
+  position: relative;
+  width: 100%;
+}
+
+.column-select__button {
+  width: 100%;
+  padding: 5px 24px 5px 8px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  font-family: var(--font-sans);
+  font-size: var(--font-size-base);
+  color: var(--color-text);
+  text-align: left;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.column-select__button::after {
+  content: "▾";
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--color-text-muted);
+  pointer-events: none;
+}
+
+.column-select__button:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+}
+
+.column-select__button--error {
+  border-color: var(--color-error, #d93025);
+}
+
+.column-select__list {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 2px);
+  left: 0;
+  right: 0;
+  max-height: 220px;
+  overflow-y: auto;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  box-shadow: 0 4px 12px rgb(0 0 0 / 18%);
+}
+
+.column-select__option {
+  padding: 5px 8px;
+  font-size: var(--font-size-base);
+  color: var(--color-text);
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.column-select__option--active {
+  background: var(--color-surface-2);
+}
+
+.column-select__option[aria-selected="true"] {
+  font-weight: 600;
+}

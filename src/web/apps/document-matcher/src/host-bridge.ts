@@ -84,6 +84,16 @@ export function sendSelectionUnlocked(): void {
   send({ type: "matcher-selection-unlocked" });
 }
 
+/** Asks the host to select the range that would receive links for `colNumber`. */
+export function sendPreviewOutputRange(colNumber: number): void {
+  send({ type: "matcher-preview-output-range", colNumber });
+}
+
+/** Asks the host to restore the selection captured before hover preview began. */
+export function sendClearOutputRangePreview(): void {
+  send({ type: "matcher-clear-output-range-preview" });
+}
+
 export function sendMatcherLog(message: string): void {
   send({ type: "matcher-log", message });
 }

@@ -28,6 +28,13 @@ namespace DocuLink.Addin.Modules.WebView
             return result;
         }
 
+        /// <summary>Returns the 1-based Excel column number the user is hovering on Step 2.</summary>
+        public static int ParsePreviewOutputRange(string json)
+        {
+            var dict = Deserialize(json);
+            return GetInt(dict, "colNumber");
+        }
+
         public static MatcherGeometryPreparedPayload ParseMatcherGeometryPrepared(string json)
         {
             var dict = Deserialize(json);

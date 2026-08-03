@@ -787,6 +787,33 @@
       }
     },
 
+    "MatcherPreviewOutputRangeMessage": {
+      "description": "Sent by the document-matcher web app while the user hovers (or keyboard-focuses) an option in an output column dropdown on Step 2. The host selects the range that would receive links for that column — the key selection's row span in the given column — so the user can see where output lands. The host remembers the pre-preview selection and restores it on matcher-clear-output-range-preview.",
+      "type": "object",
+      "required": ["type", "colNumber"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "const": "matcher-preview-output-range" },
+        "colNumber": { "type": "integer", "minimum": 1, "description": "1-based Excel column number of the hovered output column." }
+      },
+      "examples": [
+        { "type": "matcher-preview-output-range", "colNumber": 5 }
+      ]
+    },
+
+    "MatcherClearOutputRangePreviewMessage": {
+      "description": "Sent by the document-matcher web app when hover preview ends — the dropdown closed, the pointer left the option list, or the wizard left Step 2. The host restores the Excel selection captured before the first matcher-preview-output-range. Safe to send when no preview is active.",
+      "type": "object",
+      "required": ["type"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "const": "matcher-clear-output-range-preview" }
+      },
+      "examples": [
+        { "type": "matcher-clear-output-range-preview" }
+      ]
+    },
+
     "MatcherLogMessage": {
       "description": "Diagnostic message sent by the document-matcher web app for host-side logging.",
       "type": "object",
@@ -918,6 +945,8 @@
     { "$ref": "#/definitions/MatcherReadyMessage" },
     { "$ref": "#/definitions/MatcherSelectionLockedMessage" },
     { "$ref": "#/definitions/MatcherSelectionUnlockedMessage" },
+    { "$ref": "#/definitions/MatcherPreviewOutputRangeMessage" },
+    { "$ref": "#/definitions/MatcherClearOutputRangePreviewMessage" },
     { "$ref": "#/definitions/MatcherLogMessage" },
     { "$ref": "#/definitions/MatcherGeometryPreparedMessage" },
     { "$ref": "#/definitions/MatcherSelectionChangedMessage" },

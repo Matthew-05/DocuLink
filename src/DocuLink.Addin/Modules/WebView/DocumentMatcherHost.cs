@@ -37,6 +37,15 @@ namespace DocuLink.Addin.Modules.WebView
         /// </summary>
         private int _firstSelectedRow;
 
+        /// <summary>
+        /// The selection to put back when output-range hover preview ends, captured on the
+        /// first preview of a hover session. Null when no preview is active.
+        /// </summary>
+        private Excel.Range _previewRestoreRange;
+
+        /// <summary>Column currently shown by hover preview, or 0 when none.</summary>
+        private int _previewColNumber;
+
         public DocumentMatcherHost()
         {
             Text = "DocuLink – Match Documents";
@@ -117,6 +126,14 @@ namespace DocuLink.Addin.Modules.WebView
                     HandleSelectionUnlocked();
                     break;
 
+                case "matcher-preview-output-range":
+                    HandlePreviewOutputRange(raw);
+                    break;
+
+                case "matcher-clear-output-range-preview":
+                    ClearOutputRangePreview();
+                    break;
+
                 case "matcher-log":
                     HandleMatcherLog(raw);
                     break;
@@ -138,6 +155,7 @@ namespace DocuLink.Addin.Modules.WebView
                     break;
 
                 case "matcher-close":
+                    ClearOutputRangePreview();
                     Hide();
                     break;
             }
@@ -213,8 +231,108 @@ namespace DocuLink.Addin.Modules.WebView
         private void HandleSelectionUnlocked()
         {
             DocuLinkLog.Trace("matcher-selection-unlocked received");
+
+            // Step 1 reads the live selection, so any preview must be undone before the
+            // change handler is re-armed — otherwise a previewed output column would be
+            // adopted as the user's key selection.
+            ClearOutputRangePreview();
+
             _selectionLocked = false;
             SubscribeSelectionChanged();
+        }
+
+        /// <summary>
+        /// Selects the range that would receive links for the hovered output column: the key
+        /// selection's row span in that column.
+        /// </summary>
+        private void HandlePreviewOutputRange(string raw)
+        {
+            try
+            {
+                int colNumber = DocumentMatcherMessageParser.ParsePreviewOutputRange(raw);
+                if (_selectedRange == null || colNumber <= 0) return;
+                if (colNumber == _previewColNumber) return; // already showing this column
+
+                var firstArea = (Excel.Range)_selectedRange.Areas[1];
+                var worksheet = (Excel.Worksheet)firstArea.Worksheet;
+                int firstRow  = firstArea.Row;
+                int rowCount  = firstArea.Rows.Count;
+                if (rowCount <= 0) return;
+
+                var topCell = (Excel.Range)worksheet.Cells[firstRow, colNumber];
+                var botCell = (Excel.Range)worksheet.Cells[firstRow + rowCount - 1, colNumber];
+                var target  = worksheet.get_Range(topCell, botCell);
+
+                // Captured once per hover session: previewing a second column must still
+                // restore the user's original selection, not the first previewed column.
+                if (_previewRestoreRange == null)
+                    _previewRestoreRange = _selectedRange;
+
+                SelectWithoutFeedback(target);
+                _previewColNumber = colNumber;
+            }
+            catch (Exception ex)
+            {
+                DocuLinkLog.Trace($"HandlePreviewOutputRange error {ex.GetType().FullName}: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Restores the selection captured before hover preview began. No-op when no preview
+        /// is active, so it is safe to call from teardown and step transitions.
+        /// </summary>
+        private void ClearOutputRangePreview()
+        {
+            if (_previewRestoreRange == null)
+            {
+                _previewColNumber = 0;
+                return;
+            }
+
+            try
+            {
+                SelectWithoutFeedback(_previewRestoreRange);
+            }
+            catch (Exception ex)
+            {
+                DocuLinkLog.Trace($"ClearOutputRangePreview error {ex.GetType().FullName}: {ex.Message}");
+            }
+            finally
+            {
+                _previewRestoreRange = null;
+                _previewColNumber = 0;
+            }
+        }
+
+        /// <summary>
+        /// Selects <paramref name="range"/> with SheetSelectionChange detached.
+        /// </summary>
+        /// <remarks>
+        /// Preview only runs on Step 2, where the handler is already unsubscribed, but the
+        /// guard is unconditional: re-entering that handler from a preview would feed a
+        /// previewed output column back in as the user's key selection.
+        /// </remarks>
+        private void SelectWithoutFeedback(Excel.Range range)
+        {
+            if (range == null) return;
+
+            bool wasSubscribed = _selectionChangeSubscribed;
+            if (wasSubscribed) UnsubscribeSelectionChanged();
+
+            try
+            {
+                // Range.Select throws unless the owning workbook and sheet are active.
+                // Activating an already-active book or sheet is a no-op, so this is
+                // unconditional rather than guarded by unreliable RCW identity checks.
+                var worksheet = (Excel.Worksheet)range.Worksheet;
+                (worksheet.Parent as Excel.Workbook)?.Activate();
+                worksheet.Activate();
+                range.Select();
+            }
+            finally
+            {
+                if (wasSubscribed) SubscribeSelectionChanged();
+            }
         }
 
         private void HandleCheckOutputContent(string raw)
@@ -467,6 +585,7 @@ namespace DocuLink.Addin.Modules.WebView
             DocuLinkLog.Trace("start-matching received");
             try
             {
+                ClearOutputRangePreview();
                 _selectionLocked = true;
                 UnsubscribeSelectionChanged();
 
@@ -665,6 +784,7 @@ namespace DocuLink.Addin.Modules.WebView
         internal void Reset()
         {
             if (!_webViewReady) return;
+            ClearOutputRangePreview();
             UnsubscribeSelectionChanged();
             _selectionLocked = false;
             HandleAppReady();
@@ -675,6 +795,7 @@ namespace DocuLink.Addin.Modules.WebView
             if (e.CloseReason == CloseReason.UserClosing)
             {
                 e.Cancel = true;
+                ClearOutputRangePreview();
                 Hide();
                 return;
             }
@@ -685,6 +806,7 @@ namespace DocuLink.Addin.Modules.WebView
         {
             if (disposing && !_disposed)
             {
+                ClearOutputRangePreview();
                 _disposed = true;
                 UnsubscribeSelectionChanged();
                 _webView.Dispose();
