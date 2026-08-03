@@ -151,11 +151,16 @@ namespace DocuLink.Addin.Modules.WebView
                 _selectionLocked = false;
 
                 var app = Globals.ThisAddIn.Application;
-                var workbook = app?.ActiveWorkbook;
-                if (workbook == null) return;
+                if (app == null) return;
 
+                // The captured range is what pins the wizard to a workbook for the rest of
+                // its life; every later handler derives the workbook from it via
+                // GetSelectedWorkbook rather than re-reading ActiveWorkbook.
                 _selectedRange = app.Selection as Excel.Range;
                 if (_selectedRange == null) return;
+
+                var workbook = GetSelectedWorkbook();
+                if (workbook == null) return;
 
                 if (!TryAnalyzeSelection(_selectedRange, out int rowCount, out var keyColumns, out var outputColumns))
                     return;
@@ -281,7 +286,12 @@ namespace DocuLink.Addin.Modules.WebView
             try
             {
                 var payload = DocumentMatcherMessageParser.ParseMatcherGeometryPrepared(raw);
-                var workbook = GetSelectedWorkbook() ?? Globals.ThisAddIn.Application?.ActiveWorkbook;
+
+                // Cached per workbook, so falling back to ActiveWorkbook would file this
+                // under a workbook that has no such PDF. StoreTransientPdfGeometry ignores
+                // a null workbook, which is the right outcome — a missed cache, not a
+                // misplaced one.
+                var workbook = GetSelectedWorkbook();
                 Globals.ThisAddIn.StoreTransientPdfGeometry(
                     workbook, payload.PdfId, payload.GeometryBase64);
                 DocuLinkLog.Trace($"matcher geometry cached pdfId={payload.PdfId}");
@@ -292,13 +302,33 @@ namespace DocuLink.Addin.Modules.WebView
             }
         }
 
+        /// <summary>
+        /// The workbook the wizard is operating on: the one owning the range captured when it
+        /// opened, never whatever happens to be active now.
+        /// </summary>
+        /// <remarks>
+        /// A matching run lasts long enough for the user to click into another workbook, so
+        /// every handler that reads or writes workbook state has to resolve it this way.
+        /// Returns <c>null</c> if the workbook can no longer be reached — callers must abort
+        /// rather than fall back to the active workbook, which is how links ended up being
+        /// recorded against the wrong file.
+        /// </remarks>
         private Excel.Workbook GetSelectedWorkbook()
         {
             if (_selectedRange == null) return null;
 
-            var firstArea = (Excel.Range)_selectedRange.Areas[1];
-            var worksheet = (Excel.Worksheet)firstArea.Worksheet;
-            return worksheet.Parent as Excel.Workbook;
+            try
+            {
+                var firstArea = (Excel.Range)_selectedRange.Areas[1];
+                var worksheet = (Excel.Worksheet)firstArea.Worksheet;
+                return worksheet.Parent as Excel.Workbook;
+            }
+            catch (Exception ex)
+            {
+                // Typically the captured range's workbook has been closed mid-run.
+                DocuLinkLog.Trace($"GetSelectedWorkbook unavailable: {ex.GetType().FullName}: {ex.Message}");
+                return null;
+            }
         }
 
         private bool TryAnalyzeSelection(
@@ -441,9 +471,16 @@ namespace DocuLink.Addin.Modules.WebView
                 UnsubscribeSelectionChanged();
 
                 var payload = DocumentMatcherMessageParser.ParseStartMatching(raw);
-                var app = Globals.ThisAddIn.Application;
-                var workbook = GetSelectedWorkbook() ?? app?.ActiveWorkbook;
-                if (workbook == null || _selectedRange == null) return;
+
+                // No ActiveWorkbook fallback: guessing here would match against another
+                // workbook's PDFs, and the pdfIds that come back would then be written as
+                // links in this one — references to documents it does not contain.
+                var workbook = GetSelectedWorkbook();
+                if (workbook == null || _selectedRange == null)
+                {
+                    DocuLinkLog.Trace("start-matching aborted: selection workbook unavailable");
+                    return;
+                }
 
                 var session = Globals.ThisAddIn.GetStorageSession(workbook);
                 var content = session.Store.LoadContent();
@@ -534,10 +571,16 @@ namespace DocuLink.Addin.Modules.WebView
             try
             {
                 var payload = DocumentMatcherMessageParser.ParseCreateLinks(raw);
-                var app = Globals.ThisAddIn.Application;
-                var workbook = app?.ActiveWorkbook;
+
+                // Must be the selection's workbook. This used to read ActiveWorkbook, so if
+                // focus moved during the run — matching is slow enough to invite that — the
+                // link records and XmlMap bindings went to the newly active workbook while
+                // the target cells stayed in this one. The bindings then failed and the other
+                // workbook was left holding link entries for cells it does not own.
+                var workbook = GetSelectedWorkbook();
                 if (workbook == null || _selectedRange == null)
                 {
+                    DocuLinkLog.Trace("create-links aborted: selection workbook unavailable");
                     Post(DocumentMatcherMessageSerializer.BuildLinksCreated(results));
                     return;
                 }
