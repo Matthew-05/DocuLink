@@ -348,14 +348,51 @@ namespace DocuLink.Addin.Modules.CustomXml
             return null;
         }
 
+        /// <summary>
+        /// Replaces the part carrying <paramref name="namespaceUri"/> with <paramref name="xml"/>.
+        ///
+        /// The new part is added *before* the old one is deleted, so a failure part-way through
+        /// never leaves the workbook with no part at all. Deleting first — the obvious ordering —
+        /// loses the entire links table or a whole PDF if the subsequent Add throws, which is a
+        /// real risk once a part carries tens of megabytes of base64.
+        ///
+        /// If the old part cannot be deleted after the new one lands, the new part is removed
+        /// again and the call throws: two parts sharing a namespace would make
+        /// <see cref="FindPartByNamespace"/> non-deterministic, and silently reading whichever
+        /// one it happened to return is worse than a visible failure.
+        /// </summary>
         private void ReplacePart(string namespaceUri, string xml)
         {
+            // Captured before the Add so we delete the part we meant to, rather than whichever
+            // one SelectByNamespace returns once two briefly share the namespace.
             Office.CustomXMLPart existing = FindPartByNamespace(namespaceUri);
-            if (existing != null)
-                existing.Delete();
 
             object missing = Type.Missing;
-            _workbook.CustomXMLParts.Add(xml, missing);
+            Office.CustomXMLPart added = _workbook.CustomXMLParts.Add(xml, missing);
+
+            if (existing == null)
+                return;
+
+            try
+            {
+                existing.Delete();
+            }
+            catch (COMException ex)
+            {
+                DocuLinkLog.Trace(
+                    $"ReplacePart could not delete superseded part ns={namespaceUri}: {ex.Message}");
+
+                try { added?.Delete(); }
+                catch (COMException rollbackEx)
+                {
+                    DocuLinkLog.Trace(
+                        $"ReplacePart rollback also failed ns={namespaceUri}: {rollbackEx.Message}");
+                }
+
+                throw new InvalidOperationException(
+                    "DocuLink could not replace its stored data in this workbook. " +
+                    "The previous version has been kept.", ex);
+            }
         }
 
         private void DeletePart(string namespaceUri)

@@ -139,6 +139,7 @@ AGENTS.md
 secrets.json
 *.local.json
 src/web/package-lock.json
+*.local.*
 
 # --- Generated source files ---
 # Written by generate-version.ps1 before each C# build
