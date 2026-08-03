@@ -5,6 +5,9 @@ export interface FileTableOptions {
   onSelectionChange(selectedIds: string[]): void;
 }
 
+/** Tooltip shown on every control disabled by the OCR lock. */
+const LOCKED_HINT = "Unavailable while OCR is running";
+
 export class FileTable {
   private readonly _root: HTMLElement;
   private readonly _thead: HTMLTableSectionElement;
@@ -15,7 +18,7 @@ export class FileTable {
   private _selectedFolderId: string | null = null;
   private _selectedIds: Set<string> = new Set();
   private _filterText = "";
-  private _selectionLocked = false;
+  private _locked = false;
   private _contextMenuFile: FileEntry | null = null;
   private _contextMenuNameSpan: HTMLSpanElement | null = null;
   private _contextMenuRow: HTMLTableRowElement | null = null;
@@ -98,16 +101,18 @@ export class FileTable {
   }
 
   /**
-   * Locks or unlocks row selection. Locking immediately clears the current
-   * selection and disables all checkboxes so the user cannot select rows while
-   * OCR is running. Unlocking re-enables them. No-op if the state is unchanged.
+   * Locks or unlocks all mutating interaction with the table while OCR runs:
+   * row selection, inline rename (double-click, rename button) and the
+   * right-click context menu. Locking immediately clears the current selection.
+   * No-op if the state is unchanged.
    */
-  setSelectionLocked(locked: boolean): void {
-    if (this._selectionLocked === locked) return;
-    this._selectionLocked = locked;
+  setLocked(locked: boolean): void {
+    if (this._locked === locked) return;
+    this._locked = locked;
     if (locked) {
       this._selectedIds.clear();
       this._onSelectionChange([]);
+      this._hideContextMenu();
     }
     this._render();
   }
@@ -164,13 +169,15 @@ export class FileTable {
     const checkedCount = visible.filter((f) => this._selectedIds.has(f.id)).length;
     selectAllCb.checked = visible.length > 0 && checkedCount === visible.length;
     selectAllCb.indeterminate = checkedCount > 0 && checkedCount < visible.length;
-    selectAllCb.disabled = this._selectionLocked;
+    selectAllCb.disabled = this._locked;
+    selectAllCb.title = this._locked ? LOCKED_HINT : "Select all";
   }
 
   private _render(): void {
     this._tbody.innerHTML = "";
     const visible = this._visibleFiles();
 
+    this._root.classList.toggle("file-table-wrap--locked", this._locked);
     this._updateSelectAllCheckbox();
 
     if (visible.length === 0) {
@@ -193,10 +200,11 @@ export class FileTable {
     tr.dataset["id"] = file.id;
     if (this._selectedIds.has(file.id)) tr.classList.add("is-selected");
 
-    // Row-level right-click → context menu
+    // Row-level right-click → context menu (suppressed entirely while locked)
     tr.addEventListener("contextmenu", (e) => {
       e.preventDefault();
       e.stopPropagation();
+      if (this._locked) return;
       this._showContextMenu(file, nameSpan, tr, e.clientX, e.clientY);
     });
 
@@ -207,7 +215,8 @@ export class FileTable {
     cb.type = "checkbox";
     cb.className = "row-cb";
     cb.checked = this._selectedIds.has(file.id);
-    cb.disabled = this._selectionLocked;
+    cb.disabled = this._locked;
+    cb.title = this._locked ? LOCKED_HINT : "Select file";
     cb.addEventListener("change", () => {
       this._onRowCheck(file.id, cb.checked);
       tr.classList.toggle("is-selected", cb.checked);
@@ -221,11 +230,16 @@ export class FileTable {
     const nameSpan = document.createElement("span");
     nameSpan.className = "file-name";
     nameSpan.textContent = file.name;
-    nameSpan.title = "Double-click to rename";
-    nameSpan.addEventListener("dblclick", (e) => {
-      e.stopPropagation();
-      this._startRename(file, nameSpan, tr);
-    });
+    if (this._locked) {
+      nameSpan.classList.add("file-name--locked");
+      nameSpan.title = LOCKED_HINT;
+    } else {
+      nameSpan.title = "Double-click to rename";
+      nameSpan.addEventListener("dblclick", (e) => {
+        e.stopPropagation();
+        this._startRename(file, nameSpan, tr);
+      });
+    }
     nameTd.appendChild(nameSpan);
 
     // Links cell
@@ -265,8 +279,9 @@ export class FileTable {
 
     const renameBtn = document.createElement("button");
     renameBtn.className = "icon-btn icon-btn--sm";
-    renameBtn.title = "Rename";
+    renameBtn.title = this._locked ? LOCKED_HINT : "Rename";
     renameBtn.textContent = "✎";
+    renameBtn.disabled = this._locked;
     renameBtn.addEventListener("click", (e) => {
       e.stopPropagation();
       this._startRename(file, nameSpan, tr);
@@ -287,6 +302,7 @@ export class FileTable {
   }
 
   private _startRename(file: FileEntry, nameSpan: HTMLSpanElement, tr: HTMLTableRowElement): void {
+    if (this._locked) return;
     if (tr.querySelector(".rename-input")) return;
 
     const input = document.createElement("input");
@@ -342,6 +358,7 @@ export class FileTable {
     const button = e.target as HTMLButtonElement;
     const action = button.dataset["action"];
 
+    if (this._locked) { this._hideContextMenu(); return; }
     if (!this._contextMenuFile || !this._contextMenuNameSpan || !this._contextMenuRow) return;
 
     if (action === "rename") {

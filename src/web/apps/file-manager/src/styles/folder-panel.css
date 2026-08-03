@@ -98,6 +98,17 @@
   display: flex;
 }
 
+/* Folder CRUD is disabled while OCR is running — browsing stays available */
+.folder-panel--locked .icon-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.folder-panel--locked .icon-btn:disabled:hover {
+  background: transparent;
+  color: var(--color-text-muted);
+}
+
 /* New-folder inline row */
 
 .folder-panel__new-row {

@@ -54,6 +54,14 @@ namespace DocuLink.Addin.Modules.WebView
         /// <summary>The folder GUID currently selected in the web UI (<c>null</c> for All Files).</summary>
         private string _selectedFolderId;
 
+        /// <summary>
+        /// True for the whole OCR run. All file-add entry points (dropzone click, OS drag-drop,
+        /// file:/// navigation fallback, web-originated add-files) are refused while set.
+        /// Keyed off <see cref="_activeOcrIds"/> rather than <see cref="OcrService.IsRunning"/>,
+        /// which only flips once the worker starts and so leaves the job-loading phase unguarded.
+        /// </summary>
+        private bool IsOcrLocked => _activeOcrIds.Count > 0;
+
         private bool _webViewReady;
         private bool _disposed;
 
@@ -183,6 +191,12 @@ namespace DocuLink.Addin.Modules.WebView
         {
             if (_disposed) return;
 
+            if (IsOcrLocked)
+            {
+                e.Effect = DragDropEffects.None;
+                return;
+            }
+
             if (GetDroppedPaths(e.Data).Length == 0)
             {
                 e.Effect = DragDropEffects.None;
@@ -201,7 +215,7 @@ namespace DocuLink.Addin.Modules.WebView
 
         private void NativeFileDrop_DragDrop(object sender, DragEventArgs e)
         {
-            if (_disposed) return;
+            if (_disposed || IsOcrLocked) return;
 
             _nativeDropZone.SetDragOver(false);
 
@@ -218,6 +232,26 @@ namespace DocuLink.Addin.Modules.WebView
                 return Array.Empty<string>();
 
             return data.GetData(DataFormats.FileDrop) as string[] ?? Array.Empty<string>();
+        }
+
+        /// <summary>
+        /// Enables/disables every OS-level file-add affordance while OCR runs: the native
+        /// dropzone (click + drop) and form/WebView drop targets. The panel repaints itself
+        /// in a muted "paused" state so the block is visible, not just silent.
+        /// </summary>
+        private void SetFileAddLocked(bool locked)
+        {
+            if (_disposed || IsDisposed) return;
+
+            if (InvokeRequired)
+            {
+                BeginInvoke(new Action<bool>(SetFileAddLocked), locked);
+                return;
+            }
+
+            AllowDrop = !locked;
+            _nativeDropZone.AllowDrop = !locked;
+            _nativeDropZone.SetLocked(locked);
         }
 
         private void PositionNativeDropZone()
@@ -240,6 +274,11 @@ namespace DocuLink.Addin.Modules.WebView
         {
             if (paths == null || paths.Length == 0)
                 return;
+            if (IsOcrLocked)
+            {
+                System.Diagnostics.Debug.WriteLine("[DocuLink] OS drop ignored: OCR in progress.");
+                return;
+            }
 
             Excel.Workbook wb = GetActiveWorkbook();
             if (wb == null)
@@ -453,6 +492,8 @@ namespace DocuLink.Addin.Modules.WebView
 
             bool anyComplete = false;
 
+            SetFileAddLocked(true);
+
             try
             {
                 await _ocrService.RunOcrAsync(
@@ -473,6 +514,7 @@ namespace DocuLink.Addin.Modules.WebView
             finally
             {
                 _activeOcrIds.Clear();
+                SetFileAddLocked(false);
             }
 
             if (anyComplete)
@@ -483,6 +525,8 @@ namespace DocuLink.Addin.Modules.WebView
 
         private void HandleAddFiles(AddFilesRequest req)
         {
+            if (IsOcrLocked) return;
+
             Excel.Workbook wb = GetActiveWorkbook();
             if (wb == null) return;
             if (!RequireWritable(wb)) return;
@@ -524,6 +568,8 @@ namespace DocuLink.Addin.Modules.WebView
 
         private void ShowPdfFilePicker()
         {
+            if (IsOcrLocked) return;
+
             Excel.Workbook wb = GetActiveWorkbook();
             if (wb == null) return;
             if (!RequireWritable(wb)) return;
@@ -859,6 +905,7 @@ namespace DocuLink.Addin.Modules.WebView
         {
             private bool _dragOver;
             private bool _hoverOver;
+            private bool _locked;
 
             public NativeDropZonePanel()
             {
@@ -866,17 +913,40 @@ namespace DocuLink.Addin.Modules.WebView
                 BackColor = Color.White;
                 ForeColor = Color.FromArgb(31, 41, 55);
                 Cursor = Cursors.Hand;
-                MouseEnter += (s, e) => { _hoverOver = true; Invalidate(); };
+                MouseEnter += (s, e) => { if (!_locked) { _hoverOver = true; Invalidate(); } };
                 MouseLeave += (s, e) => { _hoverOver = false; Invalidate(); };
             }
 
+            /// <summary>True while OCR is running; the panel ignores clicks and paints as paused.</summary>
+            public bool IsLocked => _locked;
+
             public void SetDragOver(bool dragOver)
             {
-                if (_dragOver == dragOver)
+                if (_locked || _dragOver == dragOver)
                     return;
 
                 _dragOver = dragOver;
                 Invalidate();
+            }
+
+            public void SetLocked(bool locked)
+            {
+                if (_locked == locked)
+                    return;
+
+                _locked = locked;
+                _dragOver = false;
+                _hoverOver = false;
+                Cursor = locked ? Cursors.No : Cursors.Hand;
+                Invalidate();
+            }
+
+            protected override void OnClick(EventArgs e)
+            {
+                if (_locked)
+                    return;
+
+                base.OnClick(e);
             }
 
             protected override void OnPaint(PaintEventArgs e)
@@ -888,14 +958,18 @@ namespace DocuLink.Addin.Modules.WebView
                 var bounds = ClientRectangle;
                 bounds.Inflate(-1, -1);
 
-                Color fillColor = _dragOver ? Color.FromArgb(238, 242, 255) : Color.White;
-                Color borderColor = _dragOver
-                    ? Color.FromArgb(124, 106, 247)
-                    : _hoverOver ? Color.FromArgb(180, 168, 252) : Color.FromArgb(212, 212, 224);
+                Color fillColor = _locked
+                    ? Color.FromArgb(236, 236, 242)
+                    : _dragOver ? Color.FromArgb(238, 242, 255) : Color.White;
+                Color borderColor = _locked
+                    ? Color.FromArgb(212, 212, 224)
+                    : _dragOver
+                        ? Color.FromArgb(124, 106, 247)
+                        : _hoverOver ? Color.FromArgb(180, 168, 252) : Color.FromArgb(212, 212, 224);
 
                 using (var fill = new SolidBrush(fillColor))
                 using (var border = new Pen(borderColor, 2f))
-                using (var textBrush = new SolidBrush(ForeColor))
+                using (var textBrush = new SolidBrush(_locked ? Color.FromArgb(92, 92, 112) : ForeColor))
                 using (var mutedBrush = new SolidBrush(Color.FromArgb(92, 92, 112)))
                 using (var titleFont = new Font(Font.FontFamily, 12f, FontStyle.Bold))
                 using (var bodyFont = new Font(Font.FontFamily, 11f, FontStyle.Regular))
@@ -904,8 +978,8 @@ namespace DocuLink.Addin.Modules.WebView
                     e.Graphics.FillRectangle(fill, bounds);
                     e.Graphics.DrawRectangle(border, bounds);
 
-                    var title = "Drop PDFs or folders here";
-                    var body = "or click to browse";
+                    var title = _locked ? "Adding files is paused" : "Drop PDFs or folders here";
+                    var body = _locked ? "OCR is running" : "or click to browse";
                     var titleSize = e.Graphics.MeasureString(title, titleFont);
                     var bodySize = e.Graphics.MeasureString(body, bodyFont);
 

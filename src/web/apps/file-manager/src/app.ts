@@ -46,7 +46,7 @@ export function mountApp(root: HTMLElement): void {
       const ids = fileTable.getSelectedIds();
       if (ids.length > 0) {
         sendOcrPdfs(ids);
-        fileTable.setSelectionLocked(true);
+        applyOcrLock(true);
       }
     },
     onCancelOcr() {
@@ -72,6 +72,12 @@ export function mountApp(root: HTMLElement): void {
       fileTable.update(currentFiles, selectedFolderId);
     },
   });
+
+  /** Locks/unlocks every mutating control (file rename/select, folder CRUD). */
+  function applyOcrLock(locked: boolean): void {
+    fileTable.setLocked(locked);
+    folderPanel.setLocked(locked);
+  }
 
   // Spacer to reserve space for native C# dropzone panel at the bottom
   const dropzoneSpacer = document.createElement("div");
@@ -104,10 +110,11 @@ export function mountApp(root: HTMLElement): void {
     if (entry) {
       entry.status = status;
       fileTable.update(currentFiles, selectedFolderId);
-      const { selectedHasActiveOcr, anyOcrRunning } = computeToolbarState();
-      toolbar.update(selectedIds.length, selectedHasActiveOcr, anyOcrRunning);
-      fileTable.setSelectionLocked(anyOcrRunning);
     }
+
+    const { selectedHasActiveOcr, anyOcrRunning } = computeToolbarState();
+    toolbar.update(selectedIds.length, selectedHasActiveOcr, anyOcrRunning);
+    applyOcrLock(anyOcrRunning);
   }
 
   initHostBridge(onFilesLoaded, onOcrStatus);

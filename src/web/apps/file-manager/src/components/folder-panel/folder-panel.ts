@@ -9,12 +9,17 @@ export interface FolderPanelCallbacks {
   onSelectionChange(folderId: string | null): void;
 }
 
+/** Tooltip shown on every control disabled by the OCR lock. */
+const LOCKED_HINT = "Unavailable while OCR is running";
+
 export class FolderPanel {
   private readonly _root: HTMLElement;
   private readonly _list: HTMLUListElement;
+  private readonly _addBtn: HTMLButtonElement;
   private _folders: FolderEntry[] = [];
   private _files: FileEntry[] = [];
   private _selectedId: string | null = null;
+  private _locked = false;
   private readonly _callbacks: FolderPanelCallbacks;
 
   constructor(container: HTMLElement, callbacks: FolderPanelCallbacks) {
@@ -30,15 +35,15 @@ export class FolderPanel {
     title.className = "folder-panel__title";
     title.textContent = "Folders";
 
-    const addBtn = document.createElement("button");
-    addBtn.className = "icon-btn";
-    addBtn.title = "New folder";
-    addBtn.textContent = "+";
-    addBtn.tabIndex = -1;
-    addBtn.addEventListener("click", () => this._showNewFolderRow());
+    this._addBtn = document.createElement("button");
+    this._addBtn.className = "icon-btn";
+    this._addBtn.title = "New folder";
+    this._addBtn.textContent = "+";
+    this._addBtn.tabIndex = -1;
+    this._addBtn.addEventListener("click", () => this._showNewFolderRow());
 
     header.appendChild(title);
-    header.appendChild(addBtn);
+    header.appendChild(this._addBtn);
 
     this._list = document.createElement("ul");
     this._list.className = "folder-panel__list";
@@ -64,6 +69,19 @@ export class FolderPanel {
     return this._selectedId;
   }
 
+  /**
+   * Locks or unlocks folder CRUD (create, rename, delete) while OCR runs.
+   * Folder selection stays available so the user can still browse. Locking
+   * discards any in-progress inline create/rename/delete UI.
+   */
+  setLocked(locked: boolean): void {
+    if (this._locked === locked) return;
+    this._locked = locked;
+    this._addBtn.disabled = locked;
+    this._addBtn.title = locked ? LOCKED_HINT : "New folder";
+    this._renderItems();
+  }
+
   /** Resets folder selection and cancels any inline edit UI. */
   reset(): void {
     this._selectedId = null;
@@ -72,6 +90,7 @@ export class FolderPanel {
 
   private _renderItems(): void {
     this._list.innerHTML = "";
+    this._root.classList.toggle("folder-panel--locked", this._locked);
 
     this._list.appendChild(this._createItem(null, "All Files", this._files.length));
 
@@ -104,7 +123,7 @@ export class FolderPanel {
       this._callbacks.onSelectionChange(id);
     });
 
-    if (id !== null) {
+    if (id !== null && !this._locked) {
       const actions = document.createElement("span");
       actions.className = "folder-panel__item-actions";
 
@@ -136,6 +155,7 @@ export class FolderPanel {
 
   /** Appends a temporary new-folder input row at the bottom of the list. */
   private _showNewFolderRow(): void {
+    if (this._locked) return;
     if (this._list.querySelector(".folder-panel__new-row")) return;
 
     const li = document.createElement("li");
@@ -187,6 +207,7 @@ export class FolderPanel {
     id: string,
     currentName: string
   ): void {
+    if (this._locked) return;
     if (li.querySelector(".folder-inline-input")) return;
 
     const input = document.createElement("input");
@@ -217,6 +238,7 @@ export class FolderPanel {
 
   /** Replaces the item's action buttons with an inline delete confirmation. */
   private _showInlineDeleteConfirm(li: HTMLLIElement, id: string): void {
+    if (this._locked) return;
     if (li.querySelector(".folder-panel__delete-confirm")) return;
 
     const actionsSpan = li.querySelector<HTMLElement>(".folder-panel__item-actions");
