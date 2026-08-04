@@ -16,6 +16,12 @@
   user-select: none;
 }
 
+/* `display: flex` outranks the `hidden` attribute's UA rule, so the empty
+   bordered shell stays painted unless hidden is re-asserted here. */
+.link-selection-panel[hidden] {
+  display: none;
+}
+
 .link-selection-panel__summary {
   flex-shrink: 0;
   padding: 7px 12px;
