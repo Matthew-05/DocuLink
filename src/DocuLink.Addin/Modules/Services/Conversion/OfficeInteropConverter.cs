@@ -53,9 +53,7 @@ namespace DocuLink.Addin.Modules.Services.Conversion
     /// </summary>
     internal sealed class OfficeInteropConverter : IDisposable
     {
-        // WdExportFormat.wdExportFormatPDF and PpFixedFormatType.ppFixedFormatTypePDF
-        // use these documented constants; late binding means they cannot come from
-        // the enums themselves.
+        // Late binding means these cannot come from the interop enums themselves.
         private const int WdExportFormatPdf = 17;
         private const int WdExportOptimizeForPrint = 0;
         private const int WdDoNotSaveChanges = 0;
@@ -64,8 +62,8 @@ namespace DocuLink.Addin.Modules.Services.Conversion
         private const int XlTypePdf = 0;
         private const int XlQualityStandard = 0;
 
-        private const int PpFixedFormatTypePdf = 2;
-        private const int PpFixedFormatIntentPrint = 2;
+        // PpSaveAsFileType.ppSaveAsPDF.
+        private const int PpSaveAsPdf = 32;
 
         private const int OlSaveAsTypeHtml = 5;
         private const int OlDiscard = 1;
@@ -377,16 +375,31 @@ namespace DocuLink.Addin.Modules.Services.Conversion
             try
             {
                 presentations = app.Presentations;
-                presentation = presentations.Open(
-                    FileName: sourcePath,
-                    ReadOnly: MsoTrue,
-                    Untitled: MsoTrue,   // Opens a copy, leaving the original unlocked
-                    WithWindow: MsoFalse);
 
-                presentation.ExportAsFixedFormat(
-                    Path: outputPdfPath,
-                    FixedFormatType: PpFixedFormatTypePdf,
-                    Intent: PpFixedFormatIntentPrint);
+                // Open(FileName, ReadOnly, Untitled, WithWindow), positional.
+                //
+                // Untitled is msoFalse deliberately. It used to be msoTrue to leave the
+                // original unlocked, but ReadOnly already guarantees that, and an
+                // untitled open makes PowerPoint build an unnamed copy whose format it
+                // re-derives.
+                presentation = presentations.Open(sourcePath, MsoTrue, MsoFalse, MsoFalse);
+
+                // SaveAs(FileName, FileFormat) rather than ExportAsFixedFormat.
+                //
+                // PowerPoint refuses to marshal ExportAsFixedFormat's Intent argument
+                // on this build — DISP_E_TYPEMISMATCH, surfacing as "Could not convert
+                // argument N". The N moves (2 when the arguments were named, 0 when
+                // positional) because puArgErr indexes rgvarg, which holds named
+                // arguments forward and positional ones reversed; both indices land on
+                // the same parameter. Word and Excel's ExportAsFixedFormat are fine, so
+                // this is specific to PowerPoint's dispinterface.
+                //
+                // SaveAs reaches the same PDF writer with two arguments and no enums
+                // beyond the file type, so there is nothing left to mistype. The export
+                // is fixed at PowerPoint's default quality — there is no Intent to ask
+                // for print rather than screen — which is an acceptable trade for a
+                // conversion that actually completes.
+                presentation.SaveAs(outputPdfPath, PpSaveAsPdf);
             }
             finally
             {
