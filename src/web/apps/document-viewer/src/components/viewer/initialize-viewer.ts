@@ -9,6 +9,7 @@ import { RectContextMenu } from "./rect-context-menu.js";
 import { LinkSelectionPanel } from "./link-selection-panel.js";
 import { CharBboxOverlay } from "./char-bbox-overlay.js";
 import { createRectNavigator } from "./rect-navigator.js";
+import { createFitMode } from "./fit-mode.js";
 import { PdfTextSearcher, normalizeSearchQuery } from "./pdf-text-searcher.js";
 import { SearchMatchRenderer } from "./search-match-renderer.js";
 import { createSearchNavigator } from "./search-navigator.js";
@@ -22,7 +23,7 @@ import {
   sendCacheBuildComplete,
   sendRotatePage,
 } from "../../host-bridge.js";
-import type { SearchMatch, LinkedRectEntry, LinkSelectionEntry } from "../../types/index.js";
+import type { SearchMatch, LinkedRectEntry, LinkSelectionEntry, ZoomLevel } from "../../types/index.js";
 import type { PdfEntry } from "../../types/index.js";
 import type { PdfViewer } from "./pdf-viewer.js";
 
@@ -69,7 +70,26 @@ export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLEleme
   let currentPage = 1;
   let onVisiblePageChanged = (): void => {};
 
+  const fitMode = createFitMode(
+    viewer,
+    (scale) => {
+      zoom.setScale(scale);
+      viewer.setZoom(scale);
+    },
+    () => currentPage,
+  );
+
+  /** Applies a page-fit scale and keeps it fitted across later viewer resizes. */
+  const applyFitZoom = (scale: ZoomLevel, pageNumber?: number): void => {
+    zoom.setScale(scale);
+    viewer.setZoom(scale);
+    fitMode.enter(pageNumber);
+  };
+
+  // Only the +/- buttons and ctrl+wheel reach this callback, so it means the user
+  // has chosen an explicit zoom level and no longer wants the page kept fitted.
   zoom.onChange((scale, anchor) => {
+    fitMode.exit();
     viewer.setZoom(scale, anchor);
   });
 
@@ -86,8 +106,7 @@ export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLEleme
   zoom.onFitPage(() => {
     const fitScale = viewer.getPageFitScale(currentPage);
     if (fitScale === null) return;
-    zoom.setScale(fitScale);
-    viewer.setZoom(fitScale);
+    applyFitZoom(fitScale);
   });
 
   selector.onSelect((entry) => {
@@ -123,6 +142,7 @@ export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLEleme
 
   const onNavigateToPage = (pageNumber: number): void => {
     currentPage = pageNumber;
+    fitMode.releasePin();
     page.setCurrentPage(pageNumber);
     onVisiblePageChanged();
   };
@@ -179,10 +199,9 @@ export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLEleme
   const charBboxDebug   = new CharBboxOverlay(viewer, cache);
   const matchRenderer   = new SearchMatchRenderer(viewer);
   const searcher        = new PdfTextSearcher(cache);
-  const searchNavigator = createSearchNavigator(viewer, selector, matchRenderer, (scale) => {
-    zoom.setScale(scale);
-    viewer.setZoom(scale);
-  }, onNavigateToPage);
+  const searchNavigator = createSearchNavigator(
+    viewer, selector, matchRenderer, applyFitZoom, onNavigateToPage,
+  );
 
   /** Rectangle the viewer is currently showing; marked as active in the panel. */
   let _focusedRectId: string | null = null;
@@ -434,10 +453,9 @@ export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLEleme
 
   // ── Host bridge ───────────────────────────────────────────────────────────
 
-  const navigate = createRectNavigator(viewer, selector, renderer, (scale) => {
-    zoom.setScale(scale);
-    viewer.setZoom(scale);
-  }, onNavigateToPage);
+  const navigate = createRectNavigator(
+    viewer, selector, renderer, applyFitZoom, onNavigateToPage,
+  );
 
   selectionPanel.onEntryClicked((entry) => {
     _focusedRectId = entry.id;

@@ -19,7 +19,7 @@ export function createRectNavigator(
   viewer: PdfViewer,
   selector: PdfSelector,
   renderer: RectRenderer,
-  applyZoom: (scale: ZoomLevel) => void,
+  applyZoom: (scale: ZoomLevel, pageNumber: number) => void,
   onNavigateToPage?: (pageNumber: number) => void,
 ): (id: string, pdfId: string, page: number) => void {
   return (id, pdfId, page) => {
@@ -67,7 +67,7 @@ async function _navigate(
   viewer: PdfViewer,
   selector: PdfSelector,
   renderer: RectRenderer,
-  applyZoom: (scale: ZoomLevel) => void,
+  applyZoom: (scale: ZoomLevel, pageNumber: number) => void,
   id: string,
   pdfId: string,
   page: number,
@@ -113,11 +113,11 @@ async function _navigate(
   // Order is critical: zoom → scroll → render → background
   if (crossPdf) {
     const fitScale = await getFitScaleWhenReady(viewer, page + 1);
-    applyZoom(fitScale);
+    applyZoom(fitScale, page + 1);
   } else {
     if (targetPageNeedsInitialRender || !rectFullyVisible) {
       const fitScale = await getFitScaleWhenReady(viewer, page + 1);
-      applyZoom(fitScale);
+      applyZoom(fitScale, page + 1);
 
       if (rectFullyVisible && !isElementFullyVisibleInViewer(rectEl, viewer.element)) {
         shouldScrollToTargetPage = true;

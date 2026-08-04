@@ -16,7 +16,7 @@ export function createSearchNavigator(
   viewer: PdfViewer,
   selector: PdfSelector,
   matchRenderer: SearchMatchRenderer,
-  onApplyZoom?: (scale: number) => void,
+  onApplyZoom?: (scale: number, pageNumber: number) => void,
   onNavigateToPage?: (pageNumber: number) => void,
 ): (match: SearchMatch, allMatches: SearchMatch[]) => void {
   return (match, allMatches) => {
@@ -30,7 +30,7 @@ async function _navigate(
   matchRenderer: SearchMatchRenderer,
   match: SearchMatch,
   allMatches: SearchMatch[],
-  onApplyZoom?: (scale: number) => void,
+  onApplyZoom?: (scale: number, pageNumber: number) => void,
   onNavigateToPage?: (pageNumber: number) => void,
 ): Promise<void> {
   const isCrossPdf = viewer.getActivePdfId() !== match.pdfId;
@@ -74,7 +74,7 @@ async function _navigate(
   if (shouldZoom && onApplyZoom) {
     const fitScale = viewer.getPageFitScale(match.pageIndex + 1);
     if (fitScale !== null) {
-      onApplyZoom(fitScale);
+      onApplyZoom(fitScale, match.pageIndex + 1);
     }
   }
 
