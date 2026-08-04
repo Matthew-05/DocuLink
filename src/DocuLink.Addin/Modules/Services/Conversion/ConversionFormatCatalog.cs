@@ -15,7 +15,7 @@ namespace DocuLink.Addin.Modules.Services.Conversion
         /// <summary>Late-bound Word automation.</summary>
         Word,
 
-        /// <summary>The Excel instance DocuLink is running inside (HostExcelConverter).</summary>
+        /// <summary>Late-bound Excel automation (always the host instance — see OfficeInteropConverter).</summary>
         Excel,
 
         /// <summary>Late-bound PowerPoint automation.</summary>

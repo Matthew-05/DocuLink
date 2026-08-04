@@ -9,14 +9,9 @@ in the worker (Pillow and PyMuPDF) plus the Python standard library:
   • eml / mht / mhtml    → parsed to a self-contained HTML document
 
 Office formats (.docx, .xlsx, .pptx, .msg, …) are deliberately NOT handled here.
-The C# host converts those itself, which has far better fidelity and requires no
-extra bundled runtime:
-
-  • .docx / .pptx / .msg → Modules/Services/Conversion/OfficeInteropConverter.cs
-                           (late-bound automation of a separate Office process)
-  • .xlsx and other      → Modules/Services/Conversion/HostExcelConverter.cs
-    spreadsheets           (the Excel instance the add-in is running inside;
-                           CoCreating Excel from in-process returns the host)
+The C# host converts those through late-bound Office automation, which has far
+better fidelity and requires no extra bundled runtime. See
+Modules/Services/Conversion/OfficeInteropConverter.cs.
 
 Conversion results are described by contracts/python-worker-v1.json:
 a result is either finished PDF bytes ("pdf") or an HTML document that the host
