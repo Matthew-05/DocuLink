@@ -1,15 +1,12 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
-using System.Diagnostics;
-using System.IO;
 using System.Linq;
-using System.Reflection;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-using System.Web.Script.Serialization;
 using System.Windows.Forms;
 using DocuLink.Addin.Modules.CustomXml.Models;
+using DocuLink.Addin.Modules.Infrastructure;
 using Excel = Microsoft.Office.Interop.Excel;
 
 namespace DocuLink.Addin.Modules.Services
@@ -30,9 +27,9 @@ namespace DocuLink.Addin.Modules.Services
         private readonly Control _uiControl;
         private readonly ManageFilesService _manageService = new ManageFilesService();
 
-        // Cancellation state — _runningProcess is volatile so Cancel() (any thread) always
+        // Cancellation state — _runningSession is volatile so Cancel() (any thread) always
         // reads the latest value written by the background worker thread.
-        private volatile Process _runningProcess;
+        private volatile PythonWorkerSession _runningSession;
         private CancellationTokenSource _cts;
 
         /// <summary>True while a RunOcrAsync call is in flight. UI-thread only.</summary>
@@ -56,7 +53,7 @@ namespace DocuLink.Addin.Modules.Services
         public void Cancel()
         {
             _cts?.Cancel();
-            try { _runningProcess?.Kill(); } catch { }
+            _runningSession?.Kill();
         }
 
         /// <summary>
@@ -82,13 +79,10 @@ namespace DocuLink.Addin.Modules.Services
             if (workbook == null) throw new ArgumentNullException(nameof(workbook));
             WorkbookProtectionGuard.ThrowIfStructureProtected(workbook);
 
-            string workerExe    = GetWorkerExePath();
-            string workerScript = GetWorkerScriptPath();
-            if (!File.Exists(workerExe) || !File.Exists(workerScript))
+            if (!PythonWorkerSession.IsAvailable)
             {
-                string msg = "OCR worker not found. Run src/python/build-worker.ps1 to build it.";
                 foreach (string id in pdfIds)
-                    onStatusUpdate(id, "error", msg);
+                    onStatusUpdate(id, "error", PythonWorkerSession.NotBuiltMessage);
                 return;
             }
 
@@ -102,7 +96,7 @@ namespace DocuLink.Addin.Modules.Services
             IsRunning = true;
             try
             {
-                await Task.Run(() => RunWorker(workerExe, workerScript, jobs, workbook, onStatusUpdate, _cts.Token));
+                await Task.Run(() => RunWorker(jobs, workbook, onStatusUpdate, _cts.Token));
             }
             finally
             {
@@ -113,55 +107,22 @@ namespace DocuLink.Addin.Modules.Services
         }
 
         private void RunWorker(
-            string workerExe,
-            string workerScript,
             IList<OcrJobEntry> jobs,
             Excel.Workbook workbook,
             Action<string, string, string> onStatusUpdate,
             CancellationToken token)
         {
-            var psi = new ProcessStartInfo
+            using (var session = new PythonWorkerSession())
             {
-                FileName  = workerExe,
-                Arguments = $"\"{workerScript}\"",
-                UseShellExecute = false,
-                RedirectStandardInput = true,
-                RedirectStandardOutput = true,
-                RedirectStandardError = false,
-                CreateNoWindow = true,
-            };
-
-            using (var process = new Process { StartInfo = psi })
-            {
-                process.Start();
-                _runningProcess = process;
-
-                StreamWriter stdin = null;
-                StreamReader stdout = null;
+                session.Start();
+                _runningSession = session;
 
                 try
                 {
-                    // StandardInputEncoding / StandardOutputEncoding don't exist on
-                    // .NET Framework — wrap the base streams in UTF-8 readers/writers instead.
-                    // Do NOT dispose the originals: they own the underlying stream lifetime;
-                    // disposing them here would close the BaseStream that our wrappers share.
-                    stdin = new StreamWriter(
-                        process.StandardInput.BaseStream,
-                        new UTF8Encoding(encoderShouldEmitUTF8Identifier: false))
-                    {
-                        AutoFlush = true,
-                    };
-
-                    stdout = new StreamReader(
-                        process.StandardOutput.BaseStream,
-                        Encoding.UTF8);
-
-                    bool workerDied = false;
-
                     foreach (var job in jobs)
                     {
                         // Cancelled or worker already gone — revert remaining to original status
-                        if (token.IsCancellationRequested || workerDied)
+                        if (token.IsCancellationRequested || session.IsDead)
                         {
                             Invoke(() => onStatusUpdate(job.PdfId, job.OriginalStatus, null));
                             continue;
@@ -169,11 +130,10 @@ namespace DocuLink.Addin.Modules.Services
 
                         Invoke(() => onStatusUpdate(job.PdfId, "processing", null));
 
-                        string jobJson = BuildJobJson(job);
-                        stdin.WriteLine(jobJson);
+                        session.SendJob(BuildJobJson(job));
 
                         // Read lines until we get a terminal result for this job_id
-                        string resultLine = ReadResultLine(stdout, job.PdfId);
+                        string resultLine = session.ReadResultLine(job.PdfId);
 
                         if (resultLine == null)
                         {
@@ -183,7 +143,6 @@ namespace DocuLink.Addin.Modules.Services
                                 job.PdfId,
                                 cancelled ? job.OriginalStatus : "error",
                                 cancelled ? null : "Worker closed unexpectedly."));
-                            workerDied = true;
                             continue;
                         }
 
@@ -225,75 +184,34 @@ namespace DocuLink.Addin.Modules.Services
                 }
                 finally
                 {
-                    _runningProcess = null;
-                }
-
-                // Close stdin so the worker exits cleanly (may throw if process was killed)
-                try { stdin?.Close(); } catch { }
-                process.WaitForExit(5000);
-                if (!process.HasExited)
-                    process.Kill();
-            }
-        }
-
-        /// <summary>
-        /// Reads stdout lines until a terminal ("success" or "error") line for the
-        /// given job_id is found, silently skipping "progress" lines.
-        /// Returns null if the stream ends before a terminal line is received.
-        /// </summary>
-        private static string ReadResultLine(StreamReader stdout, string jobId)
-        {
-            string line;
-            while ((line = stdout.ReadLine()) != null)
-            {
-                if (string.IsNullOrWhiteSpace(line)) continue;
-
-                try
-                {
-                    var ser = new JavaScriptSerializer { MaxJsonLength = int.MaxValue };
-                    var obj = ser.Deserialize<Dictionary<string, object>>(line);
-                    if (!obj.TryGetValue("job_id", out object idObj)
-                        || !string.Equals(idObj?.ToString(), jobId, StringComparison.Ordinal))
-                        continue;
-
-                    if (!obj.TryGetValue("status", out object statusObj))
-                        continue;
-
-                    string st = statusObj?.ToString();
-                    if (st == "progress") continue;
-
-                    return line;
-                }
-                catch
-                {
-                    // Malformed line — skip
+                    _runningSession = null;
                 }
             }
-            return null;
         }
 
         private static OcrWorkerResult ParseResultLine(string line)
         {
             try
             {
-                var ser = new JavaScriptSerializer { MaxJsonLength = int.MaxValue };
-                var obj = ser.Deserialize<Dictionary<string, object>>(line);
-                string status = obj.TryGetValue("status", out object st) ? st?.ToString() : "error";
+                var obj = PythonWorkerSession.Deserialize(line);
+                string status = PythonWorkerSession.GetString(obj, "status");
 
                 if (status == "success")
                 {
-                    string pdfB64 = obj.TryGetValue("pdf_base64", out object b) ? b?.ToString() ?? string.Empty : string.Empty;
-                    string geometryB64 = obj.TryGetValue("geometry_base64", out object g) ? g?.ToString() ?? string.Empty : string.Empty;
                     return new OcrWorkerResult
                     {
                         Status = "success",
-                        PdfBase64 = pdfB64,
-                        GeometryBase64 = geometryB64,
+                        PdfBase64 = PythonWorkerSession.GetString(obj, "pdf_base64"),
+                        GeometryBase64 = PythonWorkerSession.GetString(obj, "geometry_base64"),
                     };
                 }
 
-                string err = obj.TryGetValue("error", out object e) ? e?.ToString() ?? "Unknown error" : "Unknown error";
-                return new OcrWorkerResult { Status = "error", Error = err };
+                string err = PythonWorkerSession.GetString(obj, "error");
+                return new OcrWorkerResult
+                {
+                    Status = "error",
+                    Error = string.IsNullOrEmpty(err) ? "Unknown error" : err,
+                };
             }
             catch (Exception ex)
             {
@@ -309,37 +227,13 @@ namespace DocuLink.Addin.Modules.Services
         {
             var sb = new StringBuilder();
             sb.Append("{\"job_id\":");
-            AppendJsonString(sb, job.PdfId);
+            PythonWorkerSession.AppendJsonString(sb, job.PdfId);
             sb.Append(",\"command\":\"ocr\",\"pdf_base64\":");
-            AppendJsonString(sb, job.Base64);
+            PythonWorkerSession.AppendJsonString(sb, job.Base64);
             sb.Append(",\"mode\":");
-            AppendJsonString(sb, job.Mode ?? "full");
+            PythonWorkerSession.AppendJsonString(sb, job.Mode ?? "full");
             sb.Append('}');
             return sb.ToString();
-        }
-
-        private static void AppendJsonString(StringBuilder sb, string value)
-        {
-            sb.Append('"');
-            if (value != null)
-            {
-                foreach (char c in value)
-                {
-                    switch (c)
-                    {
-                        case '"':  sb.Append("\\\""); break;
-                        case '\\': sb.Append("\\\\"); break;
-                        case '\n': sb.Append("\\n");  break;
-                        case '\r': sb.Append("\\r");  break;
-                        case '\t': sb.Append("\\t");  break;
-                        default:
-                            if (c < 0x20) sb.Append($"\\u{(int)c:x4}");
-                            else sb.Append(c);
-                            break;
-                    }
-                }
-            }
-            sb.Append('"');
         }
 
         /// <summary>
@@ -380,23 +274,6 @@ namespace DocuLink.Addin.Modules.Services
                 _uiControl.Invoke(action);
             else
                 action();
-        }
-
-        private static string GetAddinDir()
-        {
-            string codeBase = Assembly.GetExecutingAssembly().CodeBase;
-            return Path.GetDirectoryName(new Uri(codeBase).LocalPath)
-                ?? AppDomain.CurrentDomain.BaseDirectory;
-        }
-
-        private static string GetWorkerExePath()
-        {
-            return Path.Combine(GetAddinDir(), "python", "worker", "python.exe");
-        }
-
-        private static string GetWorkerScriptPath()
-        {
-            return Path.Combine(GetAddinDir(), "python", "worker", "worker.py");
         }
 
         private sealed class OcrJobEntry

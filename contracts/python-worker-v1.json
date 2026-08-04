@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "http://doculink.dev/schemas/python-worker/1",
   "title": "DocuLink Python Worker Protocol v1",
-  "description": "Defines the newline-delimited JSON messages exchanged between the C# host and the Python OCR worker over stdin/stdout.",
+  "description": "Defines the newline-delimited JSON messages exchanged between the C# host and the Python worker over stdin/stdout. The worker handles two commands: 'ocr' (add a text layer / extract geometry from a PDF) and 'convert' (turn a non-PDF source document into a PDF, or into HTML for the host to render).",
 
   "definitions": {
 
@@ -29,8 +29,49 @@
       ]
     },
 
+    "ConvertOutputKind": {
+      "type": "string",
+      "enum": ["pdf", "html"],
+      "description": "pdf: the worker produced finished PDF bytes. html: the worker could only normalise the source to HTML (e.g. .eml) and the host must render it to PDF itself."
+    },
+
+    "ConvertJob": {
+      "description": "Sent by the C# host to the worker via stdin to convert a non-PDF source document. One JSON object per line.",
+      "type": "object",
+      "required": ["job_id", "command", "source_base64", "source_extension"],
+      "additionalProperties": false,
+      "properties": {
+        "job_id":           { "type": "string", "description": "Opaque identifier echoed back in all responses for this job." },
+        "command":          { "const": "convert", "description": "Operation to perform." },
+        "source_base64":    { "type": "string", "description": "Base-64 encoded bytes of the source document." },
+        "source_extension": { "type": "string", "description": "Lower-case source extension including the leading dot, e.g. '.png'. Determines which conversion path the worker takes." },
+        "source_name":      { "type": "string", "description": "Original file name, used for document titles and error messages. Optional." }
+      },
+      "examples": [
+        { "job_id": "b2c3", "command": "convert", "source_base64": "iVBORw0KGgo=", "source_extension": ".png", "source_name": "scan.png" }
+      ]
+    },
+
+    "ConvertSuccessMessage": {
+      "description": "Emitted by the worker to stdout when conversion completes successfully. Exactly one per convert job.",
+      "type": "object",
+      "required": ["job_id", "status", "output_kind"],
+      "additionalProperties": false,
+      "properties": {
+        "job_id":      { "type": "string" },
+        "status":      { "const": "success" },
+        "output_kind": { "$ref": "#/definitions/ConvertOutputKind" },
+        "pdf_base64":  { "type": "string", "description": "Base-64 encoded output PDF bytes. Present when output_kind is 'pdf'." },
+        "html":        { "type": "string", "description": "Self-contained HTML document. Present when output_kind is 'html'." }
+      },
+      "examples": [
+        { "job_id": "b2c3", "status": "success", "output_kind": "pdf", "pdf_base64": "JVBERi0xLjc=" },
+        { "job_id": "b2c3", "status": "success", "output_kind": "html", "html": "<html><body>Hi</body></html>" }
+      ]
+    },
+
     "OcrProgressMessage": {
-      "description": "Emitted by the worker to stdout during processing. Zero or more per job.",
+      "description": "Emitted by the worker to stdout during processing. Zero or more per job (both commands).",
       "type": "object",
       "required": ["job_id", "status", "message"],
       "additionalProperties": false,
@@ -89,8 +130,10 @@
 
   "oneOf": [
     { "$ref": "#/definitions/OcrJob" },
+    { "$ref": "#/definitions/ConvertJob" },
     { "$ref": "#/definitions/OcrProgressMessage" },
     { "$ref": "#/definitions/OcrSuccessMessage" },
+    { "$ref": "#/definitions/ConvertSuccessMessage" },
     { "$ref": "#/definitions/OcrErrorMessage" }
   ]
 }

@@ -96,6 +96,8 @@ a = Analysis(
         "pypdfium2_raw",
         "PIL",
         "PIL.Image",
+        "PIL.ImageSequence",
+        "PIL.PdfImagePlugin",   # Pillow's PDF writer, used by the conversion engine
         "fitz",
         "pytesseract",
         "pytesseract.pytesseract",

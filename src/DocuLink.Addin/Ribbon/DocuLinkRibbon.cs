@@ -8,6 +8,7 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Windows.Forms;
 using DocuLink.Addin.Modules.Services;
+using DocuLink.Addin.Modules.Services.Conversion;
 using DocuLink.Addin.Modules.UI;
 using DocuLink.Addin.Properties;
 using Excel = Microsoft.Office.Interop.Excel;
@@ -129,40 +130,63 @@ namespace DocuLink.Addin.Ribbon
             }
         }
 
-        public void OnAddPdfDocuments(IRibbonControl control)
+        /// <summary>
+        /// Ribbon entry point for adding documents. Async because non-PDF sources may
+        /// need conversion, which drives an offscreen WebView2 and therefore has to
+        /// keep the UI message pump running.
+        /// </summary>
+        public async void OnAddPdfDocuments(IRibbonControl control)
         {
-            var app = Globals.ThisAddIn.Application;
-            if (app.ActiveWorkbook == null)
+            try
             {
-                MessageBox.Show(
-                    text: "Open or create a workbook before adding PDFs.",
-                    caption: "DocuLink",
-                    buttons: MessageBoxButtons.OK,
-                    icon: MessageBoxIcon.Information);
-                return;
-            }
+                var app = Globals.ThisAddIn.Application;
+                if (app.ActiveWorkbook == null)
+                {
+                    MessageBox.Show(
+                        text: "Open or create a workbook before adding documents.",
+                        caption: "DocuLink",
+                        buttons: MessageBoxButtons.OK,
+                        icon: MessageBoxIcon.Information);
+                    return;
+                }
 
-            if (!WorkbookProtectionGuard.TryRequireWritable(app.ActiveWorkbook))
-                return;
-
-            using (var dialog = new OpenFileDialog())
-            {
-                dialog.Title = "Add PDFs to workbook";
-                dialog.Filter = "PDF files (*.pdf)|*.pdf|All files (*.*)|*.*";
-                dialog.Multiselect = true;
-                dialog.CheckFileExists = true;
-
-                if (dialog.ShowDialog() != DialogResult.OK || dialog.FileNames == null || dialog.FileNames.Length == 0)
+                if (!WorkbookProtectionGuard.TryRequireWritable(app.ActiveWorkbook))
                     return;
 
-                var requests = dialog.FileNames
-                    .Select(path => new PdfPathImportRequest(path))
+                string[] selectedPaths;
+                using (var dialog = new OpenFileDialog())
+                {
+                    dialog.Title = "Add documents to workbook";
+                    dialog.Filter = ConversionFormatCatalog.BuildOpenFileDialogFilter();
+                    dialog.Multiselect = true;
+                    dialog.CheckFileExists = true;
+
+                    if (dialog.ShowDialog() != DialogResult.OK
+                        || dialog.FileNames == null
+                        || dialog.FileNames.Length == 0)
+                        return;
+
+                    selectedPaths = dialog.FileNames.ToArray();
+                }
+
+                var candidates = selectedPaths
+                    .Select(path => new ImportCandidate { Path = path, Name = Path.GetFileName(path) })
                     .ToList();
 
+                // Confirm conversions before anything is read or written.
+                ImportSelectionPlan plan = ImportPreparationService.Plan(null, candidates);
+                if (plan.Cancelled || plan.IsEmpty)
+                    return;
+
                 PdfImportResult result;
+                IList<string> preparationErrors;
+
                 using (var progress = ThreadedProgressController.Show("Importing documents..."))
+                using (PreparedImport prepared = await ImportPreparationService.PrepareAsync(plan, progress))
                 {
-                    result = new PdfImportService().ImportFilePaths(app.ActiveWorkbook, requests, progress);
+                    preparationErrors = prepared.Errors;
+                    result = new PdfImportService().ImportFilePaths(
+                        app.ActiveWorkbook, prepared.PathRequests, progress);
 
                     if (result.AddedIds.Count > 0)
                     {
@@ -177,16 +201,42 @@ namespace DocuLink.Addin.Ribbon
                     }
                 }
 
-                if (result.Errors.Count > 0)
-                {
-                    var message = new StringBuilder();
-                    if (result.AddedIds.Count > 0)
-                        message.AppendLine($"Added {result.AddedIds.Count} PDF(s).").AppendLine();
-                    message.AppendLine("Some files could not be added:");
-                    message.AppendLine(string.Join(Environment.NewLine, result.Errors));
-                    MessageBox.Show(message.ToString(), "DocuLink", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                }
+                ShowImportSummary(result, preparationErrors);
             }
+            catch (Exception ex)
+            {
+                Modules.DocuLinkLog.Trace($"OnAddPdfDocuments failed: {ex}");
+                MessageBox.Show(
+                    $"Documents could not be imported.{Environment.NewLine}{Environment.NewLine}{ex.Message}",
+                    "DocuLink",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Error);
+            }
+        }
+
+        /// <summary>
+        /// Reports skipped and failed files once the import finishes. Conversion
+        /// problems and unsupported types are surfaced together so the user sees a
+        /// single account of everything that did not make it in.
+        /// </summary>
+        private static void ShowImportSummary(PdfImportResult result, IList<string> preparationErrors)
+        {
+            var problems = new List<string>();
+            if (preparationErrors != null) problems.AddRange(preparationErrors);
+            if (result?.Errors != null) problems.AddRange(result.Errors);
+
+            if (problems.Count == 0)
+                return;
+
+            var message = new StringBuilder();
+            int added = result?.AddedIds.Count ?? 0;
+            if (added > 0)
+                message.AppendLine($"Added {added} document(s).").AppendLine();
+
+            message.AppendLine("Some files were not added:");
+            message.AppendLine(string.Join(Environment.NewLine, problems));
+
+            MessageBox.Show(message.ToString(), "DocuLink", MessageBoxButtons.OK, MessageBoxIcon.Warning);
         }
 
         private static string LoadRibbonXmlFromResources()

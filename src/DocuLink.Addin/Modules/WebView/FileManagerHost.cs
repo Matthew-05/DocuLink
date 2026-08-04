@@ -11,6 +11,7 @@ using DocuLink.Addin.Modules;
 using DocuLink.Addin.Modules.CustomXml;
 using DocuLink.Addin.Modules.CustomXml.Models;
 using DocuLink.Addin.Modules.Services;
+using DocuLink.Addin.Modules.Services.Conversion;
 using DocuLink.Addin.Modules.UI;
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.WinForms;
@@ -269,8 +270,13 @@ namespace DocuLink.Addin.Modules.WebView
             _nativeDropZone.BringToFront();
         }
 
-        /// <summary>Imports PDFs (or folders of PDFs) dropped from the OS. De-duplicates rapid double delivery (NavigationStarting + DragDrop).</summary>
-        private void ProcessOsPaths(string[] paths)
+        /// <summary>
+        /// Imports documents (or folders of documents) dropped from the OS or chosen
+        /// in the file picker. De-duplicates rapid double delivery (NavigationStarting
+        /// + DragDrop). Non-PDF files are confirmed with the user and converted before
+        /// anything is embedded.
+        /// </summary>
+        private async void ProcessOsPaths(string[] paths)
         {
             if (paths == null || paths.Length == 0)
                 return;
@@ -289,13 +295,10 @@ namespace DocuLink.Addin.Modules.WebView
             if (!RequireWritable(wb))
                 return;
 
-            var folderIdCache = new Dictionary<string, string>(StringComparer.Ordinal);
-            var requests = new List<PdfPathImportRequest>();
-            PdfImportResult importResult;
-
-            using (var progress = ThreadedProgressController.Show("Importing documents..."))
+            try
             {
-                progress.Report("Collecting PDFs", null, 0, 0);
+                var folderIdCache = new Dictionary<string, string>(StringComparer.Ordinal);
+                var candidates = new List<ImportCandidate>();
 
                 foreach (string raw in paths)
                 {
@@ -319,11 +322,14 @@ namespace DocuLink.Addin.Modules.WebView
                     {
                         FileAttributes attr = File.GetAttributes(path);
                         if ((attr & FileAttributes.Directory) == FileAttributes.Directory)
-                            AddDirectoryPdfRequests(wb, path, folderIdCache, requests);
-                        else if (path.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase))
-                        {
-                            requests.Add(new PdfPathImportRequest(path, _selectedFolderId));
-                        }
+                            AddDirectoryCandidates(wb, path, folderIdCache, candidates);
+                        else
+                            candidates.Add(new ImportCandidate
+                            {
+                                Path = path,
+                                Name = Path.GetFileName(path),
+                                FolderId = _selectedFolderId,
+                            });
                     }
                     catch (Exception ex)
                     {
@@ -331,28 +337,30 @@ namespace DocuLink.Addin.Modules.WebView
                     }
                 }
 
-                importResult = new PdfImportService().ImportFilePaths(wb, requests, progress);
+                // Ask before touching anything, then import what the user agreed to.
+                ImportSelectionPlan plan = ImportPreparationService.Plan(this, candidates);
+                if (plan.Cancelled || plan.IsEmpty)
+                    return;
 
-                if (importResult.AddedIds.Count > 0)
-                {
-                    progress.Report(
-                        "Refreshing DocuLink",
-                        "Updating file list and viewer data...",
-                        importResult.AddedIds.Count,
-                        importResult.AddedIds.Count);
-
-                    SendFilesToWebView();
-                    foreach (string id in importResult.AddedIds)
-                        Globals.ThisAddIn.NotifyViewerPdfAdded(id);
-                }
+                await ImportPreparedAsync(wb, plan);
+            }
+            catch (Exception ex)
+            {
+                DocuLinkLog.Trace($"ProcessOsPaths failed: {ex}");
+                ShowImportFailure(ex);
             }
         }
 
-        private void AddDirectoryPdfRequests(
+        /// <summary>
+        /// Collects every importable file in a dropped directory tree. All file types
+        /// are collected here; the confirmation dialog is what filters them, so the
+        /// counts it shows reflect what the folder actually contains.
+        /// </summary>
+        private void AddDirectoryCandidates(
             Excel.Workbook wb,
             string dirPath,
             Dictionary<string, string> folderIdCache,
-            List<PdfPathImportRequest> requests)
+            List<ImportCandidate> candidates)
         {
             string folderName;
             try
@@ -367,23 +375,109 @@ namespace DocuLink.Addin.Modules.WebView
             string sentinel = "__new__:" + folderName;
             string folderId = ResolveFolderId(wb, sentinel, folderIdCache);
 
-            foreach (string pdfPath in Directory.EnumerateFiles(dirPath, "*.pdf", SearchOption.AllDirectories))
+            foreach (string filePath in Directory.EnumerateFiles(dirPath, "*", SearchOption.AllDirectories))
             {
                 string full;
                 try
                 {
-                    full = Path.GetFullPath(pdfPath);
+                    full = Path.GetFullPath(filePath);
                 }
                 catch
                 {
                     continue;
                 }
 
+                // Only offer types DocuLink can actually do something with, so a
+                // dropped folder full of incidental files doesn't flood the dialog.
+                if (!ConversionFormatCatalog.IsPdf(full) && !ConversionFormatCatalog.TryGetFormat(full, out _))
+                    continue;
+
                 if (ShouldSkipDuplicateOsImport(full))
                     continue;
 
-                requests.Add(new PdfPathImportRequest(full, folderId));
+                candidates.Add(new ImportCandidate
+                {
+                    Path = full,
+                    Name = Path.GetFileName(full),
+                    FolderId = folderId,
+                });
             }
+        }
+
+        /// <summary>
+        /// Converts, embeds and refreshes for an already-confirmed plan. Shared by the
+        /// OS drop/picker path and the web dropzone path.
+        /// </summary>
+        private async Task ImportPreparedAsync(Excel.Workbook wb, ImportSelectionPlan plan)
+        {
+            var problems = new List<string>();
+            int addedCount = 0;
+
+            using (var progress = ThreadedProgressController.Show("Importing documents..."))
+            using (PreparedImport prepared = await ImportPreparationService.PrepareAsync(plan, progress))
+            {
+                problems.AddRange(prepared.Errors);
+
+                var addedIds = new List<string>();
+                var importService = new PdfImportService();
+
+                if (prepared.PathRequests.Count > 0)
+                {
+                    PdfImportResult pathResult = importService.ImportFilePaths(wb, prepared.PathRequests, progress);
+                    addedIds.AddRange(pathResult.AddedIds);
+                    problems.AddRange(pathResult.Errors);
+                }
+
+                if (prepared.Base64Requests.Count > 0)
+                {
+                    PdfImportResult base64Result = importService.ImportBase64(wb, prepared.Base64Requests, progress);
+                    addedIds.AddRange(base64Result.AddedIds);
+                    problems.AddRange(base64Result.Errors);
+                }
+
+                addedCount = addedIds.Count;
+
+                if (addedCount > 0)
+                {
+                    progress.Report(
+                        "Refreshing DocuLink",
+                        "Updating file list and viewer data...",
+                        addedCount,
+                        addedCount);
+
+                    SendFilesToWebView();
+                    foreach (string id in addedIds)
+                        Globals.ThisAddIn.NotifyViewerPdfAdded(id);
+                }
+            }
+
+            ShowImportProblems(addedCount, problems);
+        }
+
+        /// <summary>Reports files that were skipped or failed, once the import has finished.</summary>
+        private void ShowImportProblems(int addedCount, IList<string> problems)
+        {
+            if (problems == null || problems.Count == 0)
+                return;
+
+            var message = new System.Text.StringBuilder();
+            if (addedCount > 0)
+                message.AppendLine($"Added {addedCount} document(s).").AppendLine();
+
+            message.AppendLine("Some files were not added:");
+            message.AppendLine(string.Join(Environment.NewLine, problems));
+
+            MessageBox.Show(this, message.ToString(), "DocuLink", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+        }
+
+        private void ShowImportFailure(Exception ex)
+        {
+            MessageBox.Show(
+                this,
+                $"Documents could not be imported.{Environment.NewLine}{Environment.NewLine}{ex.Message}",
+                "DocuLink",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Error);
         }
 
         private bool ShouldSkipDuplicateOsImport(string fullPath)
@@ -523,7 +617,7 @@ namespace DocuLink.Addin.Modules.WebView
             }
         }
 
-        private void HandleAddFiles(AddFilesRequest req)
+        private async void HandleAddFiles(AddFilesRequest req)
         {
             if (IsOcrLocked) return;
 
@@ -531,20 +625,24 @@ namespace DocuLink.Addin.Modules.WebView
             if (wb == null) return;
             if (!RequireWritable(wb)) return;
 
-            // Cache resolved folder ids so that a dropped directory only creates one folder
-            // even if it contains many files.
-            var resolvedFolderIds = new Dictionary<string, string>(StringComparer.Ordinal);
-            var requests = new List<PdfBase64ImportRequest>();
-            PdfImportResult importResult;
-
-            using (var progress = ThreadedProgressController.Show("Importing documents..."))
+            try
             {
+                // Cache resolved folder ids so that a dropped directory only creates one folder
+                // even if it contains many files.
+                var resolvedFolderIds = new Dictionary<string, string>(StringComparer.Ordinal);
+                var candidates = new List<ImportCandidate>();
+
                 foreach (var file in req.Files)
                 {
                     try
                     {
                         string folderId = ResolveFolderId(wb, file.FolderId, resolvedFolderIds);
-                        requests.Add(new PdfBase64ImportRequest(file.Name, file.Base64, folderId));
+                        candidates.Add(new ImportCandidate
+                        {
+                            Name = file.Name,
+                            Base64 = file.Base64,
+                            FolderId = folderId,
+                        });
                     }
                     catch (Exception ex)
                     {
@@ -552,17 +650,16 @@ namespace DocuLink.Addin.Modules.WebView
                     }
                 }
 
-                importResult = new PdfImportService().ImportBase64(wb, requests, progress);
+                ImportSelectionPlan plan = ImportPreparationService.Plan(this, candidates);
+                if (plan.Cancelled || plan.IsEmpty)
+                    return;
 
-                progress.Report(
-                    "Refreshing DocuLink",
-                    "Updating file list and viewer data...",
-                    importResult.AddedIds.Count,
-                    importResult.AddedIds.Count);
-
-                SendFilesToWebView();
-                foreach (string id in importResult.AddedIds)
-                    Globals.ThisAddIn.NotifyViewerPdfAdded(id);
+                await ImportPreparedAsync(wb, plan);
+            }
+            catch (Exception ex)
+            {
+                DocuLinkLog.Trace($"HandleAddFiles failed: {ex}");
+                ShowImportFailure(ex);
             }
         }
 
@@ -577,8 +674,8 @@ namespace DocuLink.Addin.Modules.WebView
             string[] selectedPaths;
             using (var dialog = new OpenFileDialog())
             {
-                dialog.Title = "Add PDFs to workbook";
-                dialog.Filter = "PDF files (*.pdf)|*.pdf|All files (*.*)|*.*";
+                dialog.Title = "Add documents to workbook";
+                dialog.Filter = ConversionFormatCatalog.BuildOpenFileDialogFilter();
                 dialog.Multiselect = true;
                 dialog.CheckFileExists = true;
 

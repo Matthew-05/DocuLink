@@ -215,7 +215,15 @@
     <Compile Include="Modules\CustomXml\Serialization\DocuLinkPdfBinarySerializer.cs" />
     <Compile Include="Modules\CustomXml\WorkbookStorageSession.cs" />
     <Compile Include="Modules\DocuLinkLog.cs" />
+    <Compile Include="Modules\Infrastructure\PythonWorkerSession.cs" />
     <Compile Include="Modules\Services\AddPdfDocumentService.cs" />
+    <Compile Include="Modules\Services\Conversion\ConversionFormatCatalog.cs" />
+    <Compile Include="Modules\Services\Conversion\ConversionTempStore.cs" />
+    <Compile Include="Modules\Services\Conversion\DocumentConversionService.cs" />
+    <Compile Include="Modules\Services\Conversion\HtmlToPdfConverter.cs" />
+    <Compile Include="Modules\Services\Conversion\ImportPreparationService.cs" />
+    <Compile Include="Modules\Services\Conversion\OfficeInteropConverter.cs" />
+    <Compile Include="Modules\Services\Conversion\PythonConversionConverter.cs" />
     <Compile Include="Modules\Services\AutoDateFormatting.cs" />
     <Compile Include="Modules\Services\CellFormattingService.cs" />
     <Compile Include="Modules\Services\CreateLinkService.cs" />
@@ -237,6 +245,9 @@
       <SubType>Form</SubType>
     </Compile>
     <Compile Include="Modules\UI\IProgressReporter.cs" />
+    <Compile Include="Modules\UI\NonPdfImportDialog.cs">
+      <SubType>Form</SubType>
+    </Compile>
     <Compile Include="Modules\UI\ProgressDialog.cs">
       <SubType>Form</SubType>
     </Compile>
