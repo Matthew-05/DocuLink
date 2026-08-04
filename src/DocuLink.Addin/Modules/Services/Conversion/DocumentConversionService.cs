@@ -77,31 +77,42 @@ namespace DocuLink.Addin.Modules.Services.Conversion
 
             int total = requests.Count;
 
-            using (var office = new OfficeInteropConverter())
-            using (var python = new PythonConversionConverter())
+            var office = new OfficeInteropConverter();
+
+            try
             {
-                for (int i = 0; i < total; i++)
+                using (var python = new PythonConversionConverter())
                 {
-                    DocumentConversionRequest request = requests[i];
-                    string displayName = string.IsNullOrWhiteSpace(request.FileName)
-                        ? "document"
-                        : request.FileName;
-                    int current = i + 1;
-
-                    progress?.Report("Converting to PDF", $"{displayName} ({current} of {total})", i, total);
-
-                    try
+                    for (int i = 0; i < total; i++)
                     {
-                        DocumentConversionSuccess converted =
-                            await ConvertOneAsync(request, office, python);
-                        result.Converted.Add(converted);
-                    }
-                    catch (Exception ex)
-                    {
-                        result.Errors.Add($"{displayName}: {ex.Message}");
-                        DocuLinkLog.Trace($"Conversion failed for '{displayName}': {ex}");
+                        DocumentConversionRequest request = requests[i];
+                        string displayName = string.IsNullOrWhiteSpace(request.FileName)
+                            ? "document"
+                            : request.FileName;
+                        int current = i + 1;
+
+                        progress?.Report("Converting to PDF", $"{displayName} ({current} of {total})", i, total);
+
+                        try
+                        {
+                            DocumentConversionSuccess converted =
+                                await ConvertOneAsync(request, office, python);
+                            result.Converted.Add(converted);
+                        }
+                        catch (Exception ex)
+                        {
+                            result.Errors.Add($"{displayName}: {ex.Message}");
+                            DocuLinkLog.Trace($"Conversion failed for '{displayName}': {ex}");
+                        }
                     }
                 }
+            }
+            finally
+            {
+                // Awaited rather than disposed: quitting Office takes seconds, and we
+                // are on the UI thread, whose message pump must keep running.
+                progress?.Report("Closing converters", null, total, total);
+                await office.ShutdownAsync();
             }
 
             return result;
@@ -241,19 +252,16 @@ namespace DocuLink.Addin.Modules.Services.Conversion
 
             try
             {
-                string capturedSourcePath = sourcePath;
-                string capturedHtmlPath = messageHtmlPath;
-
-                producedHtmlPath = await Task.Run(() =>
-                {
-                    office.Convert(
-                        format.Engine,
-                        capturedSourcePath,
-                        outputPdfPath,
-                        capturedHtmlPath,
-                        out string html);
-                    return html;
-                });
+                // Deliberately not Task.Run — the converter owns a dedicated STA
+                // thread with its own message loop and marshals the COM work there
+                // itself. Running it on a pool thread produces the 'DisconnectedContext'
+                // MDA, since the cached application RCWs outlive the pool thread's
+                // COM context.
+                producedHtmlPath = await office.ConvertAsync(
+                    format.Engine,
+                    sourcePath,
+                    outputPdfPath,
+                    messageHtmlPath);
 
                 // Outlook exports HTML rather than PDF; finish the job here.
                 if (!string.IsNullOrEmpty(producedHtmlPath))
