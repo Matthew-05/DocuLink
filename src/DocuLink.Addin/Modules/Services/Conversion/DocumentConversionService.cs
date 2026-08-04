@@ -27,8 +27,13 @@ namespace DocuLink.Addin.Modules.Services.Conversion
     {
         public string PdfPath { get; set; }
 
-        /// <summary>Name to store in the workbook — the original name with a .pdf extension.</summary>
-        public string PdfName { get; set; }
+        /// <summary>
+        /// Name to store in the workbook: the source file name exactly as the user
+        /// knows it, extension and all. 'terms.docx' stays 'terms.docx' even though
+        /// its stored content is now a PDF — only <see cref="PdfPath"/>, the scratch
+        /// file actually read from disk, carries the .pdf extension.
+        /// </summary>
+        public string DisplayName { get; set; }
 
         public string FolderId { get; set; }
     }
@@ -154,7 +159,13 @@ namespace DocuLink.Addin.Modules.Services.Conversion
             return new DocumentConversionSuccess
             {
                 PdfPath = outputPdfPath,
-                PdfName = baseName + ConversionFormatCatalog.PdfExtension,
+
+                // Only fall back to a .pdf name when the source had no usable name at
+                // all — otherwise the user sees the file they picked, not a rename.
+                DisplayName = string.IsNullOrWhiteSpace(fileName)
+                    ? baseName + ConversionFormatCatalog.PdfExtension
+                    : fileName,
+
                 FolderId = request.FolderId,
             };
         }

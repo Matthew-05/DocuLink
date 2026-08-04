@@ -25,7 +25,12 @@ namespace DocuLink.Addin.Modules.Services
             for (int i = 0; i < total; i++)
             {
                 PdfPathImportRequest request = files[i];
-                string fileName = SafeFileName(request.Path);
+
+                // Progress and error text use the same name the workbook will show,
+                // so a failed .docx is not reported under a scratch .pdf name.
+                string fileName = string.IsNullOrWhiteSpace(request.DisplayName)
+                    ? SafeFileName(request.Path)
+                    : request.DisplayName.Trim();
                 int current = i + 1;
 
                 try
@@ -108,7 +113,9 @@ namespace DocuLink.Addin.Modules.Services
             byte[] bytes = File.ReadAllBytes(request.Path);
             return new PreparedPdf
             {
-                Name = Path.GetFileName(request.Path),
+                Name = string.IsNullOrWhiteSpace(request.DisplayName)
+                    ? Path.GetFileName(request.Path)
+                    : request.DisplayName.Trim(),
                 Base64 = Convert.ToBase64String(bytes),
                 FileSizeBytes = bytes.LongLength,
                 FolderId = request.FolderId,
@@ -168,14 +175,23 @@ namespace DocuLink.Addin.Modules.Services
 
     internal sealed class PdfPathImportRequest
     {
-        public PdfPathImportRequest(string path, string folderId = null)
+        public PdfPathImportRequest(string path, string folderId = null, string displayName = null)
         {
             Path = path;
             FolderId = folderId;
+            DisplayName = displayName;
         }
 
         public string Path { get; }
         public string FolderId { get; }
+
+        /// <summary>
+        /// Name to store in the workbook instead of the file name on disk. Set for
+        /// converted documents, whose <see cref="Path"/> points at a scratch .pdf but
+        /// which the user knows by their original name — 'terms.docx'. Null for a PDF
+        /// imported as-is, where the file name on disk is the right answer.
+        /// </summary>
+        public string DisplayName { get; }
     }
 
     internal sealed class PdfBase64ImportRequest

@@ -212,8 +212,11 @@ namespace DocuLink.Addin.Modules.Services.Conversion
                 var service = new DocumentConversionService(tempStore);
                 DocumentConversionResult converted = await service.ConvertAsync(conversionRequests, progress);
 
+                // The scratch file is a .pdf, but the workbook keeps the name the user
+                // picked — 'terms.docx' stays 'terms.docx'.
                 foreach (DocumentConversionSuccess success in converted.Converted)
-                    prepared.PathRequests.Add(new PdfPathImportRequest(success.PdfPath, success.FolderId));
+                    prepared.PathRequests.Add(new PdfPathImportRequest(
+                        success.PdfPath, success.FolderId, success.DisplayName));
 
                 foreach (string error in converted.Errors)
                     prepared.Errors.Add(error);
