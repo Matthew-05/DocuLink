@@ -59,7 +59,8 @@ interface DocuLinkDebugApi {
  * for the caller to mount in the DOM.
  */
 export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLElement; viewerWrapper: HTMLElement } {
-  const { element: toolbarElement, zoom, page, selector, search, rotate } = createToolbar();
+  const { element: toolbarElement, zoom, page, folderFilter, selector, search, rotate } =
+    createToolbar();
 
   const linkTypeSelector = new LinkTypeSelector();
 
@@ -340,10 +341,18 @@ export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLEleme
     highlightSearchResults = [];
     activeSearchSession = searcher.createSession(
       query,
-      prioritizePdfEntries(selector.getEntries(), viewer.getActivePdfId()),
+      prioritizePdfEntries(selector.getFilteredEntries(), viewer.getActivePdfId()),
     );
     loadSearchBatch(generation, INITIAL_SEARCH_RESULT_LIMIT, true);
   };
+
+  // The filter narrows the document list and cross-document search alike. The
+  // open document stays loaded even when it sits outside the selected folder.
+  folderFilter.onChange((folderId) => {
+    selector.setFolderFilter(folderId);
+    const query = normalizeSearchQuery(search.getQuery());
+    if (query) runSearch(query);
+  });
 
   search.onQuery(runSearch);
   search.onShowMore(() => {
@@ -481,6 +490,7 @@ export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLEleme
   connectViewerToHostBridge(
     viewer,
     selector,
+    folderFilter,
     cache,
     (indexing) => {
       if (indexing) {

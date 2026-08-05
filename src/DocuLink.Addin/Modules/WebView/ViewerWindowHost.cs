@@ -47,6 +47,8 @@ namespace DocuLink.Addin.Modules.WebView
 
         public void SendPdfRemoved(string id) => _controller.SendPdfRemoved(id);
 
+        public void SendFoldersToWebView() => _controller.SendFoldersToWebView();
+
         protected override void OnFormClosing(FormClosingEventArgs e)
         {
             DocuLinkLog.Trace($"ENTER reason={e.CloseReason} cancel={e.Cancel}");

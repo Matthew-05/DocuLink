@@ -448,6 +448,10 @@ namespace DocuLink.Addin.Modules.WebView
                     SendFilesToWebView();
                     foreach (string id in addedIds)
                         Globals.ThisAddIn.NotifyViewerPdfAdded(id);
+
+                    // An import can create folders on the fly, so refresh the viewer's
+                    // folder filter after the new documents have landed.
+                    Globals.ThisAddIn.NotifyViewerFoldersChanged();
                 }
             }
 
@@ -752,6 +756,7 @@ namespace DocuLink.Addin.Modules.WebView
             if (!RequireWritable(wb)) return;
             DocuLinkContent content = _service.MoveFile(wb, req.Id, req.FolderId);
             SendFilesToWebView(content);
+            Globals.ThisAddIn.NotifyViewerFoldersChanged();
         }
 
         private void HandleAddFolder(AddFolderRequest req)
@@ -761,6 +766,7 @@ namespace DocuLink.Addin.Modules.WebView
             if (!RequireWritable(wb)) return;
             _service.AddFolder(wb, req.Name);
             SendFilesToWebView();
+            Globals.ThisAddIn.NotifyViewerFoldersChanged();
         }
 
         private void HandleRenameFolder(RenameFolderRequest req)
@@ -770,6 +776,7 @@ namespace DocuLink.Addin.Modules.WebView
             if (!RequireWritable(wb)) return;
             _service.RenameFolder(wb, req.Id, req.NewName);
             SendFilesToWebView();
+            Globals.ThisAddIn.NotifyViewerFoldersChanged();
         }
 
         private void HandleRemoveFolder(RemoveFolderRequest req)
@@ -779,6 +786,7 @@ namespace DocuLink.Addin.Modules.WebView
             if (!RequireWritable(wb)) return;
             _service.RemoveFolder(wb, req.Id);
             SendFilesToWebView();
+            Globals.ThisAddIn.NotifyViewerFoldersChanged();
         }
 
         /// <summary>

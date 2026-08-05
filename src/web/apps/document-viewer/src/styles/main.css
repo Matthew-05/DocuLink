@@ -2,6 +2,7 @@
 @import "./toolbar.css";
 @import "./zoom-controller.css";
 @import "./page-controller.css";
+@import "./folder-filter.css";
 @import "./pdf-selector.css";
 @import "./search-bar.css";
 @import "./search-results-panel.css";

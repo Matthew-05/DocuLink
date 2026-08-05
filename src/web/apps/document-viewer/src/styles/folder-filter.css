@@ -1,0 +1,111 @@
+.folder-filter {
+  position: relative;
+  --folder-filter-width: 130px;
+}
+
+@media (max-width: 800px) {
+  .folder-filter {
+    --folder-filter-width: 104px;
+  }
+}
+
+@media (min-width: 1200px) {
+  .folder-filter {
+    --folder-filter-width: 170px;
+  }
+}
+
+.folder-filter__trigger {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border);
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-size: var(--font-size-sm);
+  width: var(--folder-filter-width);
+  transition: border-color 0.1s;
+}
+
+.folder-filter__trigger:hover {
+  border-color: var(--color-accent);
+}
+
+.folder-filter--active .folder-filter__trigger {
+  border-color: var(--color-accent);
+}
+
+.folder-filter__icon {
+  flex-shrink: 0;
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
+.folder-filter--active .folder-filter__icon {
+  color: var(--color-accent-hover);
+}
+
+.folder-filter__trigger-label {
+  flex: 1;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  text-align: left;
+}
+
+.folder-filter__caret {
+  flex-shrink: 0;
+  font-size: 10px;
+  color: var(--color-text-muted);
+  transition: transform 0.15s;
+}
+
+.folder-filter--open .folder-filter__caret {
+  transform: rotate(180deg);
+}
+
+.folder-filter__dropdown {
+  display: none;
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  width: 200px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+  z-index: 100;
+  overflow: hidden;
+}
+
+.folder-filter--open .folder-filter__dropdown {
+  display: block;
+}
+
+.folder-filter__list {
+  list-style: none;
+  overflow-y: auto;
+  max-height: 260px;
+}
+
+.folder-filter__item {
+  padding: 8px 12px;
+  font-size: var(--font-size-sm);
+  color: var(--color-text);
+  cursor: pointer;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  transition: background 0.1s;
+}
+
+.folder-filter__item:hover {
+  background: var(--color-surface-hover);
+}
+
+.folder-filter__item--active {
+  color: var(--color-accent-hover);
+}

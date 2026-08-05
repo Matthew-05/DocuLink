@@ -708,10 +708,15 @@ namespace DocuLink.Addin.Modules.WebView
             {
                 Excel.Application app = Globals.ThisAddIn.Application;
                 Excel.Workbook workbook = app?.ActiveWorkbook;
-                IList<PdfDocument> pdfs = workbook == null
-                    ? new List<PdfDocument>()
-                    : new DocuLinkCustomXmlPartStore(workbook).LoadAllPdfsWithBinary();
-                string json = HostMessageSerializer.BuildPdfsLoaded(pdfs);
+                IList<PdfDocument> pdfs = new List<PdfDocument>();
+                IList<PdfFolder> folders = new List<PdfFolder>();
+                if (workbook != null)
+                {
+                    var store = new DocuLinkCustomXmlPartStore(workbook);
+                    pdfs = store.LoadAllPdfsWithBinary();
+                    folders = store.LoadContent().Folders;
+                }
+                string json = HostMessageSerializer.BuildPdfsLoaded(pdfs, folders);
                 _webView.CoreWebView2.PostWebMessageAsString(json);
             }
             catch (Exception ex)
@@ -719,6 +724,34 @@ namespace DocuLink.Addin.Modules.WebView
                 System.Diagnostics.Debug.WriteLine($"[DocuLink] SendPdfsToWebView failed: {ex.Message}");
                 DocuLinkLog.Trace($"EXCEPTION {ex.GetType().FullName}: {ex.Message}");
             }
+            }
+        }
+
+        /// <summary>
+        /// Pushes the current folder catalogue and every PDF's folder assignment to the viewer.
+        /// Sent after file-manager folder mutations so the viewer's folder filter stays in sync
+        /// without reloading PDF bytes.
+        /// </summary>
+        internal void SendFoldersToWebView()
+        {
+            if (_disposed) return;
+            if (!_webViewReady) return;
+
+            try
+            {
+                Excel.Application app = Globals.ThisAddIn.Application;
+                Excel.Workbook workbook = app?.ActiveWorkbook;
+                if (workbook == null)
+                    return;
+
+                DocuLinkContent content = new DocuLinkCustomXmlPartStore(workbook).LoadContent();
+                string json = HostMessageSerializer.BuildViewerFoldersUpdated(
+                    content.Folders, content.Pdfs);
+                _webView.CoreWebView2.PostWebMessageAsString(json);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[DocuLink] SendFoldersToWebView failed: {ex.Message}");
             }
         }
 

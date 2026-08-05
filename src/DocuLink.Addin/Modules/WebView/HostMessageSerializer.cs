@@ -11,27 +11,54 @@ namespace DocuLink.Addin.Modules.WebView
     /// </summary>
     internal static class HostMessageSerializer
     {
-        /// <summary>Returns the JSON payload for a <c>pdfs-loaded</c> message.</summary>
-        public static string BuildPdfsLoaded(IList<PdfDocument> pdfs)
+        /// <summary>
+        /// Returns the JSON payload for a <c>pdfs-loaded</c> message. The folder list
+        /// backs the viewer's folder filter; PDFs with no <c>FolderId</c> are uncategorised.
+        /// </summary>
+        public static string BuildPdfsLoaded(IList<PdfDocument> pdfs, IList<PdfFolder> folders)
         {
             var sb = new StringBuilder();
-            sb.Append("{\"type\":\"pdfs-loaded\",\"pdfs\":[");
+            sb.Append("{\"type\":\"pdfs-loaded\",\"folders\":");
+            AppendFolders(sb, folders);
+            sb.Append(",\"pdfs\":[");
 
             for (int i = 0; i < pdfs.Count; i++)
             {
                 PdfDocument pdf = pdfs[i];
                 if (i > 0) sb.Append(',');
+                AppendPdfPayloadBody(sb, pdf);
+            }
 
-                sb.Append('{');
-                sb.Append("\"id\":"); AppendString(sb, pdf.Id);
-                sb.Append(",\"name\":"); AppendString(sb, pdf.Name ?? string.Empty);
-                sb.Append(",\"base64\":"); AppendString(sb, pdf.Base64 ?? string.Empty);
-                if (!string.IsNullOrWhiteSpace(pdf.GeometryBase64))
+            sb.Append("]}");
+            return sb.ToString();
+        }
+
+        /// <summary>
+        /// Returns the JSON payload for a <c>viewer-folders-updated</c> message, carrying the
+        /// full folder catalogue and every PDF's folder assignment without any PDF bytes.
+        /// </summary>
+        public static string BuildViewerFoldersUpdated(
+            IList<PdfFolder> folders, IList<PdfMetadata> pdfs)
+        {
+            var sb = new StringBuilder();
+            sb.Append("{\"type\":\"viewer-folders-updated\",\"folders\":");
+            AppendFolders(sb, folders);
+            sb.Append(",\"assignments\":[");
+
+            if (pdfs != null)
+            {
+                for (int i = 0; i < pdfs.Count; i++)
                 {
-                    sb.Append(",\"geometryBase64\":"); AppendString(sb, pdf.GeometryBase64);
+                    PdfMetadata pdf = pdfs[i];
+                    if (i > 0) sb.Append(',');
+
+                    sb.Append("{\"pdfId\":"); AppendString(sb, pdf.Id ?? string.Empty);
+                    if (!string.IsNullOrWhiteSpace(pdf.FolderId))
+                    {
+                        sb.Append(",\"folderId\":"); AppendString(sb, pdf.FolderId);
+                    }
+                    sb.Append('}');
                 }
-                AppendPageRotations(sb, pdf.PageRotations);
-                sb.Append('}');
             }
 
             sb.Append("]}");
@@ -42,16 +69,9 @@ namespace DocuLink.Addin.Modules.WebView
         public static string BuildPdfUpdated(PdfDocument pdf)
         {
             var sb = new StringBuilder();
-            sb.Append("{\"type\":\"pdf-updated\",\"pdf\":{");
-            sb.Append("\"id\":"); AppendString(sb, pdf.Id);
-            sb.Append(",\"name\":"); AppendString(sb, pdf.Name ?? string.Empty);
-            sb.Append(",\"base64\":"); AppendString(sb, pdf.Base64 ?? string.Empty);
-            if (!string.IsNullOrWhiteSpace(pdf.GeometryBase64))
-            {
-                sb.Append(",\"geometryBase64\":"); AppendString(sb, pdf.GeometryBase64);
-            }
-            AppendPageRotations(sb, pdf.PageRotations);
-            sb.Append("}}");
+            sb.Append("{\"type\":\"pdf-updated\",\"pdf\":");
+            AppendPdfPayloadBody(sb, pdf);
+            sb.Append('}');
             return sb.ToString();
         }
 
@@ -59,16 +79,9 @@ namespace DocuLink.Addin.Modules.WebView
         public static string BuildPdfAdded(PdfDocument pdf)
         {
             var sb = new StringBuilder();
-            sb.Append("{\"type\":\"pdf-added\",\"pdf\":{");
-            sb.Append("\"id\":"); AppendString(sb, pdf.Id);
-            sb.Append(",\"name\":"); AppendString(sb, pdf.Name ?? string.Empty);
-            sb.Append(",\"base64\":"); AppendString(sb, pdf.Base64 ?? string.Empty);
-            if (!string.IsNullOrWhiteSpace(pdf.GeometryBase64))
-            {
-                sb.Append(",\"geometryBase64\":"); AppendString(sb, pdf.GeometryBase64);
-            }
-            AppendPageRotations(sb, pdf.PageRotations);
-            sb.Append("}}");
+            sb.Append("{\"type\":\"pdf-added\",\"pdf\":");
+            AppendPdfPayloadBody(sb, pdf);
+            sb.Append('}');
             return sb.ToString();
         }
 
@@ -227,6 +240,43 @@ namespace DocuLink.Addin.Modules.WebView
             }
             sb.Append("}}");
             return sb.ToString();
+        }
+
+        /// <summary>Writes a single <c>PdfPayload</c> object, braces included.</summary>
+        private static void AppendPdfPayloadBody(StringBuilder sb, PdfDocument pdf)
+        {
+            sb.Append('{');
+            sb.Append("\"id\":"); AppendString(sb, pdf.Id);
+            sb.Append(",\"name\":"); AppendString(sb, pdf.Name ?? string.Empty);
+            sb.Append(",\"base64\":"); AppendString(sb, pdf.Base64 ?? string.Empty);
+            if (!string.IsNullOrWhiteSpace(pdf.FolderId))
+            {
+                sb.Append(",\"folderId\":"); AppendString(sb, pdf.FolderId);
+            }
+            if (!string.IsNullOrWhiteSpace(pdf.GeometryBase64))
+            {
+                sb.Append(",\"geometryBase64\":"); AppendString(sb, pdf.GeometryBase64);
+            }
+            AppendPageRotations(sb, pdf.PageRotations);
+            sb.Append('}');
+        }
+
+        /// <summary>Writes a <c>FolderPayload</c> array, brackets included.</summary>
+        private static void AppendFolders(StringBuilder sb, IList<PdfFolder> folders)
+        {
+            sb.Append('[');
+            if (folders != null)
+            {
+                for (int i = 0; i < folders.Count; i++)
+                {
+                    PdfFolder folder = folders[i];
+                    if (i > 0) sb.Append(',');
+                    sb.Append("{\"id\":"); AppendString(sb, folder.Id ?? string.Empty);
+                    sb.Append(",\"name\":"); AppendString(sb, folder.Name ?? string.Empty);
+                    sb.Append('}');
+                }
+            }
+            sb.Append(']');
         }
 
         private static void AppendPageRotations(StringBuilder sb, Dictionary<int, int> pageRotations)

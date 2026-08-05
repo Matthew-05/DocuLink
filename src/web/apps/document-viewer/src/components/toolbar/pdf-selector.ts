@@ -1,9 +1,15 @@
 import type { PdfEntry } from "../../types/index.js";
 
+/** True when `entry` belongs to `folderId`; a null filter accepts every entry. */
+export function matchesFolderFilter(entry: PdfEntry, folderId: string | null): boolean {
+  return folderId === null || entry.folderId === folderId;
+}
+
 export class PdfSelector {
   readonly element: HTMLElement;
 
   private _entries: PdfEntry[] = [];
+  private _folderFilterId: string | null = null;
   private _activeId: string | null = null;
   private _isOpen = false;
 
@@ -94,6 +100,28 @@ export class PdfSelector {
 
   setEntries(entries: PdfEntry[]): void {
     this._entries = entries;
+    this._renderList(this._searchInput.value);
+  }
+
+  /**
+   * Restricts the dropdown to one folder. `null` shows every document.
+   * The active document stays loaded even when it falls outside the filter.
+   */
+  setFolderFilter(folderId: string | null): void {
+    this._folderFilterId = folderId;
+    this._renderList(this._searchInput.value);
+  }
+
+  /** Entries permitted by the current folder filter, in list order. */
+  getFilteredEntries(): PdfEntry[] {
+    return this._entries.filter((entry) => matchesFolderFilter(entry, this._folderFilterId));
+  }
+
+  /** Replaces each entry's folder assignment after a host folder update. */
+  updateFolderAssignments(assignments: Map<string, string | undefined>): void {
+    for (const entry of this._entries) {
+      entry.folderId = assignments.get(entry.id);
+    }
     this._renderList(this._searchInput.value);
   }
 
@@ -189,16 +217,18 @@ export class PdfSelector {
   private _renderList(query: string): void {
     this._list.replaceChildren();
 
-    const filtered = query.trim()
-      ? this._entries.filter((e) =>
-          e.name.toLowerCase().includes(query.trim().toLowerCase())
-        )
-      : this._entries;
+    const inFolder = this.getFilteredEntries();
+    const trimmed = query.trim().toLowerCase();
+    const filtered = trimmed
+      ? inFolder.filter((e) => e.name.toLowerCase().includes(trimmed))
+      : inFolder;
 
     if (filtered.length === 0) {
       const empty = document.createElement("li");
       empty.className = "pdf-selector__empty";
-      empty.textContent = "No PDFs found";
+      empty.textContent = this._folderFilterId === null
+        ? "No PDFs found"
+        : "No PDFs in this folder";
       this._list.appendChild(empty);
       return;
     }

@@ -1,7 +1,8 @@
 import { initHostBridge, sendViewerContentReady } from "../../host-bridge.js";
 import type { HostMessageHandlers } from "../../host-bridge.js";
 import type { TextContentCache } from "../../services/text-content-cache.js";
-import type { PdfEntry } from "../../types/index.js";
+import type { FolderEntry, PdfEntry } from "../../types/index.js";
+import type { FolderFilter } from "../toolbar/folder-filter.js";
 import type { PdfSelector } from "../toolbar/pdf-selector.js";
 import type { PdfViewer } from "./pdf-viewer.js";
 
@@ -38,12 +39,17 @@ async function indexAllPdfs(
  */
 export type ViewerHostHandlers = Omit<
   HostMessageHandlers,
-  "onPdfsLoaded" | "onPdfUpdated" | "onPdfNameUpdated" | "onPdfRemoved"
+  | "onPdfsLoaded"
+  | "onPdfUpdated"
+  | "onPdfNameUpdated"
+  | "onPdfRemoved"
+  | "onFoldersUpdated"
 >;
 
 export function connectViewerToHostBridge(
   viewer: PdfViewer,
   selector: PdfSelector,
+  folderFilter: FolderFilter,
   cache: TextContentCache,
   onIndexingStateChange: (indexing: boolean) => void,
   handlers: ViewerHostHandlers = {},
@@ -70,10 +76,16 @@ export function connectViewerToHostBridge(
   initHostBridge({
     ...handlers,
 
-    onPdfsLoaded: (entries) => {
+    onFoldersUpdated: (folders, assignments) => {
+      selector.updateFolderAssignments(assignments);
+      folderFilter.setFolders(folders);
+    },
+
+    onPdfsLoaded: (entries, folders) => {
       void (async () => {
         try {
           selector.setEntries(entries);
+          folderFilter.setFolders(folders);
 
           startIndexing();
           void indexAllPdfs(cache, entries)

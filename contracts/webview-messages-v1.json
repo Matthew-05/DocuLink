@@ -54,6 +54,7 @@
         "id":              { "type": "string", "description": "GUID that uniquely identifies this PDF within the workbook." },
         "name":            { "type": "string", "description": "Display name (typically the original filename)." },
         "base64":          { "type": "string", "description": "Base-64 encoded PDF bytes." },
+        "folderId":        { "type": "string", "description": "GUID of the owning folder, omitted when uncategorised." },
         "geometryBase64":  { "type": "string", "description": "Optional gzip-compressed text-geometry-v1 JSON, base64-encoded." },
         "pageRotations":   {
           "type": "object",
@@ -64,26 +65,70 @@
     },
 
     "PdfsLoadedMessage": {
-      "description": "Sent by the C# host to push the current workbook's PDF list to the viewer. Re-sent after any add/remove operation.",
+      "description": "Sent by the C# host to push the current workbook's PDF list to the viewer. Re-sent after any add/remove operation. The folder list backs the viewer's folder filter; PDFs whose folderId is absent are uncategorised.",
       "type": "object",
-      "required": ["type", "pdfs"],
+      "required": ["type", "pdfs", "folders"],
       "additionalProperties": false,
       "properties": {
         "type": { "const": "pdfs-loaded" },
         "pdfs": {
           "type": "array",
           "items": { "$ref": "#/definitions/PdfPayload" }
+        },
+        "folders": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/FolderPayload" }
         }
       },
       "examples": [
         {
           "type": "pdfs-loaded",
+          "folders": [
+            { "id": "8c1d0f2e-1111-4a2b-9c3d-4e5f60718293", "name": "Invoices" }
+          ],
           "pdfs": [
             {
-              "id":     "3fa85f64-5717-4562-b3fc-2c963f66afa6",
-              "name":   "Invoice Q1 2026.pdf",
-              "base64": "JVBERi0xLjQKJeLjz9M="
+              "id":       "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+              "name":     "Invoice Q1 2026.pdf",
+              "base64":   "JVBERi0xLjQKJeLjz9M=",
+              "folderId": "8c1d0f2e-1111-4a2b-9c3d-4e5f60718293"
             }
+          ]
+        }
+      ]
+    },
+
+    "ViewerFoldersUpdatedMessage": {
+      "description": "Sent by the C# host to the document-viewer whenever the folder catalogue or a PDF's folder assignment changes (folder added, renamed or deleted, or a file moved). Carries the full current folder list and the folder assignment of every PDF so the viewer can rebuild its folder filter without reloading PDF bytes.",
+      "type": "object",
+      "required": ["type", "folders", "assignments"],
+      "additionalProperties": false,
+      "properties": {
+        "type":    { "const": "viewer-folders-updated" },
+        "folders": { "type": "array", "items": { "$ref": "#/definitions/FolderPayload" } },
+        "assignments": {
+          "type": "array",
+          "description": "One entry per PDF in the workbook.",
+          "items": {
+            "type": "object",
+            "required": ["pdfId"],
+            "additionalProperties": false,
+            "properties": {
+              "pdfId":    { "type": "string", "description": "GUID of the PDF." },
+              "folderId": { "type": "string", "description": "GUID of the owning folder, omitted when uncategorised." }
+            }
+          }
+        }
+      },
+      "examples": [
+        {
+          "type": "viewer-folders-updated",
+          "folders": [
+            { "id": "8c1d0f2e-1111-4a2b-9c3d-4e5f60718293", "name": "Invoices" }
+          ],
+          "assignments": [
+            { "pdfId": "3fa85f64-5717-4562-b3fc-2c963f66afa6", "folderId": "8c1d0f2e-1111-4a2b-9c3d-4e5f60718293" },
+            { "pdfId": "5b7e21c4-2222-4d5e-8f90-a1b2c3d4e5f6" }
           ]
         }
       ]
@@ -947,6 +992,7 @@
     { "$ref": "#/definitions/PdfAddedMessage" },
     { "$ref": "#/definitions/PdfNameUpdatedMessage" },
     { "$ref": "#/definitions/PdfRemovedMessage" },
+    { "$ref": "#/definitions/ViewerFoldersUpdatedMessage" },
     { "$ref": "#/definitions/ManagerReadyMessage" },
     { "$ref": "#/definitions/FilesLoadedMessage" },
     { "$ref": "#/definitions/AddFilesMessage" },

@@ -1,5 +1,6 @@
 import type {
   PdfEntry,
+  FolderEntry,
   LinkRectPayload,
   LinkRectUpdatedPayload,
   LinkedRectEntry,
@@ -13,7 +14,8 @@ import type {
  * Every handler except `onPdfsLoaded` is optional; unhandled messages are ignored.
  */
 export interface HostMessageHandlers {
-  onPdfsLoaded: (entries: PdfEntry[]) => void;
+  onPdfsLoaded: (entries: PdfEntry[], folders: FolderEntry[]) => void;
+  onFoldersUpdated?: (folders: FolderEntry[], assignments: Map<string, string | undefined>) => void;
   onLinkedRectangles?: (rects: LinkedRectEntry[]) => void;
   onNavigateToRectangle?: (id: string, pdfId: string, page: number) => void;
   onClearRectangleHighlight?: () => void;
@@ -30,13 +32,26 @@ interface PdfPayload {
   id: string;
   name: string;
   base64: string;
+  folderId?: string;
   geometryBase64?: string;
   pageRotations?: Record<string, number>;
+}
+
+interface FolderPayload {
+  id: string;
+  name: string;
 }
 
 interface PdfsLoadedMessage {
   type: "pdfs-loaded";
   pdfs: PdfPayload[];
+  folders?: FolderPayload[];
+}
+
+interface ViewerFoldersUpdatedMessage {
+  type: "viewer-folders-updated";
+  folders?: FolderPayload[];
+  assignments?: Array<{ pdfId: string; folderId?: string }>;
 }
 
 interface PdfUpdatedMessage {
@@ -157,9 +172,17 @@ function toPdfEntry(pdf: PdfPayload): PdfEntry {
     id:   pdf.id,
     name: pdf.name || pdf.id,
     url,
+    folderId: pdf.folderId,
     geometryBase64: pdf.geometryBase64,
     pageRotations,
   };
+}
+
+function toFolderEntries(folders: FolderPayload[] | undefined): FolderEntry[] {
+  return (folders ?? []).map((folder) => ({
+    id:   folder.id,
+    name: folder.name || folder.id,
+  }));
 }
 
 function normalizeLinkType(value: unknown): LinkType {
@@ -169,6 +192,7 @@ function normalizeLinkType(value: unknown): LinkType {
 function handleMessage(raw: unknown, handlers: HostMessageHandlers): void {
   const {
     onPdfsLoaded,
+    onFoldersUpdated,
     onLinkedRectangles,
     onNavigateToRectangle,
     onClearRectangleHighlight,
@@ -199,7 +223,18 @@ function handleMessage(raw: unknown, handlers: HostMessageHandlers): void {
 
       revokeAllUrls();
       const entries: PdfEntry[] = msg.pdfs.map((pdf) => toPdfEntry(pdf));
-      onPdfsLoaded(entries);
+      onPdfsLoaded(entries, toFolderEntries(msg.folders));
+      return;
+    }
+
+    if (type === "viewer-folders-updated") {
+      if (!onFoldersUpdated) return;
+      const msg = parsed as ViewerFoldersUpdatedMessage;
+      const assignments = new Map<string, string | undefined>();
+      for (const assignment of msg.assignments ?? []) {
+        assignments.set(assignment.pdfId, assignment.folderId);
+      }
+      onFoldersUpdated(toFolderEntries(msg.folders), assignments);
       return;
     }
 

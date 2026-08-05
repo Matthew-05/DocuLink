@@ -498,6 +498,22 @@ namespace DocuLink.Addin
 
         }
 
+        /// <summary>
+
+        /// Pushes the current folder catalogue and PDF folder assignments to the active viewer.
+
+        /// Called after file-manager folder or move operations so the viewer's folder filter stays current.
+
+        /// </summary>
+
+        internal void NotifyViewerFoldersChanged()
+
+        {
+
+            GetActiveViewerHost()?.SendFoldersToWebView();
+
+        }
+
 
 
         internal void ShowManageFilesWindow()

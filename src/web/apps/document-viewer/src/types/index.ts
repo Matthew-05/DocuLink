@@ -1,8 +1,16 @@
+/** A named folder used to organise documents, mirrored from workbook storage. */
+export interface FolderEntry {
+  id: string;
+  name: string;
+}
+
 export interface PdfEntry {
   id: string;
   name: string;
   /** URL or object URL pointing to the PDF data. */
   url: string;
+  /** GUID of the owning folder; absent when the document is uncategorised. */
+  folderId?: string | undefined;
   /** Gzip-compressed text-geometry-v1 JSON, base64-encoded. */
   geometryBase64?: string;
   linkCount?: number;

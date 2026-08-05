@@ -17,6 +17,8 @@ namespace DocuLink.Addin.Modules.WebView
 
         void SendPdfRemoved(string id);
 
+        void SendFoldersToWebView();
+
         void SendNavigateToRectangle(string id, string pdfId, int page);
 
         void SendClearRectangleHighlight();

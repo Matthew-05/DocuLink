@@ -19,7 +19,9 @@
 .toolbar__left {
   display: flex;
   align-items: center;
+  gap: var(--toolbar-gap);
   justify-self: start;
+  min-width: 0;
 }
 
 .toolbar__center {
