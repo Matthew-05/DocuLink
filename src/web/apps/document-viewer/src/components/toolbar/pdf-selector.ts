@@ -48,6 +48,13 @@ export class PdfSelector {
       this._renderList(this._searchInput.value)
     );
     this._searchInput.addEventListener("click", (e) => e.stopPropagation());
+    this._searchInput.addEventListener("keydown", (e) => {
+      if (e.key !== "Escape") return;
+      e.preventDefault();
+      e.stopPropagation();
+      this._close();
+      this._searchInput.blur();
+    });
 
     searchWrapper.appendChild(this._searchInput);
 
@@ -70,6 +77,19 @@ export class PdfSelector {
 
   close(): void {
     this._close();
+  }
+
+  /**
+   * Opens the dropdown and puts the caret in its search box. Used by the
+   * Ctrl+Shift+F hotkey; re-focuses the box if the dropdown is already open.
+   */
+  openWithSearchFocus(): void {
+    if (this._isOpen) {
+      this._searchInput.select();
+      this._searchInput.focus();
+      return;
+    }
+    this._open();
   }
 
   setEntries(entries: PdfEntry[]): void {

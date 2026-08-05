@@ -356,6 +356,9 @@ export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLEleme
     searchNavigator(match, lastSearchResults);
   });
 
+  // Ctrl+F focuses the PDF text search; Ctrl+Shift+F opens the document selector
+  // and focuses its filter box. Both are captured because the WebView otherwise
+  // hands them to its own find UI.
   document.addEventListener(
     "keydown",
     (e) => {
@@ -363,6 +366,14 @@ export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLEleme
 
       e.preventDefault();
       e.stopPropagation();
+
+      if (e.shiftKey) {
+        search.hideResults();
+        selector.openWithSearchFocus();
+        return;
+      }
+
+      selector.close();
       search.focus();
     },
     true
