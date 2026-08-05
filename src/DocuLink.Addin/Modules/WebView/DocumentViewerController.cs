@@ -218,6 +218,14 @@ namespace DocuLink.Addin.Modules.WebView
                         HandleLinkRectangleDeleted(raw);
                         break;
 
+                    case "excel-navigate":
+                        HandleExcelNavigate(raw);
+                        break;
+
+                    case "undo-link-creation":
+                        HandleUndoLinkCreation();
+                        break;
+
                     case "rotate-page":
                         HandleRotatePage(raw);
                         break;
@@ -243,6 +251,28 @@ namespace DocuLink.Addin.Modules.WebView
         private void RestoreExcelFocus()
         {
             ExcelGridFocusRestoreService.RestoreExcelFocus();
+        }
+
+        /// <summary>
+        /// Moves the Excel cursor for a Tab/Enter keystroke the viewer forwarded, so the grid
+        /// keeps responding while the user works inside the PDF.
+        /// </summary>
+        private void HandleExcelNavigate(string json)
+        {
+            var payload = HostMessageParser.ParseExcelNavigate(json);
+            if (payload == null) return;
+
+            _invokeTarget.BeginInvoke(new Action(() =>
+                Globals.ThisAddIn.CellNavigation.Navigate(payload.Motion, payload.Reverse)));
+        }
+
+        /// <summary>
+        /// Undoes the most recent link-rectangle creation. The add-in owns the stack so the
+        /// keystroke and Excel's own grid Ctrl+Z walk the same history.
+        /// </summary>
+        private void HandleUndoLinkCreation()
+        {
+            _invokeTarget.BeginInvoke(new Action(() => Globals.ThisAddIn.UndoLastLinkCreation()));
         }
 
         private void HandleLinkRectangleCreated(string json)

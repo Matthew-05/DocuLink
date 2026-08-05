@@ -52,6 +52,24 @@ namespace DocuLink.Addin
         private readonly Dictionary<string, Dictionary<string, string>> _transientPdfGeometry =
             new Dictionary<string, Dictionary<string, string>>(StringComparer.OrdinalIgnoreCase);
 
+        /// <summary>
+        /// Per-workbook link-creation undo history. Keyed and released exactly like
+        /// <see cref="_storageSessions"/>, so undo dies with the workbook and is never persisted.
+        /// </summary>
+        private readonly Dictionary<string, Modules.Services.LinkCreationUndoStack> _linkUndoStacks =
+            new Dictionary<string, Modules.Services.LinkCreationUndoStack>(StringComparer.OrdinalIgnoreCase);
+
+        private Modules.Infrastructure.ExcelUndoKeyHook _excelUndoKeyHook;
+
+        /// <summary>
+        /// Excel-grid navigation state for keystrokes forwarded from the viewer. Single
+        /// instance because Excel itself tracks only one entry anchor at a time.
+        /// </summary>
+        private readonly Modules.Services.ExcelCellNavigationService _cellNavigation =
+            new Modules.Services.ExcelCellNavigationService();
+
+        internal Modules.Services.ExcelCellNavigationService CellNavigation => _cellNavigation;
+
 
 
         /// <summary>
@@ -151,7 +169,70 @@ namespace DocuLink.Addin
             string key = GetWorkbookSessionKey(workbook);
             _storageSessions.Remove(key);
             _transientPdfGeometry.Remove(key);
+            _linkUndoStacks.Remove(key);
+            _excelUndoKeyHook?.Disarm();
 
+        }
+
+        /// <summary>
+        /// Returns the workbook's in-memory link-creation undo stack, creating it on first use.
+        /// </summary>
+        internal Modules.Services.LinkCreationUndoStack GetLinkUndoStack(Excel.Workbook workbook)
+        {
+            if (workbook == null) return null;
+
+            string key = GetWorkbookSessionKey(workbook);
+
+            if (!_linkUndoStacks.TryGetValue(key, out Modules.Services.LinkCreationUndoStack stack))
+            {
+                stack = new Modules.Services.LinkCreationUndoStack();
+                _linkUndoStacks[key] = stack;
+            }
+
+            return stack;
+        }
+
+        /// <summary>
+        /// Marks a link-rectangle creation as the most recent action, so the next Ctrl+Z on the
+        /// worksheet grid reaches DocuLink instead of Excel's own undo.
+        /// </summary>
+        internal void ArmExcelUndoForLinkCreation() => _excelUndoKeyHook?.Arm();
+
+        /// <summary>
+        /// Runs one step of link-creation undo and re-arms the grid keystroke when more history
+        /// remains, so repeated Ctrl+Z in Excel walks back through the stack the way it does in
+        /// the viewer.
+        /// </summary>
+        internal string UndoLastLinkCreation()
+        {
+            Excel.Workbook wb = Application?.ActiveWorkbook;
+            if (wb == null) return null;
+
+            string removedId = null;
+
+            try
+            {
+                removedId = new Modules.Services.UndoLinkCreationService().UndoLast(wb);
+            }
+            catch (Exception ex)
+            {
+                Modules.DocuLinkLog.Trace($"UndoLastLinkCreation failed: {ex.Message}");
+            }
+
+            // A creation is no longer the most recent action once the stack runs dry.
+            if (removedId != null && !(GetLinkUndoStack(wb)?.IsEmpty ?? true))
+                _excelUndoKeyHook?.Arm();
+            else
+                _excelUndoKeyHook?.Disarm();
+
+            if (removedId != null)
+            {
+                _cellNavigation.ResetAnchor();
+                GetActiveViewerHost()?.SendLinkRectanglesRemoved(new List<string> { removedId });
+                NotifyFileManagerLinksChanged();
+            }
+
+            return removedId;
         }
 
         internal bool TryGetTransientPdfGeometry(Excel.Workbook workbook, string pdfId, out string geometryBase64)
@@ -688,6 +769,8 @@ namespace DocuLink.Addin
 
             Application.SheetSelectionChange += Application_SheetSelectionChange;
 
+            Application.SheetChange += Application_SheetChange;
+
             Application.WorkbookBeforeClose += Application_WorkbookBeforeClose;
 
             Application.WorkbookBeforeSave += Application_WorkbookBeforeSave;
@@ -697,6 +780,9 @@ namespace DocuLink.Addin
             Application.WorkbookOpen += Application_WorkbookOpen;
 
             ((Excel.AppEvents_Event)Application).NewWorkbook += Application_NewWorkbook;
+
+            _excelUndoKeyHook = new Modules.Infrastructure.ExcelUndoKeyHook(
+                () => UndoLastLinkCreation());
 
             _ = CheckForUpdateOnOpenAsync();
 
@@ -712,7 +798,13 @@ namespace DocuLink.Addin
 
             DisposeApplicationSurfacesForShutdown();
 
+            _excelUndoKeyHook?.Dispose();
+
+            _excelUndoKeyHook = null;
+
             Application.SheetSelectionChange -= Application_SheetSelectionChange;
+
+            Application.SheetChange -= Application_SheetChange;
 
             Application.WorkbookBeforeClose -= Application_WorkbookBeforeClose;
 
@@ -946,6 +1038,7 @@ namespace DocuLink.Addin
                 if (liveKeys.Contains(key)) continue;
                 _storageSessions.Remove(key);
                 _transientPdfGeometry.Remove(key);
+                _linkUndoStacks.Remove(key);
                 Modules.DocuLinkLog.Trace("reconcile: released storage session for closed workbook");
             }
         }
@@ -1166,6 +1259,22 @@ namespace DocuLink.Addin
         }
 
 
+
+        /// <summary>
+        /// Any worksheet edit the user makes means a link creation is no longer the most recent
+        /// action, so the grid's Ctrl+Z goes back to Excel's own undo.
+        /// </summary>
+        /// <remarks>
+        /// DocuLink's own writes run inside <see cref="EnterSelectionNavSuppress"/>, which is
+        /// what distinguishes them from a user edit here — without that test, creating a link
+        /// would immediately disarm the undo it just recorded.
+        /// </remarks>
+        private void Application_SheetChange(object sh, Excel.Range target)
+        {
+            if (IsSelectionNavSuppressed) return;
+
+            _excelUndoKeyHook?.Disarm();
+        }
 
         private void Application_SheetSelectionChange(object sh, Excel.Range target)
 

@@ -51,6 +51,43 @@ namespace DocuLink.Addin.Modules.WebView
     }
 
     /// <summary>
+    /// Parses an <c>excel-navigate</c> message. Returns <c>null</c> when the message is
+    /// malformed or names a motion this host does not implement.
+    /// </summary>
+    public static ExcelNavigatePayload ParseExcelNavigate(string json)
+    {
+        if (string.IsNullOrWhiteSpace(json))
+            return null;
+
+        try
+        {
+            var obj = WebMessageParser.Serializer.Deserialize<Dictionary<string, object>>(json);
+            if (obj == null) return null;
+
+            if (!obj.TryGetValue("motion", out object motionVal) || !(motionVal is string motion))
+                return null;
+
+            Services.ExcelCellNavigationService.Motion parsed;
+            if (string.Equals(motion, "tab", StringComparison.OrdinalIgnoreCase))
+                parsed = Services.ExcelCellNavigationService.Motion.Tab;
+            else if (string.Equals(motion, "enter", StringComparison.OrdinalIgnoreCase))
+                parsed = Services.ExcelCellNavigationService.Motion.Enter;
+            else
+                return null;
+
+            return new ExcelNavigatePayload
+            {
+                Motion  = parsed,
+                Reverse = ParseBoolean(obj, "reverse"),
+            };
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
     /// Parses a <c>link-rectangle-created</c> message into a
     /// <see cref="LinkRectangleCreatedPayload"/>. Returns <c>null</c> on failure.
     /// </summary>
@@ -183,6 +220,14 @@ namespace DocuLink.Addin.Modules.WebView
             return null;
         }
     }
+    }
+
+    /// <summary>Deserialized payload for an <c>excel-navigate</c> message.</summary>
+    internal sealed class ExcelNavigatePayload
+    {
+        public Services.ExcelCellNavigationService.Motion Motion { get; set; }
+
+        public bool Reverse { get; set; }
     }
 
     /// <summary>Deserialized payload for a <c>link-rectangle-created</c> message.</summary>

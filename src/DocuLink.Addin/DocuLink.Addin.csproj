@@ -215,6 +215,7 @@
     <Compile Include="Modules\CustomXml\Serialization\DocuLinkPdfBinarySerializer.cs" />
     <Compile Include="Modules\CustomXml\WorkbookStorageSession.cs" />
     <Compile Include="Modules\DocuLinkLog.cs" />
+    <Compile Include="Modules\Infrastructure\ExcelUndoKeyHook.cs" />
     <Compile Include="Modules\Infrastructure\PythonWorkerSession.cs" />
     <Compile Include="Modules\Services\AddPdfDocumentService.cs" />
     <Compile Include="Modules\Services\Conversion\ConversionFormatCatalog.cs" />
@@ -229,6 +230,9 @@
     <Compile Include="Modules\Services\CreateLinkService.cs" />
     <Compile Include="Modules\Services\TextValueFormatter.cs" />
     <Compile Include="Modules\Services\DeleteLinkService.cs" />
+    <Compile Include="Modules\Services\ExcelCellNavigationService.cs" />
+    <Compile Include="Modules\Services\LinkCreationUndoStack.cs" />
+    <Compile Include="Modules\Services\UndoLinkCreationService.cs" />
     <Compile Include="Modules\Services\LinkCellResolver.cs" />
     <Compile Include="Modules\Services\LinkCellTracker.cs" />
     <Compile Include="Modules\Services\ManageFilesService.cs" />

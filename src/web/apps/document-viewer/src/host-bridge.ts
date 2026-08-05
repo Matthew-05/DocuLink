@@ -370,6 +370,20 @@ export function sendLinkRectangleUpdated(payload: LinkRectUpdatedPayload): void 
   });
 }
 
+/**
+ * Forwards a cell-navigation keystroke to the Excel grid. The viewer reports only
+ * which key was pressed; the host resolves direction, the move-after-return setting,
+ * the Tab-run anchor and multi-cell selection cycling.
+ */
+export function sendExcelNavigate(motion: "tab" | "enter", reverse: boolean): void {
+  postToHost({ type: "excel-navigate", motion, reverse });
+}
+
+/** Asks the host to undo the most recent link-rectangle creation. */
+export function sendUndoLinkCreation(): void {
+  postToHost({ type: "undo-link-creation" });
+}
+
 export function sendRotatePage(pdfId: string, page: number, direction: "cw" | "ccw"): void {
   postToHost({ type: "rotate-page", pdfId, page, direction });
 }

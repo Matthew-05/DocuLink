@@ -492,6 +492,42 @@
       ]
     },
 
+    "ExcelNavigateMessage": {
+      "description": "Sent by the document-viewer when the user presses a cell-navigation key while the viewer has focus, so the keystroke drives the Excel grid instead of the WebView. The host owns all navigation semantics: Tab always moves horizontally, Enter follows Application.MoveAfterReturnDirection, an Enter that ends a Tab run returns to the column the run started in, and both motions cycle inside a multi-cell selection rather than collapsing it. The viewer deliberately sends no direction — it reports only which key was pressed.",
+      "type": "object",
+      "required": ["type", "motion", "reverse"],
+      "additionalProperties": false,
+      "properties": {
+        "type":    { "const": "excel-navigate" },
+        "motion":  {
+          "type": "string",
+          "enum": ["tab", "enter"],
+          "description": "Which navigation key was pressed. 'tab' is always horizontal; 'enter' resolves against the user's Excel move-after-return setting."
+        },
+        "reverse": {
+          "type": "boolean",
+          "description": "True when Shift was held, reversing the motion (Shift+Tab, Shift+Enter)."
+        }
+      },
+      "examples": [
+        { "type": "excel-navigate", "motion": "tab",   "reverse": false },
+        { "type": "excel-navigate", "motion": "enter", "reverse": true }
+      ]
+    },
+
+    "UndoLinkCreationMessage": {
+      "description": "Sent by the document-viewer when the user presses Ctrl+Z (or Cmd+Z) while the viewer has focus. The host pops its in-memory per-workbook rectangle-creation stack, discarding stale entries, removes the rectangle, clears or rebuilds the linked cell, and selects that cell. Undo covers rectangle creation only — edits, deletions and rotations are not undoable, and there is no redo.",
+      "type": "object",
+      "required": ["type"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "const": "undo-link-creation" }
+      },
+      "examples": [
+        { "type": "undo-link-creation" }
+      ]
+    },
+
     "LinkRectanglesRemovedMessage": {
       "description": "Sent by the C# host after one or more link rectangles are deleted. The viewer should remove the matching overlay divs from the DOM (if present on the active PDF) without reloading all rectangles.",
       "type": "object",
@@ -930,6 +966,8 @@
     { "$ref": "#/definitions/LinkRectangleClickedMessage" },
     { "$ref": "#/definitions/LinkRectangleDeletedMessage" },
     { "$ref": "#/definitions/LinkRectanglesRemovedMessage" },
+    { "$ref": "#/definitions/ExcelNavigateMessage" },
+    { "$ref": "#/definitions/UndoLinkCreationMessage" },
     { "$ref": "#/definitions/NavigateToRectangleMessage" },
     { "$ref": "#/definitions/ClearRectangleHighlightMessage" },
     { "$ref": "#/definitions/HighlightRectangleMessage" },

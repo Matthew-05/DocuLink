@@ -104,6 +104,8 @@ namespace DocuLink.Addin.Modules.Services
             LinkCellTracker.BindCell(workbook, cell, trackIndex);
             Trace("BindCell done");
 
+            string previousNumberFormat = LinkCreationUndoStack.TryReadNumberFormat(cell);
+
             try
             {
                 WriteToCell(cell, text, linkType);
@@ -120,9 +122,36 @@ namespace DocuLink.Addin.Modules.Services
             {
                 session.AddLink(linkedRect);
             }
+
+            RecordUndoEntry(workbook, linkedRect.Id, trackIndex, cell, previousNumberFormat);
             Trace("returning");
 
             return (linkedRect, session.GetLinks());
+        }
+
+        /// <summary>
+        /// Records how to reverse a creation, on the workbook's in-memory undo stack.
+        /// </summary>
+        /// <remarks>
+        /// Captured here rather than by the caller because only this service knows which cell
+        /// the rightward scan settled on, and it is the only place that sees the cell's number
+        /// format before the write replaces it. Deliberately not called from
+        /// <see cref="CreateLinkAtCell"/>: the document-matcher's batch flow is outside the
+        /// scope of keystroke undo.
+        /// </remarks>
+        private static void RecordUndoEntry(
+            Excel.Workbook workbook,
+            string rectId,
+            int trackIndex,
+            Excel.Range cell,
+            string previousNumberFormat)
+        {
+            LinkCreationUndoEntry entry =
+                LinkCreationUndoStack.TryCapture(rectId, trackIndex, cell, previousNumberFormat);
+            if (entry == null) return;
+
+            Globals.ThisAddIn.GetLinkUndoStack(workbook)?.Push(entry);
+            Globals.ThisAddIn.ArmExcelUndoForLinkCreation();
         }
 
         /// <summary>
@@ -246,6 +275,8 @@ namespace DocuLink.Addin.Modules.Services
             string formula = TextValueFormatter.RebuildSumFormula(sumRectsForCell);
             if (formula == null) formula = "0";
 
+            string previousNumberFormat = LinkCreationUndoStack.TryReadNumberFormat(startCell);
+
             try
             {
                 CellFormattingService.ApplySumNumberFormat(startCell, sumRectsForCell);
@@ -267,6 +298,9 @@ namespace DocuLink.Addin.Modules.Services
             {
                 session.AddLink(linkedRect);
             }
+
+            RecordUndoEntry(
+                workbook, linkedRect.Id, existingSum.LinkedCell.TrackIndex, startCell, previousNumberFormat);
 
             return (linkedRect, session.GetLinks());
         }

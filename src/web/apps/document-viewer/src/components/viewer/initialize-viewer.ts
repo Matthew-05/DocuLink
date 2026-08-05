@@ -9,6 +9,7 @@ import { RectContextMenu } from "./rect-context-menu.js";
 import { LinkSelectionPanel } from "./link-selection-panel.js";
 import { CharBboxOverlay } from "./char-bbox-overlay.js";
 import { createRectNavigator } from "./rect-navigator.js";
+import { attachExcelKeyBridge } from "./excel-key-bridge.js";
 import { createFitMode } from "./fit-mode.js";
 import { PdfTextSearcher, normalizeSearchQuery } from "./pdf-text-searcher.js";
 import { SearchMatchRenderer } from "./search-match-renderer.js";
@@ -368,6 +369,10 @@ export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLEleme
   );
 
   search.disable();
+
+  // Tab/Shift+Tab, Enter/Shift+Enter and Ctrl+Z drive the Excel grid rather than
+  // the WebView. Registered after the Ctrl+F handler above so search keeps its key.
+  attachExcelKeyBridge();
 
   contextMenu.attachScrollTarget(viewer.element);
 
