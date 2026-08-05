@@ -170,7 +170,7 @@ namespace DocuLink.Addin
             _storageSessions.Remove(key);
             _transientPdfGeometry.Remove(key);
             _linkUndoStacks.Remove(key);
-            _excelUndoKeyHook?.Disarm();
+            RefreshExcelUndoArmedState();
 
         }
 
@@ -193,10 +193,64 @@ namespace DocuLink.Addin
         }
 
         /// <summary>
+        /// Looks up a workbook's undo stack without creating one, so callers that only want to
+        /// inspect state do not populate the dictionary for every workbook Excel touches.
+        /// </summary>
+        private Modules.Services.LinkCreationUndoStack TryGetLinkUndoStack(Excel.Workbook workbook)
+        {
+            if (workbook == null) return null;
+
+            return _linkUndoStacks.TryGetValue(
+                GetWorkbookSessionKey(workbook), out Modules.Services.LinkCreationUndoStack stack)
+                ? stack
+                : null;
+        }
+
+        /// <summary>
         /// Marks a link-rectangle creation as the most recent action, so the next Ctrl+Z on the
         /// worksheet grid reaches DocuLink instead of Excel's own undo.
         /// </summary>
-        internal void ArmExcelUndoForLinkCreation() => _excelUndoKeyHook?.Arm();
+        internal void ArmExcelUndoForLinkCreation() => RefreshExcelUndoArmedState();
+
+        /// <summary>
+        /// Points the grid's Ctrl+Z at DocuLink only when the workbook the user is actually
+        /// looking at has undoable history that is still the most recent thing to happen in it.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Recomputed from the active workbook rather than latched, because arming is per workbook
+        /// while the hook is one global switch. Creating a rectangle in one workbook must not leave
+        /// the hook armed over another workbook's empty stack, and returning to the first workbook
+        /// must restore its pending undo.
+        /// </para>
+        /// <para>
+        /// Resolving the active workbook here, on the UI thread, is also what keeps COM calls out
+        /// of the keyboard hook procedure, where Excel may refuse them mid-message.
+        /// </para>
+        /// </remarks>
+        private void RefreshExcelUndoArmedState()
+        {
+            if (_excelUndoKeyHook == null) return;
+
+            bool armed = false;
+
+            try
+            {
+                Modules.Services.LinkCreationUndoStack stack =
+                    TryGetLinkUndoStack(Application?.ActiveWorkbook);
+
+                armed = stack != null && stack.IsArmed && !stack.IsEmpty;
+            }
+            catch (Exception ex)
+            {
+                Modules.DocuLinkLog.Trace($"RefreshExcelUndoArmedState failed: {ex.Message}");
+            }
+
+            if (armed)
+                _excelUndoKeyHook.Arm();
+            else
+                _excelUndoKeyHook.Disarm();
+        }
 
         /// <summary>
         /// Runs one step of link-creation undo and re-arms the grid keystroke when more history
@@ -219,11 +273,16 @@ namespace DocuLink.Addin
                 Modules.DocuLinkLog.Trace($"UndoLastLinkCreation failed: {ex.Message}");
             }
 
-            // A creation is no longer the most recent action once the stack runs dry.
-            if (removedId != null && !(GetLinkUndoStack(wb)?.IsEmpty ?? true))
-                _excelUndoKeyHook?.Arm();
+            // Undoing is itself a DocuLink action, so re-arm explicitly rather than relying on the
+            // flag having survived: the reversal's own cell writes, and the pop that consumed the
+            // entry, both leave it stale. Without this the chain stops after one Ctrl+Z.
+            Modules.Services.LinkCreationUndoStack stack = TryGetLinkUndoStack(wb);
+            if (removedId != null)
+                stack?.Arm();
             else
-                _excelUndoKeyHook?.Disarm();
+                stack?.Disarm();
+
+            RefreshExcelUndoArmedState();
 
             if (removedId != null)
             {
@@ -1076,6 +1135,10 @@ namespace DocuLink.Addin
 
             ReconcileClosedWorkbooks();
 
+            // Pending undo belongs to whichever workbook is in front, so re-evaluate before
+            // anything else — including the pop-out early return further down.
+            RefreshExcelUndoArmedState();
+
             try
 
             {
@@ -1267,13 +1330,23 @@ namespace DocuLink.Addin
         /// <remarks>
         /// DocuLink's own writes run inside <see cref="EnterSelectionNavSuppress"/>, which is
         /// what distinguishes them from a user edit here — without that test, creating a link
-        /// would immediately disarm the undo it just recorded.
+        /// would immediately disarm the undo it just recorded. Only the edited workbook is
+        /// disarmed, so typing in one workbook cannot cancel pending undo history in another.
         /// </remarks>
         private void Application_SheetChange(object sh, Excel.Range target)
         {
             if (IsSelectionNavSuppressed) return;
 
-            _excelUndoKeyHook?.Disarm();
+            try
+            {
+                TryGetLinkUndoStack((sh as Excel.Worksheet)?.Parent as Excel.Workbook)?.Disarm();
+            }
+            catch (Exception ex)
+            {
+                Modules.DocuLinkLog.Trace($"Application_SheetChange disarm failed: {ex.Message}");
+            }
+
+            RefreshExcelUndoArmedState();
         }
 
         private void Application_SheetSelectionChange(object sh, Excel.Range target)

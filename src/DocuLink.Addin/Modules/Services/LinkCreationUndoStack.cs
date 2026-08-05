@@ -61,11 +61,34 @@ namespace DocuLink.Addin.Modules.Services
 
         public bool IsEmpty => _entries.Count == 0;
 
+        /// <summary>
+        /// Whether a DocuLink action is still this workbook's most recent, and so whether Ctrl+Z
+        /// on its grid belongs to DocuLink rather than Excel.
+        /// </summary>
+        /// <remarks>
+        /// Tracked per workbook, not per Excel instance. A single global flag has two failure
+        /// modes: a creation in one workbook arms the grid keystroke in another, where it is
+        /// swallowed against an empty stack and eats the user's first Ctrl+Z; and an edit in one
+        /// workbook cancels pending undo history in another.
+        /// </remarks>
+        public bool IsArmed { get; private set; }
+
+        /// <summary>
+        /// Claims the grid's Ctrl+Z for this workbook. Called for an undo as well as a creation —
+        /// undoing is itself a DocuLink action, and that is what lets repeated Ctrl+Z chain
+        /// down the stack rather than stopping after the first.
+        /// </summary>
+        public void Arm() => IsArmed = !IsEmpty;
+
+        /// <summary>Gives the grid's Ctrl+Z back to Excel, without discarding the history.</summary>
+        public void Disarm() => IsArmed = false;
+
         public void Push(LinkCreationUndoEntry entry)
         {
             if (entry == null) return;
 
             _entries.AddFirst(entry);
+            IsArmed = true;
 
             while (_entries.Count > MaxDepth)
                 _entries.RemoveLast();
@@ -81,7 +104,11 @@ namespace DocuLink.Addin.Modules.Services
             return true;
         }
 
-        public void Clear() => _entries.Clear();
+        public void Clear()
+        {
+            _entries.Clear();
+            IsArmed = false;
+        }
 
         /// <summary>
         /// Drops every entry for a rectangle that no longer exists, so callers can ask

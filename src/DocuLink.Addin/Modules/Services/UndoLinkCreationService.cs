@@ -102,7 +102,27 @@ namespace DocuLink.Addin.Modules.Services
             return true;
         }
 
+        /// <remarks>
+        /// The whole reversal runs under <see cref="ThisAddIn.EnterSelectionNavSuppress"/>. Beyond
+        /// keeping the viewer from chasing the cursor, this is what marks the cell writes below as
+        /// DocuLink's rather than the user's — an unsuppressed <c>ClearContents</c> raises
+        /// SheetChange, which the host reads as a user edit and uses to hand Ctrl+Z back to Excel,
+        /// stopping any further undo dead.
+        /// </remarks>
         private bool UndoEntry(
+            Excel.Workbook workbook,
+            WorkbookStorageSession session,
+            LinkCreationUndoEntry entry,
+            LinkedRectangle rect,
+            Excel.Range cell)
+        {
+            using (Globals.ThisAddIn.EnterSelectionNavSuppress())
+            {
+                return UndoEntryCore(workbook, session, entry, rect, cell);
+            }
+        }
+
+        private bool UndoEntryCore(
             Excel.Workbook workbook,
             WorkbookStorageSession session,
             LinkCreationUndoEntry entry,
