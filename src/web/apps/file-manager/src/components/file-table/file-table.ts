@@ -24,6 +24,14 @@ export class FileTable {
   private _contextMenuRow: HTMLTableRowElement | null = null;
   private _isLoading = true;
   private readonly _onSelectionChange: (ids: string[]) => void;
+  /** Anchor row for shift-click range selection — the last row explicitly clicked. */
+  private _lastClickedId: string | null = null;
+  /**
+   * Whether the anchor click checked (true) or unchecked (false) its row.
+   * A shift-click range mirrors this direction, so unchecking a row and then
+   * shift-clicking another deselects the whole range instead of selecting it.
+   */
+  private _lastClickedSelected = true;
 
   constructor(container: HTMLElement, options: FileTableOptions) {
     this._onSelectionChange = options.onSelectionChange;
@@ -44,7 +52,6 @@ export class FileTable {
         <th class="col-size">Size</th>
         <th class="col-date">Date Added</th>
         <th class="col-folder">Folder</th>
-        <th class="col-actions"></th>
       </tr>`;
 
     const selectAllCb = this._thead.querySelector<HTMLInputElement>(".select-all-cb")!;
@@ -116,6 +123,8 @@ export class FileTable {
 
   clearSelection(): void {
     this._selectedIds.clear();
+    this._lastClickedId = null;
+    this._lastClickedSelected = true;
     this._render();
     this._onSelectionChange([]);
   }
@@ -131,6 +140,8 @@ export class FileTable {
     this._locked = locked;
     if (locked) {
       this._selectedIds.clear();
+      this._lastClickedId = null;
+      this._lastClickedSelected = true;
       this._onSelectionChange([]);
       this._hideContextMenu();
     }
@@ -182,6 +193,44 @@ export class FileTable {
     this._onSelectionChange(this.getSelectedIds());
   }
 
+  /**
+   * Applies the last click's direction (select or unselect) to every visible
+   * row between the anchor and `targetId` (inclusive), then re-renders. So if
+   * the click right before the shift-click unchecked its row, the whole range
+   * gets unselected instead of selected. The anchor itself is left unchanged
+   * so repeated shift-clicks keep extending the range from the same origin,
+   * matching Explorer/Finder behavior. Falls back to a plain select if there's
+   * no anchor or it's no longer visible (e.g. filtered out).
+   */
+  private _selectRange(targetId: string): void {
+    const visible = this._visibleFiles();
+    const anchorIdx = this._lastClickedId
+      ? visible.findIndex((f) => f.id === this._lastClickedId)
+      : -1;
+    const targetIdx = visible.findIndex((f) => f.id === targetId);
+
+    if (anchorIdx === -1 || targetIdx === -1) {
+      this._selectedIds.add(targetId);
+      this._lastClickedId = targetId;
+      this._lastClickedSelected = true;
+    } else {
+      const [start, end] = anchorIdx < targetIdx
+        ? [anchorIdx, targetIdx]
+        : [targetIdx, anchorIdx];
+      for (let i = start; i <= end; i++) {
+        const id = visible[i]!.id;
+        if (this._lastClickedSelected) {
+          this._selectedIds.add(id);
+        } else {
+          this._selectedIds.delete(id);
+        }
+      }
+    }
+
+    this._render();
+    this._onSelectionChange(this.getSelectedIds());
+  }
+
   private _updateSelectAllCheckbox(): void {
     const selectAllCb = this._thead.querySelector<HTMLInputElement>(".select-all-cb");
     if (!selectAllCb) return;
@@ -204,8 +253,8 @@ export class FileTable {
       const empty = document.createElement("tr");
       empty.className = "file-table__empty-row";
       empty.innerHTML = this._isLoading
-        ? `<td colspan="8" class="file-table__empty">DocuLink Initializing…</td>`
-        : `<td colspan="8" class="file-table__empty">Add files to get started.</td>`;
+        ? `<td colspan="7" class="file-table__empty">DocuLink Initializing…</td>`
+        : `<td colspan="7" class="file-table__empty">Add files to get started.</td>`;
       this._tbody.appendChild(empty);
       return;
     }
@@ -228,6 +277,17 @@ export class FileTable {
       this._showContextMenu(file, nameSpan, tr, e.clientX, e.clientY);
     });
 
+    // Shift-click anywhere on the row (outside interactive controls, which
+    // handle their own clicks) extends the selection from the last-clicked
+    // row through this one — standard Explorer/Finder range-select.
+    tr.addEventListener("click", (e) => {
+      if (this._locked || !e.shiftKey) return;
+      const target = e.target as HTMLElement;
+      if (target.closest("input, button")) return;
+      e.preventDefault();
+      this._selectRange(file.id);
+    });
+
     // Checkbox cell
     const checkTd = document.createElement("td");
     checkTd.className = "col-check";
@@ -237,11 +297,21 @@ export class FileTable {
     cb.checked = this._selectedIds.has(file.id);
     cb.disabled = this._locked;
     cb.title = this._locked ? LOCKED_HINT : "Select file";
+    cb.addEventListener("click", (e) => {
+      e.stopPropagation();
+      if (e.shiftKey && this._lastClickedId) {
+        // We manage range selection ourselves — suppress the native toggle
+        // so this checkbox's own change doesn't also fire for it.
+        e.preventDefault();
+        this._selectRange(file.id);
+      }
+    });
     cb.addEventListener("change", () => {
       this._onRowCheck(file.id, cb.checked);
       tr.classList.toggle("is-selected", cb.checked);
+      this._lastClickedId = file.id;
+      this._lastClickedSelected = cb.checked;
     });
-    cb.addEventListener("click", (e) => e.stopPropagation());
     checkTd.appendChild(cb);
 
     // Name cell — double-click to rename
@@ -290,22 +360,6 @@ export class FileTable {
       if (folder) folderTd.textContent = folder.name;
     }
 
-    // Actions cell — rename only
-    const actionsTd = document.createElement("td");
-    actionsTd.className = "col-actions";
-
-    const renameBtn = document.createElement("button");
-    renameBtn.className = "icon-btn icon-btn--sm";
-    renameBtn.title = this._locked ? LOCKED_HINT : "Rename";
-    renameBtn.textContent = "✎";
-    renameBtn.disabled = this._locked;
-    renameBtn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      this._startRename(file, nameSpan, tr);
-    });
-
-    actionsTd.appendChild(renameBtn);
-
     tr.appendChild(checkTd);
     tr.appendChild(nameTd);
     tr.appendChild(linksTd);
@@ -313,7 +367,6 @@ export class FileTable {
     tr.appendChild(sizeTd);
     tr.appendChild(dateTd);
     tr.appendChild(folderTd);
-    tr.appendChild(actionsTd);
 
     return tr;
   }
@@ -389,7 +442,7 @@ export class FileTable {
 }
 
 /** Statuses that represent an in-flight OCR run and therefore render a spinner. */
-const ACTIVE_OCR_STATUSES = new Set(["queued", "processing"]);
+const ACTIVE_OCR_STATUSES = new Set(["processing"]);
 
 function formatStatusLabel(status: string): string {
   switch (status) {
@@ -404,9 +457,10 @@ function formatStatusLabel(status: string): string {
 }
 
 /**
- * Builds the status pill for a row. Queued/processing rows get an indefinite
- * spinner ahead of the label; OCR has no measurable progress, so the spinner is
- * a liveness cue rather than a progress bar.
+ * Builds the status pill for a row. Processing rows get an indefinite spinner
+ * ahead of the label; OCR has no measurable progress, so the spinner is a
+ * liveness cue rather than a progress bar. Queued rows show a plain label —
+ * nothing is actively running yet, so a spinner would be misleading.
  */
 function buildStatusBadge(status: string): HTMLSpanElement {
   const badge = document.createElement("span");

@@ -64,12 +64,6 @@
   width: 15%;
 }
 
-/* Holds a single icon button — no need for the 14% it used to reserve. */
-.file-table thead th.col-actions,
-.file-table tbody td.col-actions {
-  width: 10%;
-}
-
 /* ── Header ───────────────────────────────────────────────────────────────── */
 
 .file-table thead th {
@@ -231,10 +225,6 @@
   white-space: nowrap;
 }
 
-.col-actions {
-  text-align: right;
-}
-
 /* ── Inline file-name editing ─────────────────────────────────────────────── */
 
 .file-name {
@@ -254,16 +244,6 @@
   cursor: default;
   color: var(--color-text-muted);
   user-select: none;
-}
-
-.file-table-wrap--locked .col-actions .icon-btn:disabled {
-  cursor: not-allowed;
-  opacity: 0.4;
-}
-
-.file-table-wrap--locked .col-actions .icon-btn:disabled:hover {
-  background: transparent;
-  color: var(--color-text-muted);
 }
 
 .rename-input {
@@ -323,7 +303,7 @@
   text-overflow: ellipsis;
 }
 
-/* ── Indefinite spinner (queued / processing) ─────────────────────────────── */
+/* ── Indefinite spinner (processing) ──────────────────────────────────────── */
 
 /* will-change promotes the spinner onto its own compositor layer. Without it
    Chromium animates on the main thread, and WebView2 hosted in WinForms only
@@ -348,12 +328,6 @@
   to   { transform: rotate(360deg); }
 }
 
-/* Queued work has not started yet — hint that with a slower, dimmer spin. */
-.status-badge--queued .status-badge__spinner {
-  animation-duration: 1.4s;
-  opacity: 0.55;
-}
-
 @media (prefers-reduced-motion: reduce) {
   .status-badge__spinner {
     animation-duration: 2.4s;
@@ -361,9 +335,9 @@
 }
 
 .status-badge--text {
-  background: rgba(62, 207, 110, 0.13);
-  border-color: rgba(62, 207, 110, 0.3);
-  color: var(--color-success);
+  background: rgba(90, 140, 255, 0.13);
+  border-color: rgba(90, 140, 255, 0.32);
+  color: #5a8cff;
 }
 
 .status-badge--none {
@@ -373,15 +347,15 @@
 }
 
 .status-badge--ocr {
-  background: rgba(90, 140, 255, 0.13);
-  border-color: rgba(90, 140, 255, 0.32);
-  color: #5a8cff;
+  background: rgba(62, 207, 110, 0.13);
+  border-color: rgba(62, 207, 110, 0.3);
+  color: var(--color-success);
 }
 
 .status-badge--queued {
-  background: rgba(130, 130, 200, 0.13);
-  border-color: rgba(130, 130, 200, 0.32);
-  color: #7878cc;
+  background: rgba(170, 140, 230, 0.13);
+  border-color: rgba(170, 140, 230, 0.34);
+  color: #a98ce0;
 }
 
 /* The row actively being worked — strongest tint of the set. */
