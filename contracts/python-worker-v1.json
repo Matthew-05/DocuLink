@@ -85,6 +85,22 @@
       ]
     },
 
+    "OcrDiagnostics": {
+      "description": "Non-authoritative telemetry describing how a job was processed. Intended for the host debug log only \u2014 hosts must not branch behaviour on these values, and must tolerate the object being absent entirely.",
+      "type": "object",
+      "required": ["ocr_engine", "rasterizer", "total_ms"],
+      "additionalProperties": false,
+      "properties": {
+        "ocr_engine":  { "type": "string", "description": "OCR engine and version actually used, e.g. 'tesseract 5.5.0'. 'none' when the job performed no OCR." },
+        "rasterizer":  { "type": "string", "enum": ["pypdfium2", "ghostscript", "none"], "description": "Page rasterizer OCRmyPDF selected under rasterizer='auto'. 'none' when the job performed no rasterization, i.e. a geometry-only job served from an existing text layer." },
+        "page_count":  { "type": "integer", "minimum": 0, "description": "Pages in the document." },
+        "use_threads": { "type": "boolean", "description": "True when OCRmyPDF ran page tasks in threads, false when it used worker processes. Recorded because the pypdfium2 rasterizer serializes behind a process-global lock under threading." },
+        "ocr_ms":      { "type": "integer", "minimum": 0, "description": "Milliseconds spent inside OCRmyPDF. Omitted when no OCR ran." },
+        "geometry_ms": { "type": "integer", "minimum": 0, "description": "Milliseconds spent extracting character geometry." },
+        "total_ms":    { "type": "integer", "minimum": 0, "description": "Milliseconds from job decode to result serialization, measured inside the worker. Excludes host-side base64 transfer and workbook storage." }
+      }
+    },
+
     "OcrSuccessMessage": {
       "description": "Emitted by the worker to stdout when OCR completes successfully. Exactly one per job.",
       "type": "object",
@@ -94,19 +110,37 @@
         "job_id":           { "type": "string" },
         "status":           { "const": "success" },
         "pdf_base64":       { "type": "string", "description": "Base-64 encoded output PDF bytes with text layer added. Omitted for geometry-only jobs." },
-        "geometry_base64":  { "type": "string", "description": "Gzip-compressed text-geometry-v1 JSON, base64-encoded." }
+        "geometry_base64":  { "type": "string", "description": "Gzip-compressed text-geometry-v1 JSON, base64-encoded." },
+        "diagnostics":      { "$ref": "#/definitions/OcrDiagnostics" }
       },
       "examples": [
         {
           "job_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
           "status": "success",
           "pdf_base64": "JVBERi0xLjU=",
-          "geometry_base64": "H4sIAAAAAAAAA+3BMQEAAADCoPVP7WsIoAAAAAAAAPwYAwAABtXgAA=="
+          "geometry_base64": "H4sIAAAAAAAAA+3BMQEAAADCoPVP7WsIoAAAAAAAAPwYAwAABtXgAA==",
+          "diagnostics": {
+            "ocr_engine": "tesseract 5.5.0",
+            "rasterizer": "pypdfium2",
+            "page_count": 12,
+            "use_threads": false,
+            "ocr_ms": 8421,
+            "geometry_ms": 96,
+            "total_ms": 8604
+          }
         },
         {
           "job_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
           "status": "success",
-          "geometry_base64": "H4sIAAAAAAAAA+3BMQEAAADCoPVP7WsIoAAAAAAAAPwYAwAABtXgAA=="
+          "geometry_base64": "H4sIAAAAAAAAA+3BMQEAAADCoPVP7WsIoAAAAAAAAPwYAwAABtXgAA==",
+          "diagnostics": {
+            "ocr_engine": "none",
+            "rasterizer": "none",
+            "page_count": 3,
+            "use_threads": true,
+            "geometry_ms": 41,
+            "total_ms": 44
+          }
         }
       ]
     },

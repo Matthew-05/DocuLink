@@ -63,6 +63,85 @@ _configure_bundled_tools()
 import ocrmypdf  # noqa: E402 — must come after env setup
 
 
+_ENGINE_DESCRIPTION_CACHE: str | None = None
+
+# ── Tuning knobs ──────────────────────────────────────────────────────────────
+# Both settings are benchmark knobs, overridable by environment variable so the
+# 2x2 matrix can be measured without rebuilding the worker:
+#
+#   DOCULINK_OCR_RASTERIZER   auto | pypdfium | ghostscript   (default ghostscript)
+#   DOCULINK_OCR_USE_THREADS  1 | 0                           (default 1)
+#
+# Defaults reproduce the fastest configuration measured so far. Ghostscript wins
+# today because OCRmyPDF runs page tasks in threads and its pypdfium2 plugin
+# serializes every rasterization behind one process-global lock, while
+# Ghostscript rasterizes out-of-process and parallelizes freely. use_threads=0
+# switches OCRmyPDF to a ProcessPoolExecutor, giving each process its own pdfium
+# instance — that is the configuration that could make pypdfium2 competitive.
+_DEFAULT_RASTERIZER = "ghostscript"
+_DEFAULT_USE_THREADS = True
+
+
+def resolve_rasterizer() -> str:
+    """Rasterizer to request from OCRmyPDF, honouring the environment override."""
+    value = (os.environ.get("DOCULINK_OCR_RASTERIZER") or "").strip().lower()
+    if value in ("auto", "pypdfium", "ghostscript"):
+        return value
+    return _DEFAULT_RASTERIZER
+
+
+def resolve_use_threads() -> bool:
+    """Whether OCRmyPDF should use threads (True) or processes (False)."""
+    value = (os.environ.get("DOCULINK_OCR_USE_THREADS") or "").strip().lower()
+    if value in ("0", "false", "no"):
+        return False
+    if value in ("1", "true", "yes"):
+        return True
+    return _DEFAULT_USE_THREADS
+
+
+def active_rasterizer() -> str:
+    """
+    Report which rasterizer OCRmyPDF actually used, for diagnostics only.
+
+    Resolves "auto" the same way ocrmypdf.builtin_plugins.pypdfium does: the
+    pypdfium2 rasterizer is used whenever the package imports, and Ghostscript
+    handles the page otherwise. Never branch on this value.
+    """
+    setting = resolve_rasterizer()
+    if setting == "ghostscript":
+        return "ghostscript"
+    try:
+        import pypdfium2  # noqa: F401
+    except ImportError:
+        return "ghostscript"
+    return "pypdfium2"
+
+
+def active_ocr_engine() -> str:
+    """
+    Report the OCR engine and version actually available to this worker.
+
+    Probing the version shells out to tesseract.exe, so the result is cached for
+    the lifetime of the worker process rather than paid once per document.
+    """
+    global _ENGINE_DESCRIPTION_CACHE
+    if _ENGINE_DESCRIPTION_CACHE is not None:
+        return _ENGINE_DESCRIPTION_CACHE
+
+    description = "tesseract (version unavailable)"
+    try:
+        configure_tesseract()
+        import pytesseract
+
+        description = f"tesseract {pytesseract.get_tesseract_version()}"
+    except Exception:  # noqa: BLE001 — diagnostics must never fail a job
+        pass
+
+    _ENGINE_DESCRIPTION_CACHE = description
+    return description
+
+
 def configure_tesseract() -> None:
     """Point pytesseract at the bundled Tesseract binary."""
     if getattr(sys, "frozen", False):
@@ -122,7 +201,10 @@ def ocr_pdf_bytes(
             rotate_pages=auto_rotate_pages,
             rotate_pages_threshold=rotate_pages_threshold,
             progress_bar=False,
-            rasterizer="ghostscript",
+            # See the tuning knobs above. Both are environment-overridable so the
+            # rasterizer/concurrency matrix can be benchmarked without a rebuild.
+            rasterizer=resolve_rasterizer(),
+            use_threads=resolve_use_threads(),
             output_type="pdf",
         )
 

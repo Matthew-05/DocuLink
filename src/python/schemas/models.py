@@ -33,6 +33,9 @@ class OcrResult:
     pdf_base64: str = "" # populated on full OCR success
     geometry_base64: str = ""
     error: str = ""      # populated on error
+    # OcrDiagnostics per contracts/python-worker-v1.json. Host debug logging
+    # only — the host must tolerate this being absent and must not branch on it.
+    diagnostics: dict = None
 
     def to_dict(self) -> dict:
         d: dict = {"job_id": self.job_id, "status": self.status}
@@ -41,6 +44,8 @@ class OcrResult:
                 d["pdf_base64"] = self.pdf_base64
             if self.geometry_base64:
                 d["geometry_base64"] = self.geometry_base64
+            if self.diagnostics:
+                d["diagnostics"] = self.diagnostics
         else:
             d["error"] = self.error
         return d

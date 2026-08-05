@@ -160,6 +160,19 @@ namespace DocuLink.Addin.Modules.Infrastructure
                 : string.Empty;
         }
 
+        /// <summary>
+        /// Reads a nested object field from a parsed worker message, returning null when
+        /// the key is absent or does not hold an object. Callers must tolerate null so an
+        /// older worker build that omits optional objects cannot break the host.
+        /// </summary>
+        public static Dictionary<string, object> GetDictionary(
+            Dictionary<string, object> obj, string key)
+        {
+            return obj != null && obj.TryGetValue(key, out object value)
+                ? value as Dictionary<string, object>
+                : null;
+        }
+
         /// <summary>Appends a JSON-escaped string literal (including quotes) to the builder.</summary>
         public static void AppendJsonString(StringBuilder sb, string value)
         {

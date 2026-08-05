@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Text;
 using System.Threading;
@@ -130,15 +131,25 @@ namespace DocuLink.Addin.Modules.Services
 
                         Invoke(() => onStatusUpdate(job.PdfId, "processing", null));
 
+                        // Round-trip clock: covers base64 transfer both ways plus the
+                        // worker's own processing, so it is always >= diagnostics.total_ms.
+                        var roundTrip = Stopwatch.StartNew();
+
                         session.SendJob(BuildJobJson(job));
 
                         // Read lines until we get a terminal result for this job_id
                         string resultLine = session.ReadResultLine(job.PdfId);
 
+                        roundTrip.Stop();
+
                         if (resultLine == null)
                         {
                             // Stream closed — either we killed the process (cancellation) or it crashed
                             bool cancelled = token.IsCancellationRequested;
+                            DocuLinkLog.Trace(
+                                $"OCR pdf={job.PdfId} mode={job.Mode} " +
+                                $"outcome={(cancelled ? "cancelled" : "worker-died")} " +
+                                $"roundTrip={roundTrip.ElapsedMilliseconds}ms");
                             Invoke(() => onStatusUpdate(
                                 job.PdfId,
                                 cancelled ? job.OriginalStatus : "error",
@@ -147,6 +158,7 @@ namespace DocuLink.Addin.Modules.Services
                         }
 
                         var parsed = ParseResultLine(resultLine);
+                        LogJobOutcome(job, parsed, roundTrip.ElapsedMilliseconds);
 
                         if (parsed.Status == "success")
                         {
@@ -189,6 +201,49 @@ namespace DocuLink.Addin.Modules.Services
             }
         }
 
+        /// <summary>
+        /// Writes one debug-log line per document recording which engine ran and how long
+        /// it took. Worker diagnostics are optional by contract, so a missing or partial
+        /// diagnostics object degrades the line rather than suppressing it.
+        /// </summary>
+        private static void LogJobOutcome(OcrJobEntry job, OcrWorkerResult parsed, long roundTripMs)
+        {
+            var sb = new StringBuilder();
+            sb.Append("OCR pdf=").Append(job.PdfId)
+              .Append(" mode=").Append(job.Mode)
+              .Append(" outcome=").Append(parsed.Status);
+
+            var diag = parsed.Diagnostics;
+            if (diag != null)
+            {
+                sb.Append(" engine=").Append(Field(diag, "ocr_engine"))
+                  .Append(" rasterizer=").Append(Field(diag, "rasterizer"))
+                  .Append(" threads=").Append(Field(diag, "use_threads"))
+                  .Append(" pages=").Append(Field(diag, "page_count"))
+                  .Append(" ocr=").Append(Field(diag, "ocr_ms")).Append("ms")
+                  .Append(" geometry=").Append(Field(diag, "geometry_ms")).Append("ms")
+                  .Append(" worker=").Append(Field(diag, "total_ms")).Append("ms");
+            }
+            else
+            {
+                sb.Append(" diagnostics=absent");
+            }
+
+            sb.Append(" roundTrip=").Append(roundTripMs).Append("ms");
+
+            if (parsed.Status != "success")
+                sb.Append(" error=").Append(parsed.Error);
+
+            DocuLinkLog.Trace(sb.ToString());
+        }
+
+        /// <summary>Reads a diagnostics field, rendering an absent one as "n/a".</summary>
+        private static string Field(Dictionary<string, object> diag, string key)
+        {
+            string value = PythonWorkerSession.GetString(diag, key);
+            return string.IsNullOrEmpty(value) ? "n/a" : value;
+        }
+
         private static OcrWorkerResult ParseResultLine(string line)
         {
             try
@@ -203,6 +258,7 @@ namespace DocuLink.Addin.Modules.Services
                         Status = "success",
                         PdfBase64 = PythonWorkerSession.GetString(obj, "pdf_base64"),
                         GeometryBase64 = PythonWorkerSession.GetString(obj, "geometry_base64"),
+                        Diagnostics = PythonWorkerSession.GetDictionary(obj, "diagnostics"),
                     };
                 }
 
@@ -290,6 +346,12 @@ namespace DocuLink.Addin.Modules.Services
             public string PdfBase64 { get; set; }
             public string GeometryBase64 { get; set; }
             public string Error { get; set; }
+
+            /// <summary>
+            /// Optional OcrDiagnostics object from the worker. Null when the worker omitted
+            /// it or the line failed to parse — debug logging only, never behavioural.
+            /// </summary>
+            public Dictionary<string, object> Diagnostics { get; set; }
         }
     }
 }

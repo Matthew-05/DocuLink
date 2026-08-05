@@ -8,6 +8,14 @@ from typing import Callable
 
 import fitz
 
+# rawdict normally materializes the fully decoded bytes of every image block.
+# We discard image blocks (type != 0), so on an OCR'd scan — where each page is
+# one full-page raster — that decode is pure waste. Clearing TEXT_PRESERVE_IMAGES
+# measured ~210x faster over an 80-page scan (46.2s -> 0.22s) with byte-identical
+# character output. Sorting is retained: it costs ~0.03s across 80 pages and
+# determines the character order downstream search relies on.
+_RAWDICT_FLAGS = fitz.TEXTFLAGS_RAWDICT & ~fitz.TEXT_PRESERVE_IMAGES
+
 
 def _extract_page_characters_from_rawdict(
     raw: dict,
@@ -54,7 +62,7 @@ def _extract_page_characters_from_rawdict(
 
 
 def _extract_page_characters(page: fitz.Page) -> list[dict]:
-    raw = page.get_text("rawdict", sort=True)
+    raw = page.get_text("rawdict", flags=_RAWDICT_FLAGS, sort=True)
     page_rect = page.rect
     return _extract_page_characters_from_rawdict(
         raw,
