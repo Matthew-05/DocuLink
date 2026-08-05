@@ -23,11 +23,14 @@ import time
 from engines.conversion_engine import ConversionError, convert_to_pdf
 from engines.geometry_engine import extract_text_geometry, geometry_to_base64
 from engines.ocr_engine import (
+    MODE_FORCE,
+    MODE_REDO,
     active_ocr_engine,
     active_rasterizer,
     ocr_pdf_bytes,
     resolve_use_threads,
 )
+from ocrmypdf.exceptions import DigitalSignatureError, InputFileError
 
 
 def _claim_protocol_stream():
@@ -119,6 +122,8 @@ def _handle_job(job: OcrJob) -> None:
     ocr_ms = 0
     ocr_ran = False
     geometry_ms = 0
+    ocr_mode = "none"
+    escalation_reason = ""
 
     def _elapsed_ms(since: float) -> int:
         return int((time.perf_counter() - since) * 1000)
@@ -130,10 +135,13 @@ def _handle_job(job: OcrJob) -> None:
             "page_count": page_count,
             "geometry_ms": geometry_ms,
             "total_ms": _elapsed_ms(started_at),
+            "mode": ocr_mode,
         }
         if ocr_ran:
             d["ocr_ms"] = ocr_ms
             d["use_threads"] = resolve_use_threads()
+        if escalation_reason:
+            d["escalation_reason"] = escalation_reason
         return d
 
     try:
@@ -148,11 +156,18 @@ def _handle_job(job: OcrJob) -> None:
             if total_chars == 0 and geometry["pages"]:
                 # Pre-detector found text markers but PyMuPDF cannot extract chars
                 # (e.g. CID font with no ToUnicode map). Fall back to forced OCR.
+                # The text is present but unmappable, so redo would preserve the
+                # same unusable glyphs. Rasterizing is the only way to recover
+                # characters here, and this job discards the PDF bytes anyway.
                 on_progress("Text layer unextractable, falling back to OCR…")
                 ocr_started = time.perf_counter()
-                result_bytes = ocr_pdf_bytes(pdf_bytes, force_ocr=True, progress_callback=on_progress)
+                result_bytes = ocr_pdf_bytes(
+                    pdf_bytes, mode=MODE_FORCE, progress_callback=on_progress
+                )
                 ocr_ms = _elapsed_ms(ocr_started)
                 ocr_ran = True
+                ocr_mode = MODE_FORCE
+                escalation_reason = "text-unextractable"
 
                 geometry_started = time.perf_counter()
                 geometry = extract_text_geometry(result_bytes, progress_callback=on_progress)
@@ -169,19 +184,63 @@ def _handle_job(job: OcrJob) -> None:
             )
             return
 
+        # ── Mode escalation ladder ────────────────────────────────────────────
+        # Rung 1 is redo: it replaces the invisible text layer and leaves page
+        # content alone, so vector pages stay sharp at any zoom and the stored
+        # PDF stays small. Rung 2 is force, which rasterizes every page and
+        # permanently discards that fidelity — only taken when redo cannot
+        # deliver a usable text layer.
         on_progress("Starting OCR…")
         ocr_started = time.perf_counter()
-        result_bytes = ocr_pdf_bytes(
-            pdf_bytes,
-            force_ocr=True,
-            progress_callback=on_progress,
-        )
+        ocr_mode = MODE_REDO
+        try:
+            result_bytes = ocr_pdf_bytes(
+                pdf_bytes,
+                mode=MODE_REDO,
+                progress_callback=on_progress,
+            )
+        except DigitalSignatureError:
+            # Raised before the mode is consulted, so force cannot help either.
+            raise
+        except InputFileError as exc:
+            # redo refuses some inputs outright — notably AcroForm PDFs. Force
+            # rewrites the page content and accepts them. Inputs that neither
+            # mode can handle (e.g. dynamic XFA) fail again below, and that
+            # second failure is the one reported.
+            on_progress(f"Redo mode rejected this PDF ({exc}); rasterizing instead…")
+            escalation_reason = "input-rejected"
+            ocr_mode = MODE_FORCE
+            result_bytes = ocr_pdf_bytes(
+                pdf_bytes,
+                mode=MODE_FORCE,
+                progress_callback=on_progress,
+            )
         ocr_ms = _elapsed_ms(ocr_started)
         ocr_ran = True
 
         geometry_started = time.perf_counter()
         geometry = extract_text_geometry(result_bytes, progress_callback=on_progress)
         geometry_ms = _elapsed_ms(geometry_started)
+
+        # Rung 2, second trigger: redo succeeded but left us with no characters
+        # to link against — the CID-font-without-ToUnicode case. Escalate once.
+        total_chars = sum(len(p["characters"]) for p in geometry["pages"])
+        if total_chars == 0 and geometry["pages"] and ocr_mode == MODE_REDO:
+            on_progress("Redo produced no extractable text; rasterizing instead…")
+            escalation_reason = "text-unextractable"
+            ocr_mode = MODE_FORCE
+
+            ocr_started = time.perf_counter()
+            result_bytes = ocr_pdf_bytes(
+                pdf_bytes,
+                mode=MODE_FORCE,
+                progress_callback=on_progress,
+            )
+            ocr_ms += _elapsed_ms(ocr_started)
+
+            geometry_started = time.perf_counter()
+            geometry = extract_text_geometry(result_bytes, progress_callback=on_progress)
+            geometry_ms += _elapsed_ms(geometry_started)
 
         geometry_b64 = geometry_to_base64(geometry)
         result_b64 = base64.b64encode(result_bytes).decode("ascii")

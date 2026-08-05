@@ -95,6 +95,8 @@
         "rasterizer":  { "type": "string", "enum": ["pypdfium2", "ghostscript", "none"], "description": "Page rasterizer OCRmyPDF selected under rasterizer='auto'. 'none' when the job performed no rasterization, i.e. a geometry-only job served from an existing text layer." },
         "page_count":  { "type": "integer", "minimum": 0, "description": "Pages in the document." },
         "use_threads": { "type": "boolean", "description": "True when OCRmyPDF ran page tasks in threads, false when it used worker processes. Recorded because the pypdfium2 rasterizer serializes behind a process-global lock under threading." },
+        "mode":        { "type": "string", "enum": ["redo", "force", "none"], "description": "OCRmyPDF processing mode the document was finally produced with. 'redo' replaces the invisible text layer and preserves original page content. 'force' rasterizes every page, discarding vector fidelity, and is only reached by escalation. 'none' when the job performed no OCR." },
+        "escalation_reason": { "type": "string", "description": "Present only when the ladder escalated from 'redo' to 'force'. Names the condition that forced it, e.g. 'input-rejected' for a PDF redo cannot process, or 'text-unextractable' when the redo output produced no character geometry." },
         "ocr_ms":      { "type": "integer", "minimum": 0, "description": "Milliseconds spent inside OCRmyPDF. Omitted when no OCR ran." },
         "geometry_ms": { "type": "integer", "minimum": 0, "description": "Milliseconds spent extracting character geometry." },
         "total_ms":    { "type": "integer", "minimum": 0, "description": "Milliseconds from job decode to result serialization, measured inside the worker. Excludes host-side base64 transfer and workbook storage." }
@@ -124,6 +126,7 @@
             "rasterizer": "pypdfium2",
             "page_count": 12,
             "use_threads": false,
+            "mode": "redo",
             "ocr_ms": 8421,
             "geometry_ms": 96,
             "total_ms": 8604
@@ -138,6 +141,7 @@
             "rasterizer": "none",
             "page_count": 3,
             "use_threads": true,
+            "mode": "none",
             "geometry_ms": 41,
             "total_ms": 44
           }

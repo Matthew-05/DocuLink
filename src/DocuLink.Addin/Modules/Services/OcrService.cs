@@ -216,13 +216,20 @@ namespace DocuLink.Addin.Modules.Services
             var diag = parsed.Diagnostics;
             if (diag != null)
             {
-                sb.Append(" engine=").Append(Field(diag, "ocr_engine"))
+                sb.Append(" ocrMode=").Append(Field(diag, "mode"))
+                  .Append(" engine=").Append(Field(diag, "ocr_engine"))
                   .Append(" rasterizer=").Append(Field(diag, "rasterizer"))
                   .Append(" threads=").Append(Field(diag, "use_threads"))
                   .Append(" pages=").Append(Field(diag, "page_count"))
                   .Append(" ocr=").Append(Field(diag, "ocr_ms")).Append("ms")
                   .Append(" geometry=").Append(Field(diag, "geometry_ms")).Append("ms")
                   .Append(" worker=").Append(Field(diag, "total_ms")).Append("ms");
+
+                // Only present when the ladder fell back to rasterizing, which
+                // permanently costs vector fidelity — worth being loud about.
+                string escalation = PythonWorkerSession.GetString(diag, "escalation_reason");
+                if (!string.IsNullOrEmpty(escalation))
+                    sb.Append(" ESCALATED=").Append(escalation);
             }
             else
             {

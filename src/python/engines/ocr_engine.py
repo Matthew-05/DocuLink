@@ -158,22 +158,34 @@ def configure_tesseract() -> None:
         pytesseract.pytesseract.tesseract_cmd = str(tess_exe)
 
 
+MODE_REDO = "redo"
+MODE_FORCE = "force"
+
+
 def ocr_pdf_bytes(
     pdf_bytes: bytes,
     language: str = "eng",
     auto_rotate_pages: bool = True,
     rotate_pages_threshold: float = 2.0,
-    force_ocr: bool = False,
+    mode: str = MODE_REDO,
     progress_callback: "callable[[str], None] | None" = None,
 ) -> bytes:
     """
-    Accept raw PDF bytes, run OCR, and return the new PDF bytes with an
-    invisible text layer added.
+    Accept raw PDF bytes, run OCR, and return the new PDF bytes with a fresh
+    invisible text layer.
 
-    Pages that already contain selectable text are skipped (skip_text=True)
-    unless force_ocr=True, which re-OCRs all pages regardless of any existing
-    text layer (needed when the embedded text is missing, unextractable, or
-    known to be wrong).
+    mode selects OCRmyPDF's processing mode and is the difference between
+    preserving and destroying the document:
+
+      MODE_REDO  — strips the existing invisible text layer and OCRs the image
+                   regions, leaving original page content untouched. Vector text
+                   stays vector, so the viewer keeps full zoom fidelity and the
+                   stored PDF does not balloon. This is the correct default.
+      MODE_FORCE — rasterizes every page at a fixed DPI and OCRs the bitmap.
+                   Permanently discards vector content and inflates the file, so
+                   it is only reached by escalation from the ladder in worker.py
+                   when redo cannot produce a usable result.
+
     When enabled, ocrmypdf uses Tesseract orientation detection to rotate pages
     that appear sideways or upside down before writing the output PDF. The
     default OCRmyPDF threshold is conservative, so use a lower value to avoid
@@ -191,13 +203,11 @@ def ocr_pdf_bytes(
         if progress_callback:
             progress_callback("Starting OCR…")
 
-        # force_ocr and skip_text are mutually exclusive in ocrmypdf
-        ocr_kwargs = {"force_ocr": True} if force_ocr else {"skip_text": True}
         ocrmypdf.ocr(
             src_path,
             dst_path,
             language=language,
-            **ocr_kwargs,
+            mode=mode,
             rotate_pages=auto_rotate_pages,
             rotate_pages_threshold=rotate_pages_threshold,
             progress_bar=False,
