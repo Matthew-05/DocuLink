@@ -106,11 +106,9 @@ export function mountApp(root: HTMLElement): void {
     if (status === "error") {
       console.error(`[DocuLink] OCR error for pdf ${pdfId}:`, message ?? "(no details)");
     }
-    const entry = currentFiles.find((f) => f.id === pdfId);
-    if (entry) {
-      entry.status = status;
-      fileTable.update(currentFiles, selectedFolderId);
-    }
+    // Patch the single row rather than re-rendering the table, so the spinners
+    // on the other in-flight rows keep their animation instead of restarting.
+    fileTable.updateStatus(pdfId, status);
 
     const { selectedHasActiveOcr, anyOcrRunning } = computeToolbarState();
     toolbar.update(selectedIds.length, selectedHasActiveOcr, anyOcrRunning);

@@ -895,9 +895,18 @@ namespace DocuLink.Addin.Modules.WebView
 
         protected override void OnFormClosing(FormClosingEventArgs e)
         {
-            DocuLinkLog.Trace($"ENTER file manager reason={e.CloseReason} cancel={e.Cancel}");
+            DocuLinkLog.Trace($"ENTER file manager reason={e.CloseReason} cancel={e.Cancel} ocrLocked={IsOcrLocked}");
             if (e.CloseReason == CloseReason.UserClosing)
             {
+                // OCR keeps running after the window hides, leaving the user with no
+                // way to see progress or cancel. Make them make that choice explicitly.
+                if (IsOcrLocked && !ConfirmCloseDuringOcr())
+                {
+                    e.Cancel = true;
+                    DocuLinkLog.Trace("EXIT file manager close declined during OCR");
+                    return;
+                }
+
                 e.Cancel = true;
                 SendResetUiToWebView();
                 Hide();
@@ -906,6 +915,38 @@ namespace DocuLink.Addin.Modules.WebView
             }
             base.OnFormClosing(e);
             DocuLinkLog.Trace($"EXIT file manager cancel={e.Cancel}");
+        }
+
+        /// <summary>
+        /// Asks whether to abandon an in-progress OCR run. Returns true when the user
+        /// confirms; the run is cancelled before returning so the window never hides
+        /// with a worker still active.
+        /// </summary>
+        private bool ConfirmCloseDuringOcr()
+        {
+            DialogResult result = MessageBox.Show(
+                this,
+                "OCR is still running.\n\n" +
+                "Closing this window will cancel the remaining files. " +
+                "Files already processed keep their results.\n\n" +
+                "Cancel OCR and close?",
+                "DocuLink – OCR in progress",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Warning,
+                MessageBoxDefaultButton.Button2);
+
+            if (result != DialogResult.Yes) return false;
+
+            try
+            {
+                _ocrService.Cancel();
+            }
+            catch (Exception ex)
+            {
+                DocuLinkLog.Trace($"OCR cancel on close failed: {ex.Message}");
+            }
+
+            return true;
         }
 
         protected override void OnFormClosed(FormClosedEventArgs e)
@@ -921,6 +962,18 @@ namespace DocuLink.Addin.Modules.WebView
             if (!_disposed)
             {
                 _disposed = true;
+
+                // Non-user closes (workbook shutdown, add-in teardown) bypass the
+                // confirm prompt, so stop the worker here rather than leaving it
+                // running against a workbook that is going away.
+                try
+                {
+                    _ocrService?.Cancel();
+                }
+                catch (Exception ex)
+                {
+                    DocuLinkLog.Trace($"file manager OCR cancel on dispose failed: {ex.Message}");
+                }
 
                 try
                 {

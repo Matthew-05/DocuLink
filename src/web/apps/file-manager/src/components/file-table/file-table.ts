@@ -83,6 +83,26 @@ export class FileTable {
     this._render();
   }
 
+  /**
+   * Repaints one row's status pill in place, leaving every other row's DOM
+   * untouched. OCR progress arrives one message at a time, and a full re-render
+   * per message would rebuild every spinner element and restart its animation
+   * from 0°, so the spinners would visibly stutter for the whole run.
+   * Falls back to a full render when the row isn't currently on screen.
+   */
+  updateStatus(fileId: string, status: string): void {
+    const entry = this._files.find((f) => f.id === fileId);
+    if (entry) entry.status = status;
+
+    const row = Array.from(this._tbody.rows).find(
+      (r) => r.dataset["id"] === fileId
+    );
+    const cell = row?.querySelector<HTMLTableCellElement>("td.col-status");
+    if (!cell) return;
+
+    cell.replaceChildren(buildStatusBadge(status));
+  }
+
   setFilter(text: string): void {
     this._filterText = text;
     this._selectedIds.clear();
@@ -250,10 +270,7 @@ export class FileTable {
     // Status cell
     const statusTd = document.createElement("td");
     statusTd.className = "col-status";
-    const badge = document.createElement("span");
-    badge.className = `status-badge status-badge--${file.status}`;
-    badge.textContent = formatStatusLabel(file.status);
-    statusTd.appendChild(badge);
+    statusTd.appendChild(buildStatusBadge(file.status));
 
     // Size cell
     const sizeTd = document.createElement("td");
@@ -371,13 +388,45 @@ export class FileTable {
   };
 }
 
+/** Statuses that represent an in-flight OCR run and therefore render a spinner. */
+const ACTIVE_OCR_STATUSES = new Set(["queued", "processing"]);
+
 function formatStatusLabel(status: string): string {
   switch (status) {
-    case "ocr":  return "OCR";
-    case "text": return "Text";
-    case "none": return "None";
-    default:     return status;
+    case "ocr":        return "OCR";
+    case "text":       return "Text";
+    case "none":       return "None";
+    case "queued":     return "Queued";
+    case "processing": return "Processing";
+    case "error":      return "Error";
+    default:           return status;
   }
+}
+
+/**
+ * Builds the status pill for a row. Queued/processing rows get an indefinite
+ * spinner ahead of the label; OCR has no measurable progress, so the spinner is
+ * a liveness cue rather than a progress bar.
+ */
+function buildStatusBadge(status: string): HTMLSpanElement {
+  const badge = document.createElement("span");
+  badge.className = `status-badge status-badge--${status}`;
+
+  if (ACTIVE_OCR_STATUSES.has(status)) {
+    const spinner = document.createElement("span");
+    spinner.className = "status-badge__spinner";
+    spinner.setAttribute("aria-hidden", "true");
+    badge.appendChild(spinner);
+    badge.setAttribute("role", "status");
+    badge.setAttribute("aria-live", "polite");
+  }
+
+  const label = document.createElement("span");
+  label.className = "status-badge__label";
+  label.textContent = formatStatusLabel(status);
+  badge.appendChild(label);
+
+  return badge;
 }
 
 function formatBytes(bytes: number): string {

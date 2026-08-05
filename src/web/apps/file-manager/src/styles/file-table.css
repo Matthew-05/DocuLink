@@ -22,40 +22,52 @@
 
 .file-table thead th.col-name,
 .file-table tbody td.col-name {
-  width: 22%;
+  width: 24%;
 }
 
+/* Width and alignment are shared so the header sits over its numbers, but the
+   muted colour and larger type are body-only. Applying those to the header too
+   out-specified the shared `thead th` rule, so the Links header rendered a
+   different size and colour from every other header. */
 .file-table thead th.col-links,
 .file-table tbody td.col-links {
-  width: 8%;
+  width: 7%;
   text-align: center;
+}
+
+.file-table tbody td.col-links {
   color: var(--color-text-muted);
   font-size: 11.5px;
 }
 
+/* Sized against the widest pill, "◌ Processing" (~89px at 900px window width:
+   18% of a ~616px table = ~111px, less 20px cell padding = ~91px of content).
+   Narrower than this and the pill spills into the Size column, because the
+   table is table-layout: fixed and the pill is nowrap. */
 .file-table thead th.col-status,
 .file-table tbody td.col-status {
-  width: 11%;
+  width: 18%;
 }
 
 .file-table thead th.col-size,
 .file-table tbody td.col-size {
-  width: 11%;
+  width: 10%;
 }
 
 .file-table thead th.col-date,
 .file-table tbody td.col-date {
-  width: 14%;
+  width: 12%;
 }
 
 .file-table thead th.col-folder,
 .file-table tbody td.col-folder {
-  width: 16%;
+  width: 15%;
 }
 
+/* Holds a single icon button — no need for the 14% it used to reserve. */
 .file-table thead th.col-actions,
 .file-table tbody td.col-actions {
-  width: 14%;
+  width: 10%;
 }
 
 /* ── Header ───────────────────────────────────────────────────────────────── */
@@ -284,43 +296,104 @@
 
 /* ── Status badge ─────────────────────────────────────────────────────────── */
 
+/* Fixed height so rows don't shift by a pixel as a status changes mid-run.
+   Every metric here is a whole pixel: WebView2 renders at the host's DPI, and
+   fractional heights/borders land on half-pixels that Chromium antialiases into
+   the fuzzy edges this pill had at 10.5px/19px. Width is left to content —
+   a min-width wide enough to align every label overflows the cell. */
 .status-badge {
-  display: inline-block;
-  padding: 2px 8px;
-  border-radius: 20px;
-  font-size: 10.5px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  box-sizing: border-box;
+  max-width: 100%;
+  height: 20px;
+  padding: 0 8px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  font-size: 11px;
   font-weight: 600;
-  text-transform: capitalize;
-  letter-spacing: 0.03em;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.status-badge__label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── Indefinite spinner (queued / processing) ─────────────────────────────── */
+
+/* will-change promotes the spinner onto its own compositor layer. Without it
+   Chromium animates on the main thread, and WebView2 hosted in WinForms only
+   ticks the main thread when something forces a paint — which is why the
+   spinner previously advanced for ~0.1s on row hover/unhover (the row's
+   background transition) and sat frozen the rest of the time. */
+.status-badge__spinner {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  border-right-color: transparent;
+  opacity: 0.85;
+  will-change: transform;
+  animation: status-spin 0.7s linear infinite;
+}
+
+@keyframes status-spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+/* Queued work has not started yet — hint that with a slower, dimmer spin. */
+.status-badge--queued .status-badge__spinner {
+  animation-duration: 1.4s;
+  opacity: 0.55;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .status-badge__spinner {
+    animation-duration: 2.4s;
+  }
 }
 
 .status-badge--text {
-  background: rgba(62, 207, 110, 0.15);
+  background: rgba(62, 207, 110, 0.13);
+  border-color: rgba(62, 207, 110, 0.3);
   color: var(--color-success);
 }
 
 .status-badge--none {
-  background: rgba(130, 130, 130, 0.15);
+  background: rgba(130, 130, 130, 0.12);
+  border-color: rgba(130, 130, 130, 0.28);
   color: var(--color-text-muted, #888);
 }
 
 .status-badge--ocr {
-  background: rgba(90, 140, 255, 0.15);
+  background: rgba(90, 140, 255, 0.13);
+  border-color: rgba(90, 140, 255, 0.32);
   color: #5a8cff;
 }
 
 .status-badge--queued {
-  background: rgba(130, 130, 200, 0.15);
+  background: rgba(130, 130, 200, 0.13);
+  border-color: rgba(130, 130, 200, 0.32);
   color: #7878cc;
 }
 
+/* The row actively being worked — strongest tint of the set. */
 .status-badge--processing {
-  background: rgba(220, 160, 40, 0.15);
+  background: rgba(220, 160, 40, 0.16);
+  border-color: rgba(220, 160, 40, 0.42);
   color: #b07a00;
 }
 
 .status-badge--error {
-  background: rgba(224, 85, 85, 0.15);
+  background: rgba(224, 85, 85, 0.13);
+  border-color: rgba(224, 85, 85, 0.32);
   color: var(--color-danger);
 }
 
