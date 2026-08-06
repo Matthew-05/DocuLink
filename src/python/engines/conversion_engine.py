@@ -314,7 +314,7 @@ def _html_to_pdf_via_story(markup: str, css: str) -> bytes:
             writer.end_page()
 
         writer.close()
-        return buffer.getvalue()
+        return _compress_pdf(buffer.getvalue())
     except ConversionError:
         raise
     except Exception as exc:  # noqa: BLE001
@@ -330,12 +330,61 @@ def _mupdf_to_pdf(source_bytes: bytes, ext: str) -> bytes:
             if document.page_count == 0:
                 raise ConversionError("Document contains no pages.")
             if document.is_pdf:
-                return document.tobytes()
-            return document.convert_to_pdf()
+                return _compress_pdf(document.tobytes())
+            return _compress_pdf(document.convert_to_pdf())
     except ConversionError:
         raise
     except Exception as exc:  # noqa: BLE001
         raise ConversionError(f"Could not convert {filetype} document: {exc}") from exc
+
+
+# ── Output compression ────────────────────────────────────────────────────────
+
+
+def _compress_pdf(pdf_bytes: bytes) -> bytes:
+    """Re-saves a PDF with deflated streams, subset fonts and no orphaned objects.
+
+    MuPDF writes uncompressed content streams by default, from both DocumentWriter
+    and convert_to_pdf, and the difference is not marginal: a text document comes
+    out around thirty times larger than it needs to be, an epub around twice.
+
+    That matters more here than it would in a normal converter, because the host
+    base64-encodes the result into the workbook's Custom XML — so every byte
+    costs four thirds of a byte in a file the user has to save, sync and reopen.
+    A 3.6MB text PDF was putting nearly 5MB into a workbook for about 120KB of
+    actual content.
+
+    Not applied to the image path: Pillow already emits compressed image streams,
+    so a second pass measurably costs time and returns nothing.
+
+    Best-effort throughout. A PDF that cannot be re-saved, or one that somehow
+    grows, is passed through untouched — shipping a large PDF beats failing a
+    conversion that had already succeeded.
+    """
+    if not pdf_bytes:
+        return pdf_bytes
+
+    try:
+        with fitz.open("pdf", pdf_bytes) as document:
+            # Embedded fonts are the bulk of a text PDF and MuPDF embeds them
+            # whole. Not available on every PyMuPDF build, and not worth failing
+            # the compression pass over.
+            try:
+                document.subset_fonts()
+            except Exception:  # noqa: BLE001
+                pass
+
+            compressed = document.tobytes(
+                garbage=4,          # merge duplicate objects and drop unreachable ones
+                deflate=True,
+                deflate_images=True,
+                deflate_fonts=True,
+                clean=True,
+            )
+
+        return compressed if 0 < len(compressed) < len(pdf_bytes) else pdf_bytes
+    except Exception:  # noqa: BLE001
+        return pdf_bytes
 
 
 # ── Email messages ────────────────────────────────────────────────────────────

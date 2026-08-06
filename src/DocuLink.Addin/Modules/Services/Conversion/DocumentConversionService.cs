@@ -86,7 +86,10 @@ namespace DocuLink.Addin.Modules.Services.Conversion
 
             try
             {
+                // Both span the batch: each is expensive to start and cheap to reuse,
+                // so the cost is paid once rather than per file.
                 using (var python = new PythonConversionConverter())
+                using (var html = new HtmlToPdfConverter())
                 {
                     for (int i = 0; i < total; i++)
                     {
@@ -102,7 +105,7 @@ namespace DocuLink.Addin.Modules.Services.Conversion
                         {
                             DocumentConversionSuccess converted;
                             using (DocuLinkLog.Time($"Converting '{displayName}' ({current} of {total})"))
-                                converted = await ConvertOneAsync(request, office, python);
+                                converted = await ConvertOneAsync(request, office, python, html);
 
                             result.Converted.Add(converted);
                         }
@@ -128,7 +131,8 @@ namespace DocuLink.Addin.Modules.Services.Conversion
         private async Task<DocumentConversionSuccess> ConvertOneAsync(
             DocumentConversionRequest request,
             OfficeInteropConverter office,
-            PythonConversionConverter python)
+            PythonConversionConverter python,
+            HtmlToPdfConverter html)
         {
             string fileName = request.FileName;
             if (string.IsNullOrWhiteSpace(fileName) && !string.IsNullOrWhiteSpace(request.SourcePath))
@@ -149,15 +153,15 @@ namespace DocuLink.Addin.Modules.Services.Conversion
             switch (format.Engine)
             {
                 case ConversionEngine.Python:
-                    await ConvertViaPythonAsync(request, format, python, baseName, outputPdfPath);
+                    await ConvertViaPythonAsync(request, format, python, html, baseName, outputPdfPath);
                     break;
 
                 case ConversionEngine.Html:
-                    await ConvertViaHtmlAsync(request, format, baseName, outputPdfPath);
+                    await ConvertViaHtmlAsync(request, format, html, baseName, outputPdfPath);
                     break;
 
                 default:
-                    await ConvertViaOfficeAsync(request, format, office, baseName, outputPdfPath);
+                    await ConvertViaOfficeAsync(request, format, office, html, baseName, outputPdfPath);
                     break;
             }
 
@@ -185,6 +189,7 @@ namespace DocuLink.Addin.Modules.Services.Conversion
             DocumentConversionRequest request,
             ConversionFormat format,
             PythonConversionConverter python,
+            HtmlToPdfConverter html,
             string baseName,
             string outputPdfPath)
         {
@@ -202,14 +207,14 @@ namespace DocuLink.Addin.Modules.Services.Conversion
                 return;
             }
 
-            // The worker could only normalise the source to HTML (.eml / .mht) —
-            // render it here, where the WebView2 lives.
+            // The worker could only normalise the source to HTML (.eml, .mht, and
+            // every spreadsheet) — render it here, where the WebView2 lives.
             string htmlPath = _tempStore.ReservePath(baseName, ".html");
             File.WriteAllText(htmlPath, converted.Html ?? string.Empty, System.Text.Encoding.UTF8);
 
             try
             {
-                await HtmlToPdfConverter.ConvertFileAsync(htmlPath, outputPdfPath);
+                await html.ConvertFileAsync(htmlPath, outputPdfPath);
             }
             finally
             {
@@ -220,6 +225,7 @@ namespace DocuLink.Addin.Modules.Services.Conversion
         private async Task ConvertViaHtmlAsync(
             DocumentConversionRequest request,
             ConversionFormat format,
+            HtmlToPdfConverter html,
             string baseName,
             string outputPdfPath)
         {
@@ -234,7 +240,7 @@ namespace DocuLink.Addin.Modules.Services.Conversion
 
             try
             {
-                await HtmlToPdfConverter.ConvertFileAsync(htmlPath, outputPdfPath);
+                await html.ConvertFileAsync(htmlPath, outputPdfPath);
             }
             finally
             {
@@ -247,6 +253,7 @@ namespace DocuLink.Addin.Modules.Services.Conversion
             DocumentConversionRequest request,
             ConversionFormat format,
             OfficeInteropConverter office,
+            HtmlToPdfConverter html,
             string baseName,
             string outputPdfPath)
         {
@@ -287,7 +294,7 @@ namespace DocuLink.Addin.Modules.Services.Conversion
 
                 // Outlook exports HTML rather than PDF; finish the job here.
                 if (!string.IsNullOrEmpty(producedHtmlPath))
-                    await HtmlToPdfConverter.ConvertFileAsync(producedHtmlPath, outputPdfPath);
+                    await html.ConvertFileAsync(producedHtmlPath, outputPdfPath);
             }
             finally
             {

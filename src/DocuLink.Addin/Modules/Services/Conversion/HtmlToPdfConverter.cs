@@ -12,37 +12,70 @@ namespace DocuLink.Addin.Modules.Services.Conversion
     ///
     /// This is the only HTML rendering engine DocuLink ships, and it is already a
     /// hard dependency of the task pane and viewer, so HTML-shaped sources (.html,
-    /// .eml normalised by the Python worker, .msg exported by Outlook) all funnel
-    /// through here rather than adding a second renderer.
+    /// .eml and every spreadsheet normalised by the Python worker, .msg exported by
+    /// Outlook) all funnel through here rather than adding a second renderer.
     ///
-    /// The WebView2 control must be created and driven on the UI thread; callers
-    /// on a background thread should marshal via the control passed to
-    /// <see cref="DocumentConversionService"/>.
+    /// One instance spans an import batch, like <see cref="PythonConversionConverter"/>.
+    /// The browser is created on first use and reused for every file after that,
+    /// because standing one up is not cheap: creating the environment and awaiting
+    /// EnsureCoreWebView2Async costs roughly 400ms, which used to be paid per file
+    /// and came to about half the wall time of a mixed batch once spreadsheets
+    /// started coming through here too. Rendering itself is tens of milliseconds.
+    ///
+    /// The WebView2 control must be created and driven on the UI thread, so this
+    /// must be constructed, used and disposed there — <see cref="DocumentConversionService"/>
+    /// is awaited on the UI thread for exactly this reason.
     /// </summary>
-    internal static class HtmlToPdfConverter
+    internal sealed class HtmlToPdfConverter : IDisposable
     {
         private static readonly TimeSpan NavigationTimeout = TimeSpan.FromSeconds(45);
 
+        /// <summary>Offscreen parent; WebView2 will not initialise without a real handle.</summary>
+        private Form _host;
+
+        private WebView2 _webView;
+        private bool _disposed;
+
         /// <summary>
-        /// Loads <paramref name="htmlPath"/> in an offscreen WebView2 and prints it
+        /// Loads <paramref name="htmlPath"/> in the offscreen browser and prints it
         /// to <paramref name="outputPdfPath"/>. Must be awaited on the UI thread.
         /// </summary>
-        public static async Task ConvertFileAsync(string htmlPath, string outputPdfPath)
+        public async Task ConvertFileAsync(string htmlPath, string outputPdfPath)
         {
+            if (_disposed)
+                throw new ObjectDisposedException(nameof(HtmlToPdfConverter));
             if (string.IsNullOrWhiteSpace(htmlPath))
                 throw new ArgumentException("An HTML source path is required.", nameof(htmlPath));
             if (!File.Exists(htmlPath))
                 throw new FileNotFoundException("HTML source not found.", htmlPath);
 
-            await RenderAsync(new Uri(htmlPath).AbsoluteUri, outputPdfPath);
+            string navigateUri = new Uri(htmlPath).AbsoluteUri;
+
+            try
+            {
+                await EnsureBrowserAsync();
+                await RenderAsync(navigateUri, outputPdfPath);
+            }
+            catch
+            {
+                // A browser that failed mid-render may be sitting on a half-loaded
+                // document or a dead host process. Tear it down so the next file in
+                // the batch starts from a known state rather than inheriting the
+                // fault — the same reasoning as PythonConversionConverter's dead
+                // session check.
+                TearDownBrowser();
+                throw;
+            }
         }
 
-        private static async Task RenderAsync(string navigateUri, string outputPdfPath)
+        private async Task EnsureBrowserAsync()
         {
-            // The host form is never shown. WebView2 still needs a real parent
-            // handle to initialise, so the form is created off-screen and disposed
-            // as soon as printing finishes.
-            using (var host = new Form
+            if (_webView?.CoreWebView2 != null)
+                return;
+
+            TearDownBrowser();
+
+            var host = new Form
             {
                 FormBorderStyle = FormBorderStyle.None,
                 ShowInTaskbar = false,
@@ -50,43 +83,52 @@ namespace DocuLink.Addin.Modules.Services.Conversion
                 Location = new System.Drawing.Point(-10000, -10000),
                 Size = new System.Drawing.Size(1024, 1320),
                 Opacity = 0,
-            })
-            using (var webView = new WebView2 { Dock = DockStyle.Fill })
+            };
+
+            var webView = new WebView2 { Dock = DockStyle.Fill };
+
+            try
             {
                 host.Controls.Add(webView);
                 host.Show();          // Realises the handle; the form stays off-screen.
 
-                try
-                {
-                    string userDataFolder = Path.Combine(
-                        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                        "DocuLink", "WebView2");
+                string userDataFolder = Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                    "DocuLink", "WebView2");
 
-                    CoreWebView2Environment environment = await CoreWebView2Environment.CreateAsync(
-                        browserExecutableFolder: null,
-                        userDataFolder: userDataFolder);
+                CoreWebView2Environment environment = await CoreWebView2Environment.CreateAsync(
+                    browserExecutableFolder: null,
+                    userDataFolder: userDataFolder);
 
-                    await webView.EnsureCoreWebView2Async(environment);
+                await webView.EnsureCoreWebView2Async(environment);
 
-                    webView.CoreWebView2.Settings.AreDefaultContextMenusEnabled = false;
-                    webView.CoreWebView2.Settings.IsStatusBarEnabled = false;
+                webView.CoreWebView2.Settings.AreDefaultContextMenusEnabled = false;
+                webView.CoreWebView2.Settings.IsStatusBarEnabled = false;
 
-                    await NavigateAsync(webView, navigateUri);
-
-                    // Give late-arriving layout (web fonts, inline images) a moment
-                    // to settle before capturing; NavigationCompleted fires before
-                    // subresources have necessarily been laid out.
-                    await Task.Delay(250);
-
-                    bool printed = await webView.CoreWebView2.PrintToPdfAsync(outputPdfPath);
-                    if (!printed)
-                        throw new IOException("WebView2 could not print the document to PDF.");
-                }
-                finally
-                {
-                    host.Hide();
-                }
+                _host = host;
+                _webView = webView;
             }
+            catch
+            {
+                // Ownership never transferred to the fields, so clean up here.
+                try { webView.Dispose(); } catch { }
+                try { host.Dispose(); } catch { }
+                throw;
+            }
+        }
+
+        private async Task RenderAsync(string navigateUri, string outputPdfPath)
+        {
+            await NavigateAsync(_webView, navigateUri);
+
+            // Give late-arriving layout (web fonts, inline images) a moment to
+            // settle before capturing; NavigationCompleted fires before subresources
+            // have necessarily been laid out.
+            await Task.Delay(250);
+
+            bool printed = await _webView.CoreWebView2.PrintToPdfAsync(outputPdfPath);
+            if (!printed)
+                throw new IOException("WebView2 could not print the document to PDF.");
         }
 
         private static Task NavigateAsync(WebView2 webView, string uri)
@@ -117,6 +159,9 @@ namespace DocuLink.Addin.Modules.Services.Conversion
                 timeout.Stop();
                 timeout.Tick -= OnTimeout;
                 timeout.Dispose();
+
+                // Unsubscribing matters now the browser outlives one render: a
+                // leaked handler would resolve a later document's navigation.
                 webView.CoreWebView2.NavigationCompleted -= OnNavigationCompleted;
             }
 
@@ -135,6 +180,35 @@ namespace DocuLink.Addin.Modules.Services.Conversion
             }
 
             return completion.Task;
+        }
+
+        private void TearDownBrowser()
+        {
+            if (_webView != null)
+            {
+                try { _webView.Dispose(); }
+                catch (Exception ex) { DocuLinkLog.Trace($"Could not dispose the render WebView2: {ex.Message}"); }
+                _webView = null;
+            }
+
+            if (_host != null)
+            {
+                try
+                {
+                    _host.Hide();
+                    _host.Dispose();
+                }
+                catch (Exception ex) { DocuLinkLog.Trace($"Could not dispose the render host: {ex.Message}"); }
+                _host = null;
+            }
+        }
+
+        public void Dispose()
+        {
+            if (_disposed) return;
+            _disposed = true;
+
+            TearDownBrowser();
         }
     }
 }
