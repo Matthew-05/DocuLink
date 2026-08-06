@@ -42,11 +42,10 @@ namespace DocuLink.Addin.Modules.Services.Conversion
     /// that, converting one .docx would hide the user's Word and then close it with
     /// DisplayAlerts suppressed, discarding their unsaved work.
     ///
-    /// Excel is the extreme case of adoption: DocuLink runs inside Excel, and Excel
-    /// registers its class factory in its own process, so activation always returns
-    /// the host. That is safe here precisely because it is adopted — but it is why
-    /// the Excel branch of ConfigureApplication also suppresses application events,
-    /// and why nothing in this class may ever quit an adopted application.
+    /// Excel is deliberately absent. It was the extreme case of adoption — DocuLink
+    /// runs inside Excel, so activation could only ever return the host, and every
+    /// converted workbook opened a window in the user's own session. Spreadsheets are
+    /// read by the Python worker now; see the note in ConversionFormatCatalog.
     ///
     /// Applications are launched at most once per batch and reused across files, so
     /// the converter must always be disposed or a hidden WINWORD.EXE is left behind.
@@ -59,9 +58,6 @@ namespace DocuLink.Addin.Modules.Services.Conversion
         private const int WdDoNotSaveChanges = 0;
         private const int WdAlertsNone = 0;
 
-        private const int XlTypePdf = 0;
-        private const int XlQualityStandard = 0;
-
         // PpSaveAsFileType.ppSaveAsPDF.
         private const int PpSaveAsPdf = 32;
 
@@ -70,6 +66,9 @@ namespace DocuLink.Addin.Modules.Services.Conversion
 
         private const int MsoTrue = -1;
         private const int MsoFalse = 0;
+
+        // MsoAutomationSecurity.msoAutomationSecurityForceDisable.
+        private const int MsoAutomationSecurityForceDisable = 3;
 
         private static readonly TimeSpan ShutdownTimeout = TimeSpan.FromSeconds(30);
         private static readonly TimeSpan StartupTimeout = TimeSpan.FromSeconds(15);
@@ -134,7 +133,6 @@ namespace DocuLink.Addin.Modules.Services.Conversion
             switch (engine)
             {
                 case ConversionEngine.Word: return "Microsoft Word";
-                case ConversionEngine.Excel: return "Microsoft Excel";
                 case ConversionEngine.PowerPoint: return "Microsoft PowerPoint";
                 case ConversionEngine.Outlook: return "Microsoft Outlook";
                 default: return "Microsoft Office";
@@ -171,10 +169,6 @@ namespace DocuLink.Addin.Modules.Services.Conversion
                 {
                     case ConversionEngine.Word:
                         ConvertWithWord(sourcePath, outputPdfPath);
-                        return null;
-
-                    case ConversionEngine.Excel:
-                        ConvertWithExcel(sourcePath, outputPdfPath);
                         return null;
 
                     case ConversionEngine.PowerPoint:
@@ -330,42 +324,6 @@ namespace DocuLink.Addin.Modules.Services.Conversion
             }
         }
 
-        private void ConvertWithExcel(string sourcePath, string outputPdfPath)
-        {
-            dynamic app = GetApplication(ConversionEngine.Excel);
-            dynamic workbooks = null;
-            dynamic workbook = null;
-
-            try
-            {
-                workbooks = app.Workbooks;
-                workbook = workbooks.Open(
-                    Filename: sourcePath,
-                    UpdateLinks: 0,
-                    ReadOnly: true,
-                    AddToMru: false);
-
-                workbook.ExportAsFixedFormat(
-                    Type: XlTypePdf,
-                    Filename: outputPdfPath,
-                    Quality: XlQualityStandard,
-                    IncludeDocProperties: false,
-                    IgnorePrintAreas: false,
-                    OpenAfterPublish: false);
-            }
-            finally
-            {
-                if ((object)workbook != null)
-                {
-                    try { workbook.Close(false); }
-                    catch (Exception ex) { DocuLinkLog.Trace($"Could not close the converted workbook: {ex.Message}"); }
-                }
-
-                Release((object)workbook);
-                Release((object)workbooks);
-            }
-        }
-
         private void ConvertWithPowerPoint(string sourcePath, string outputPdfPath)
         {
             dynamic app = GetApplication(ConversionEngine.PowerPoint);
@@ -466,20 +424,13 @@ namespace DocuLink.Addin.Modules.Services.Conversion
                 throw new InvalidOperationException(
                     $"{GetApplicationName(engine)} is not installed, so this file type cannot be converted.");
 
-            // These are single-instance applications: CoCreateInstance returns the copy
-            // already running rather than starting a new one. Anything we do to an
+            // These are single-instance applications, so CoCreateInstance returns the
+            // copy already running rather than starting a new one. Anything we do to an
             // adopted instance lands on the user's session, so ownership has to be
             // established before it is configured — an adopted app is never hidden and
             // never quit, and its settings are restored on shutdown.
-            ApplicationHandle handle = AttachToRunningApplication(progId)
-                ?? LaunchApplication(engine, type);
-
-            // Excel can never be ours. DocuLink is loaded into it, so activation
-            // returns the host no matter what the running object table said — and
-            // Excel registers there lazily, so a probe miss would otherwise mark the
-            // user's own Excel as ours to hide, reconfigure and quit.
-            if (engine == ConversionEngine.Excel && handle.Owned)
-                handle = new ApplicationHandle(handle.App, owned: false);
+            ApplicationHandle handle =
+                AttachToRunningApplication(progId) ?? LaunchApplication(engine, type);
 
             ConfigureApplication(engine, handle);
             _applications[engine] = handle;
@@ -517,7 +468,9 @@ namespace DocuLink.Addin.Modules.Services.Conversion
         {
             try
             {
-                return new ApplicationHandle(Activator.CreateInstance(type), owned: true);
+                var handle = new ApplicationHandle(Activator.CreateInstance(type), owned: true);
+                DocuLinkLog.Trace($"Started our own {GetApplicationName(engine)}; it will be quit on shutdown.");
+                return handle;
             }
             catch (Exception ex)
             {
@@ -537,21 +490,11 @@ namespace DocuLink.Addin.Modules.Services.Conversion
                         Configure(handle, "Visible", false);
 
                     Configure(handle, "DisplayAlerts", WdAlertsNone);
-                    break;
 
-                case ConversionEngine.Excel:
-                    if (handle.Owned)
-                        Configure(handle, "Visible", false);
-
-                    Configure(handle, "DisplayAlerts", false);
-                    Configure(handle, "AskToUpdateLinks", false);
-                    Configure(handle, "ScreenUpdating", false);
-
-                    // Excel is adopted in practice — DocuLink runs inside it — so this
-                    // suppresses the add-in's own WorkbookOpen/Activate handlers while
-                    // a workbook is opened purely to be exported. Saved and restored
-                    // like everything else, or the host would be left deaf to events.
-                    Configure(handle, "EnableEvents", false);
+                    // A macro-enabled source must never put a trust prompt in front of
+                    // the user, or a batch conversion stops dead on a modal dialog in a
+                    // window they cannot see. Macros are not needed to export a layout.
+                    Configure(handle, "AutomationSecurity", MsoAutomationSecurityForceDisable);
                     break;
 
                 case ConversionEngine.PowerPoint:
@@ -619,7 +562,6 @@ namespace DocuLink.Addin.Modules.Services.Conversion
             switch (engine)
             {
                 case ConversionEngine.Word: return "Word.Application";
-                case ConversionEngine.Excel: return "Excel.Application";
                 case ConversionEngine.PowerPoint: return "PowerPoint.Application";
                 case ConversionEngine.Outlook: return "Outlook.Application";
                 default: return null;
@@ -668,6 +610,7 @@ namespace DocuLink.Addin.Modules.Services.Conversion
             foreach (var pair in _applications)
             {
                 ApplicationHandle handle = pair.Value;
+
                 dynamic app = handle.App;
 
                 // Put back anything we changed on an application the user owns,
@@ -675,15 +618,10 @@ namespace DocuLink.Addin.Modules.Services.Conversion
                 RestoreSettings(pair.Key, handle);
 
                 // Reasons to leave an application running: we attached to one that was
-                // already open, or it is Outlook (commonly running for the user, and
-                // Quit() would close their mail client) or Excel (we are running inside
-                // it, so activation can only ever have returned the host — the ownership
-                // flag is not trusted here because Excel registers in the running object
-                // table lazily, and a missed probe would mark the host as ours to quit).
-                // Either way it is released without quitting.
-                bool mayQuit = handle.Owned
-                    && pair.Key != ConversionEngine.Outlook
-                    && pair.Key != ConversionEngine.Excel;
+                // already open, or it is Outlook, which is commonly running for the user
+                // and whose Quit() would close their mail client. Either way it is
+                // released without quitting.
+                bool mayQuit = handle.Owned && pair.Key != ConversionEngine.Outlook;
 
                 if (mayQuit)
                 {

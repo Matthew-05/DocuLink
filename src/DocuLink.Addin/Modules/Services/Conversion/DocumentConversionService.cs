@@ -100,8 +100,10 @@ namespace DocuLink.Addin.Modules.Services.Conversion
 
                         try
                         {
-                            DocumentConversionSuccess converted =
-                                await ConvertOneAsync(request, office, python);
+                            DocumentConversionSuccess converted;
+                            using (DocuLinkLog.Time($"Converting '{displayName}' ({current} of {total})"))
+                                converted = await ConvertOneAsync(request, office, python);
+
                             result.Converted.Add(converted);
                         }
                         catch (Exception ex)
@@ -138,6 +140,12 @@ namespace DocuLink.Addin.Modules.Services.Conversion
             string baseName = Path.GetFileNameWithoutExtension(fileName ?? "document");
             string outputPdfPath = _tempStore.ReservePath(baseName, ConversionFormatCatalog.PdfExtension);
 
+            DocuLinkLog.Trace(
+                $"'{fileName}' → {format.Engine} engine, source " +
+                (string.IsNullOrWhiteSpace(request.SourcePath)
+                    ? $"{request.SourceBytes?.Length ?? 0} bytes from the web layer"
+                    : $"'{request.SourcePath}'"));
+
             switch (format.Engine)
             {
                 case ConversionEngine.Python:
@@ -155,6 +163,9 @@ namespace DocuLink.Addin.Modules.Services.Conversion
 
             if (!File.Exists(outputPdfPath) || new FileInfo(outputPdfPath).Length == 0)
                 throw new IOException("Conversion produced no output.");
+
+            DocuLinkLog.Trace(
+                $"'{fileName}' produced {new FileInfo(outputPdfPath).Length} bytes of PDF.");
 
             return new DocumentConversionSuccess
             {

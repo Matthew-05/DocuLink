@@ -7,11 +7,21 @@ in the worker (Pillow and PyMuPDF) plus the Python standard library:
   • plain text / markdown→ PyMuPDF Story layout
   • svg/epub/xps/fb2/cbz → PyMuPDF document open + convert_to_pdf
   • eml / mht / mhtml    → parsed to a self-contained HTML document
+  • spreadsheets         → styled HTML, see engines/spreadsheet_engine.py
 
-Office formats (.docx, .xlsx, .pptx, .msg, …) are deliberately NOT handled here.
-The C# host converts those through late-bound Office automation, which has far
-better fidelity and requires no extra bundled runtime. See
+Word, PowerPoint and Outlook formats (.docx, .pptx, .msg, …) are deliberately NOT
+handled here. The C# host converts those through late-bound Office automation,
+which has far better fidelity and requires no extra bundled runtime. See
 Modules/Services/Conversion/OfficeInteropConverter.cs.
+
+Spreadsheets used to be in that group and are not any more. Excel cannot be
+automated from inside Excel without borrowing the user's own instance — DocuLink
+is loaded into it, so every activation route returns the host — which meant each
+converted workbook opened a visible window in their session. Attempts to isolate
+it in a private process failed on Excel's own single-instance behaviour: it hands
+the command line off to the running copy, so the bootstrap workbook surfaced in
+the user's Excel anyway. Reading the file here costs print fidelity and buys a
+conversion that never touches the user's session.
 
 Conversion results are described by contracts/python-worker-v1.json:
 a result is either finished PDF bytes ("pdf") or an HTML document that the host
@@ -31,6 +41,12 @@ from typing import Callable
 import fitz
 from PIL import Image, ImageSequence
 
+from engines.spreadsheet_engine import (
+    SPREADSHEET_EXTENSIONS,
+    SpreadsheetError,
+    spreadsheet_to_html,
+)
+
 # ── Format routing ────────────────────────────────────────────────────────────
 # Keep these sets in sync with ConversionFormatCatalog.cs on the C# side; the
 # host decides which converter to call, this engine only guards against being
@@ -49,7 +65,11 @@ MUPDF_EXTENSIONS = frozenset({".svg", ".epub", ".xps", ".oxps", ".fb2", ".cbz", 
 MAIL_EXTENSIONS = frozenset({".eml", ".mht", ".mhtml"})
 
 SUPPORTED_EXTENSIONS = (
-    IMAGE_EXTENSIONS | TEXT_EXTENSIONS | MUPDF_EXTENSIONS | MAIL_EXTENSIONS
+    IMAGE_EXTENSIONS
+    | TEXT_EXTENSIONS
+    | MUPDF_EXTENSIONS
+    | MAIL_EXTENSIONS
+    | SPREADSHEET_EXTENSIONS
 )
 
 # MuPDF wants a filetype hint without the leading dot; a couple of names differ.
@@ -113,6 +133,17 @@ def convert_to_pdf(
     if ext in MAIL_EXTENSIONS:
         progress("Reading message…")
         return ConversionOutput.as_html(_mail_to_html(source_bytes, source_name))
+
+    if ext in SPREADSHEET_EXTENSIONS:
+        progress("Reading spreadsheet…")
+        try:
+            return ConversionOutput.as_html(
+                spreadsheet_to_html(source_bytes, ext, source_name)
+            )
+        except SpreadsheetError as exc:
+            # Surfaced per-file by the host, so it has to read as an explanation
+            # rather than a stack trace.
+            raise ConversionError(str(exc)) from exc
 
     raise ConversionError(f"Unsupported source type '{ext}'.")
 

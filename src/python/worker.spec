@@ -101,6 +101,14 @@ a = Analysis(
         "fitz",
         "pytesseract",
         "pytesseract.pytesseract",
+        # Spreadsheet readers. Each is reached through a local import inside
+        # engines/spreadsheet_engine.py, so PyInstaller's static analysis does
+        # not find them on its own. (.ods needs nothing here — it is read with
+        # zipfile and ElementTree.)
+        "openpyxl",
+        "openpyxl.utils",
+        "xlrd",
+        "pyxlsb",
         *_plugin_imports,
     ],
     hookspath=[],

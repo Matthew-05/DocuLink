@@ -116,6 +116,16 @@ Remove-Item $getPipScript
 Write-Host "pip installed." -ForegroundColor Green
 
 # ── Install Python dependencies ───────────────────────────────────────────────
+# setuptools and wheel first. The embeddable distribution ships neither, and pip
+# needs setuptools.build_meta the moment a requirement resolves to a source
+# distribution rather than a wheel — the failure is a bare
+# "Cannot import 'setuptools.build_meta'" a long way from the package that
+# caused it. Prefer wheel-only dependencies in requirements.txt regardless; this
+# is here so an unavoidable sdist does not break the build outright.
+Write-Host "`nInstalling build prerequisites..." -ForegroundColor Cyan
+& (Join-Path $workerDir "python.exe") -m pip install --upgrade setuptools wheel --quiet --no-warn-script-location
+if ($LASTEXITCODE -ne 0) { throw "Could not install setuptools and wheel." }
+
 Write-Host "`nInstalling Python dependencies..." -ForegroundColor Cyan
 & (Join-Path $workerDir "python.exe") -m pip install -r (Join-Path $scriptDir "requirements.txt") --quiet --no-warn-script-location
 if ($LASTEXITCODE -ne 0) { throw "pip install failed." }

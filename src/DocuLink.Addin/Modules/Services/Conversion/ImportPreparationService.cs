@@ -107,7 +107,12 @@ namespace DocuLink.Addin.Modules.Services.Conversion
         {
             var plan = new ImportSelectionPlan();
             if (candidates == null || candidates.Count == 0)
+            {
+                DocuLinkLog.Trace("Import planning: nothing selected.");
                 return plan;
+            }
+
+            DocuLinkLog.Trace($"Import planning: {candidates.Count} candidate(s).");
 
             var convertible = new List<ImportCandidate>();
             var unsupported = new List<ImportCandidate>();
@@ -126,6 +131,10 @@ namespace DocuLink.Addin.Modules.Services.Conversion
                     unsupported.Add(candidate);
             }
 
+            DocuLinkLog.Trace(
+                $"Import planning: {plan.PdfCandidates.Count} PDF, {convertible.Count} convertible, " +
+                $"{unsupported.Count} unsupported.");
+
             // Nothing to ask about — every file is already a PDF.
             if (convertible.Count == 0 && unsupported.Count == 0)
                 return plan;
@@ -140,9 +149,13 @@ namespace DocuLink.Addin.Modules.Services.Conversion
                     unsupportedSummaries,
                     out ISet<string> selectedExtensions))
             {
+                DocuLinkLog.Trace("Import planning: the user cancelled the non-PDF confirmation.");
                 plan.Cancelled = true;
                 return plan;
             }
+
+            DocuLinkLog.Trace(
+                $"Import planning: the user selected [{string.Join(", ", selectedExtensions)}] for conversion.");
 
             foreach (ImportCandidate candidate in convertible)
             {
@@ -178,7 +191,10 @@ namespace DocuLink.Addin.Modules.Services.Conversion
             try
             {
                 if (plan == null || plan.Cancelled)
+                {
+                    DocuLinkLog.Trace("Import preparation: nothing to do (no plan, or cancelled).");
                     return prepared;
+                }
 
                 foreach (string message in plan.SkippedMessages)
                     prepared.Errors.Add(message);
@@ -197,7 +213,12 @@ namespace DocuLink.Addin.Modules.Services.Conversion
                 }
 
                 if (plan.ConvertCandidates.Count == 0)
+                {
+                    DocuLinkLog.Trace(
+                        $"Import preparation: {prepared.PathRequests.Count} path and " +
+                        $"{prepared.Base64Requests.Count} base-64 PDF request(s), nothing to convert.");
                     return prepared;
+                }
 
                 var conversionRequests = plan.ConvertCandidates
                     .Select(candidate => new DocumentConversionRequest
@@ -210,7 +231,14 @@ namespace DocuLink.Addin.Modules.Services.Conversion
                     .ToList();
 
                 var service = new DocumentConversionService(tempStore);
-                DocumentConversionResult converted = await service.ConvertAsync(conversionRequests, progress);
+
+                DocumentConversionResult converted;
+                using (DocuLinkLog.Time($"Converting {conversionRequests.Count} document(s)"))
+                    converted = await service.ConvertAsync(conversionRequests, progress);
+
+                DocuLinkLog.Trace(
+                    $"Import preparation: {converted.Converted.Count} converted, " +
+                    $"{converted.Errors.Count} failed.");
 
                 // The scratch file is a .pdf, but the workbook keeps the name the user
                 // picked — 'terms.docx' stays 'terms.docx'.

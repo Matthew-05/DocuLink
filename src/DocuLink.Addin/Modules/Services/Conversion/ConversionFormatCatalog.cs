@@ -15,8 +15,17 @@ namespace DocuLink.Addin.Modules.Services.Conversion
         /// <summary>Late-bound Word automation.</summary>
         Word,
 
-        /// <summary>Late-bound Excel automation (always the host instance — see OfficeInteropConverter).</summary>
-        Excel,
+        // There is deliberately no Excel engine.
+        //
+        // DocuLink is loaded into Excel, so Excel registers its class factory in
+        // our own process and every activation route — CoCreateInstance,
+        // GetActiveObject — returns the host. Converting a workbook therefore
+        // opened it in the user's own Excel, and from 2013 onwards each open
+        // workbook gets its own top-level window, so they watched a window appear
+        // and vanish per file. Isolating it in a private `excel.exe /automation`
+        // process did not help either: Excel hands the command line off to the
+        // running copy, so the bootstrap workbook surfaced in the user's session
+        // regardless. Spreadsheets go to the Python engine instead.
 
         /// <summary>Late-bound PowerPoint automation.</summary>
         PowerPoint,
@@ -98,13 +107,14 @@ namespace DocuLink.Addin.Modules.Services.Conversion
             new ConversionFormat(".rtf",      "Rich text document",    ConversionEngine.Word),
             new ConversionFormat(".odt",      "OpenDocument text",     ConversionEngine.Word),
 
-            // ── Excel ────────────────────────────────────────────────────────
-            new ConversionFormat(".xls",      "Excel workbook",        ConversionEngine.Excel),
-            new ConversionFormat(".xlsx",     "Excel workbook",        ConversionEngine.Excel),
-            new ConversionFormat(".xlsm",     "Excel workbook",        ConversionEngine.Excel),
-            new ConversionFormat(".xlsb",     "Excel workbook",        ConversionEngine.Excel),
-            new ConversionFormat(".csv",      "CSV data",              ConversionEngine.Excel),
-            new ConversionFormat(".ods",      "OpenDocument sheet",    ConversionEngine.Excel),
+            // ── Spreadsheets (Python — see the note in ConversionEngine) ─────
+            new ConversionFormat(".xls",      "Excel workbook",        ConversionEngine.Python),
+            new ConversionFormat(".xlsx",     "Excel workbook",        ConversionEngine.Python),
+            new ConversionFormat(".xlsm",     "Excel workbook",        ConversionEngine.Python),
+            new ConversionFormat(".xlsb",     "Excel workbook",        ConversionEngine.Python),
+            new ConversionFormat(".csv",      "CSV data",              ConversionEngine.Python),
+            new ConversionFormat(".tsv",      "Tab-separated data",    ConversionEngine.Python),
+            new ConversionFormat(".ods",      "OpenDocument sheet",    ConversionEngine.Python),
 
             // ── PowerPoint ───────────────────────────────────────────────────
             new ConversionFormat(".ppt",      "PowerPoint deck",       ConversionEngine.PowerPoint),

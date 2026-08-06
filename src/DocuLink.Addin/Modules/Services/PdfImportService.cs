@@ -22,6 +22,8 @@ namespace DocuLink.Addin.Modules.Services
             var result = new PdfImportResult();
             int total = files.Count;
 
+            DocuLinkLog.Trace($"Importing {total} PDF(s) from disk.");
+
             for (int i = 0; i < total; i++)
             {
                 PdfPathImportRequest request = files[i];
@@ -48,15 +50,21 @@ namespace DocuLink.Addin.Modules.Services
                         prepared.FolderId);
 
                     result.AddedIds.Add(id);
+                    DocuLinkLog.Trace(
+                        $"Embedded '{prepared.Name}' as {id} " +
+                        $"({prepared.FileSizeBytes} bytes, OCR {prepared.OcrStatus}).");
+
                     progress?.Report("Imported PDF", $"{prepared.Name} ({current} of {total})", current, total);
                 }
                 catch (Exception ex)
                 {
                     result.Errors.Add($"{fileName}: {ex.Message}");
+                    DocuLinkLog.Trace($"Could not import '{fileName}' from '{request.Path}': {ex}");
                     progress?.Report("Could not import PDF", $"{fileName} ({current} of {total})", current, total);
                 }
             }
 
+            DocuLinkLog.Trace($"Import from disk finished: {result.AddedIds.Count} added, {result.Errors.Count} failed.");
             return result;
         }
 
@@ -70,6 +78,8 @@ namespace DocuLink.Addin.Modules.Services
 
             var result = new PdfImportResult();
             int total = files.Count;
+
+            DocuLinkLog.Trace($"Importing {total} PDF(s) supplied as base-64.");
 
             for (int i = 0; i < total; i++)
             {
@@ -92,15 +102,21 @@ namespace DocuLink.Addin.Modules.Services
                         prepared.FolderId);
 
                     result.AddedIds.Add(id);
+                    DocuLinkLog.Trace(
+                        $"Embedded '{prepared.Name}' as {id} " +
+                        $"({prepared.FileSizeBytes} bytes, OCR {prepared.OcrStatus}).");
+
                     progress?.Report("Imported PDF", $"{prepared.Name} ({current} of {total})", current, total);
                 }
                 catch (Exception ex)
                 {
                     result.Errors.Add($"{fileName}: {ex.Message}");
+                    DocuLinkLog.Trace($"Could not import '{fileName}' from base-64: {ex}");
                     progress?.Report("Could not import PDF", $"{fileName} ({current} of {total})", current, total);
                 }
             }
 
+            DocuLinkLog.Trace($"Import from base-64 finished: {result.AddedIds.Count} added, {result.Errors.Count} failed.");
             return result;
         }
 

@@ -17,6 +17,19 @@ namespace DocuLink.Addin.Modules
 
         private static readonly object _lock = new object();
 
+        /// <summary>
+        /// Included in every line because more than one Excel can be writing here: a
+        /// conversion spawns a second EXCEL.EXE, and without the pid its lines are
+        /// indistinguishable from the host's — which reads as an impossible timeline.
+        /// </summary>
+        private static readonly int _processId = GetProcessId();
+
+        private static int GetProcessId()
+        {
+            try { return Process.GetCurrentProcess().Id; }
+            catch { return 0; }
+        }
+
         internal static void Trace(
             string message,
             [CallerMemberName] string member = "",
@@ -24,7 +37,7 @@ namespace DocuLink.Addin.Modules
         {
             try
             {
-                string entry = $"{DateTime.Now:HH:mm:ss.fff} [{member}:{line}] {message}";
+                string entry = $"{DateTime.Now:HH:mm:ss.fff} [{_processId}] [{member}:{line}] {message}";
                 lock (_lock)
                     File.AppendAllText(_path, entry + Environment.NewLine);
             }

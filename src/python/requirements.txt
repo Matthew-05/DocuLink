@@ -4,3 +4,15 @@ ocrmypdf>=16.0.0
 Pillow>=10.0.0
 PyMuPDF>=1.24.0
 pytesseract>=0.3.10
+
+# Spreadsheet readers for the conversion engine. One per family, because no
+# single library covers them: openpyxl is OOXML only, xlrd 2.x is the legacy
+# BIFF format only, pyxlsb is the binary format.
+#
+# All three must publish wheels. The worker is built on the Python embeddable
+# distribution, which has no setuptools, so pip cannot build a source
+# distribution — that is why .ods is read with zipfile + ElementTree in
+# engines/spreadsheet_engine.py instead of odfpy, which is sdist-only.
+openpyxl>=3.1.0
+xlrd>=2.0.1
+pyxlsb>=1.0.10
