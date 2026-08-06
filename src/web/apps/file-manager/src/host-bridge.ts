@@ -101,6 +101,15 @@ export function sendRemoveFile(id: string): void {
   send({ type: "remove-file", id });
 }
 
+/**
+ * Tells the host which single file the user just selected, so an open document
+ * viewer can swap to it. Sent on selection only — never on deselection, and not
+ * for multi-row range selections, where no single document is implied.
+ */
+export function sendSelectFile(id: string): void {
+  send({ type: "select-file", id });
+}
+
 export function sendMoveFile(id: string, folderId: string | null): void {
   const msg: Record<string, unknown> = { type: "move-file", id };
   if (folderId) msg["folderId"] = folderId;

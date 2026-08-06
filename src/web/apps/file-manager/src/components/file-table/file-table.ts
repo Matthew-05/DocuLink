@@ -1,5 +1,5 @@
 import type { FileEntry, FolderEntry } from "../../types/index.js";
-import { sendRenameFile, sendRemoveFile } from "../../host-bridge.js";
+import { sendRenameFile, sendRemoveFile, sendSelectFile } from "../../host-bridge.js";
 
 export interface FileTableOptions {
   onSelectionChange(selectedIds: string[]): void;
@@ -298,6 +298,7 @@ export class FileTable {
       tr.classList.toggle("is-selected", nowSelected);
       this._lastClickedId = file.id;
       this._lastClickedSelected = nowSelected;
+      if (nowSelected) sendSelectFile(file.id);
     });
 
     // Checkbox cell
@@ -323,6 +324,7 @@ export class FileTable {
       tr.classList.toggle("is-selected", cb.checked);
       this._lastClickedId = file.id;
       this._lastClickedSelected = cb.checked;
+      if (cb.checked) sendSelectFile(file.id);
     });
     checkTd.appendChild(cb);
 

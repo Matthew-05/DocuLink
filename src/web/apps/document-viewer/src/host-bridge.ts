@@ -25,6 +25,7 @@ export interface HostMessageHandlers {
   onLinkRectanglesRemoved?: (ids: string[]) => void;
   onPdfNameUpdated?: (id: string, name: string) => void;
   onPdfRemoved?: (id: string) => void;
+  onShowPdf?: (pdfId: string) => void;
   onPageRotationsUpdated?: (pdfId: string, rotations: Record<number, number>) => void;
 }
 
@@ -73,6 +74,11 @@ interface PdfNameUpdatedMessage {
 interface PdfRemovedMessage {
   type: "pdf-removed";
   id: string;
+}
+
+interface ShowPdfMessage {
+  type: "show-pdf";
+  pdfId: string;
 }
 
 interface LinkedRectPayload {
@@ -202,6 +208,7 @@ function handleMessage(raw: unknown, handlers: HostMessageHandlers): void {
     onLinkRectanglesRemoved,
     onPdfNameUpdated,
     onPdfRemoved,
+    onShowPdf,
     onPageRotationsUpdated,
   } = handlers;
 
@@ -319,6 +326,12 @@ function handleMessage(raw: unknown, handlers: HostMessageHandlers): void {
       const msg = parsed as PdfRemovedMessage;
       revokePdfUrl(msg.id);
       onPdfRemoved?.(msg.id);
+      return;
+    }
+
+    if (type === "show-pdf") {
+      const msg = parsed as ShowPdfMessage;
+      onShowPdf?.(msg.pdfId);
       return;
     }
 

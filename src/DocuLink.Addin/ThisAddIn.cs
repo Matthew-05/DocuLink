@@ -500,6 +500,26 @@ namespace DocuLink.Addin
 
         /// <summary>
 
+        /// Switches an open viewer surface to a specific PDF. Raised when the user
+
+        /// selects a document in the file manager. No-ops when no viewer is open —
+
+        /// the file manager is usable on its own and must not force one open.
+
+        /// </summary>
+
+        internal void NotifyViewerShowPdf(string pdfId)
+
+        {
+
+            GetActiveViewerHost()?.SendShowPdf(pdfId);
+
+        }
+
+
+
+        /// <summary>
+
         /// Pushes the current folder catalogue and PDF folder assignments to the active viewer.
 
         /// Called after file-manager folder or move operations so the viewer's folder filter stays current.

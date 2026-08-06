@@ -43,6 +43,7 @@ export type ViewerHostHandlers = Omit<
   | "onPdfUpdated"
   | "onPdfNameUpdated"
   | "onPdfRemoved"
+  | "onShowPdf"
   | "onFoldersUpdated"
 >;
 
@@ -119,6 +120,15 @@ export function connectViewerToHostBridge(
 
     onPdfNameUpdated: (id, name) => {
       selector.updateEntryName(id, name);
+    },
+
+    // The user picked a document in the file manager. Page, zoom and highlight
+    // state are left alone — this is a document swap, not a navigation.
+    onShowPdf: (pdfId) => {
+      if (viewer.getActivePdfId() === pdfId) return;
+      const entry = selector.getEntry(pdfId);
+      if (!entry) return;
+      void reloadEntry(entry);
     },
 
     onPdfRemoved: (id) => {

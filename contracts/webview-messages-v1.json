@@ -205,6 +205,20 @@
       ]
     },
 
+    "ShowPdfMessage": {
+      "description": "Sent by the C# host to switch the document-viewer to a specific PDF without changing page, zoom or highlight state. Raised when the user selects a document in the file manager. The viewer should no-op when the PDF is already active, and ignore ids it does not know.",
+      "type": "object",
+      "required": ["type", "pdfId"],
+      "additionalProperties": false,
+      "properties": {
+        "type":  { "const": "show-pdf" },
+        "pdfId": { "type": "string", "description": "GUID of the PDF to display." }
+      },
+      "examples": [
+        { "type": "show-pdf", "pdfId": "3fa85f64-5717-4562-b3fc-2c963f66afa6" }
+      ]
+    },
+
     "ManagerReadyMessage": {
       "description": "Sent once by the file-manager web app after JavaScript has initialised. The host responds by posting a FilesLoadedMessage.",
       "type": "object",
@@ -317,6 +331,20 @@
         "type": { "const": "remove-file" },
         "id":   { "type": "string" }
       }
+    },
+
+    "SelectFileMessage": {
+      "description": "Sent by the file-manager web app when the user selects a single file in the list. The host forwards it to an open document-viewer as a ShowPdfMessage; it is dropped when no viewer surface is open. Not sent for multi-row (shift-click) selections or when a row is deselected.",
+      "type": "object",
+      "required": ["type", "id"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "const": "select-file" },
+        "id":   { "type": "string", "description": "GUID of the newly selected file." }
+      },
+      "examples": [
+        { "type": "select-file", "id": "3fa85f64-5717-4562-b3fc-2c963f66afa6" }
+      ]
     },
 
     "MoveFileMessage": {
@@ -992,6 +1020,7 @@
     { "$ref": "#/definitions/PdfAddedMessage" },
     { "$ref": "#/definitions/PdfNameUpdatedMessage" },
     { "$ref": "#/definitions/PdfRemovedMessage" },
+    { "$ref": "#/definitions/ShowPdfMessage" },
     { "$ref": "#/definitions/ViewerFoldersUpdatedMessage" },
     { "$ref": "#/definitions/ManagerReadyMessage" },
     { "$ref": "#/definitions/FilesLoadedMessage" },
@@ -999,6 +1028,7 @@
     { "$ref": "#/definitions/BrowsePdfFilesMessage" },
     { "$ref": "#/definitions/RenameFileMessage" },
     { "$ref": "#/definitions/RemoveFileMessage" },
+    { "$ref": "#/definitions/SelectFileMessage" },
     { "$ref": "#/definitions/MoveFileMessage" },
     { "$ref": "#/definitions/AddFolderMessage" },
     { "$ref": "#/definitions/RenameFolderMessage" },

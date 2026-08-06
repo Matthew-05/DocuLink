@@ -545,6 +545,10 @@ namespace DocuLink.Addin.Modules.WebView
                         HandleRemoveFile(FileManagerMessageParser.ParseRemoveFile(raw));
                         break;
 
+                    case "select-file":
+                        HandleSelectFile(FileManagerMessageParser.ParseSelectFile(raw));
+                        break;
+
                     case "move-file":
                         HandleMoveFile(FileManagerMessageParser.ParseMoveFile(raw));
                         break;
@@ -746,6 +750,17 @@ namespace DocuLink.Addin.Modules.WebView
             _service.RemovePdf(wb, req.Id);
             SendFilesToWebView();
             Globals.ThisAddIn.NotifyViewerPdfRemoved(req.Id);
+        }
+
+        /// <summary>
+        /// Swaps an open document-viewer to the file the user just selected.
+        /// Read-only: no workbook mutation, so no writability check, and it is
+        /// silently dropped when no viewer surface is open.
+        /// </summary>
+        private void HandleSelectFile(SelectFileRequest req)
+        {
+            if (string.IsNullOrWhiteSpace(req?.Id)) return;
+            Globals.ThisAddIn.NotifyViewerShowPdf(req.Id);
         }
 
         private void HandleMoveFile(MoveFileRequest req)

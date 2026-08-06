@@ -177,6 +177,16 @@ namespace DocuLink.Addin.Modules.WebView
             return sb.ToString();
         }
 
+        /// <summary>Returns the JSON payload for a <c>show-pdf</c> message.</summary>
+        public static string BuildShowPdf(string pdfId)
+        {
+            var sb = new StringBuilder();
+            sb.Append("{\"type\":\"show-pdf\"");
+            sb.Append(",\"pdfId\":"); AppendString(sb, pdfId ?? string.Empty);
+            sb.Append('}');
+            return sb.ToString();
+        }
+
         /// <summary>Returns the JSON payload for a <c>highlight-rectangle</c> message.</summary>
         public static string BuildHighlightRectangle(string id)
         {

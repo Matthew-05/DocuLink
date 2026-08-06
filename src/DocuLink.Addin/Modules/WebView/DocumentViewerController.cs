@@ -841,6 +841,29 @@ namespace DocuLink.Addin.Modules.WebView
             }
         }
 
+        /// <summary>
+        /// Switches the viewer to <paramref name="pdfId"/>. Unlike navigate-to-rectangle
+        /// this is never queued: it reflects a transient file-manager selection, and
+        /// replaying it once a viewer finally opens would override the document the
+        /// viewer picks for itself.
+        /// </summary>
+        internal void SendShowPdf(string pdfId)
+        {
+            if (_disposed) return;
+            if (!_webViewReady || string.IsNullOrWhiteSpace(pdfId))
+                return;
+
+            try
+            {
+                string json = HostMessageSerializer.BuildShowPdf(pdfId);
+                _webView.CoreWebView2.PostWebMessageAsString(json);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[DocuLink] SendShowPdf failed: {ex.Message}");
+            }
+        }
+
         private static string GetWebUiPath()
         {
             string codeBase = Assembly.GetExecutingAssembly().CodeBase;

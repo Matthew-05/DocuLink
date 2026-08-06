@@ -52,6 +52,12 @@ namespace DocuLink.Addin.Modules.WebView
             return new RemoveFileRequest { Id = GetString(dict, "id") };
         }
 
+        public static SelectFileRequest ParseSelectFile(string json)
+        {
+            var dict = Deserialize(json);
+            return new SelectFileRequest { Id = GetString(dict, "id") };
+        }
+
         public static MoveFileRequest ParseMoveFile(string json)
         {
             var dict = Deserialize(json);
@@ -154,6 +160,11 @@ namespace DocuLink.Addin.Modules.WebView
     }
 
     internal sealed class RemoveFileRequest
+    {
+        public string Id { get; set; }
+    }
+
+    internal sealed class SelectFileRequest
     {
         public string Id { get; set; }
     }

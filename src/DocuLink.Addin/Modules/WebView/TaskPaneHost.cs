@@ -41,6 +41,8 @@ namespace DocuLink.Addin.Modules.WebView
 
         public void SendPdfRemoved(string id) => _controller.SendPdfRemoved(id);
 
+        public void SendShowPdf(string pdfId) => _controller.SendShowPdf(pdfId);
+
         public void SendFoldersToWebView() => _controller.SendFoldersToWebView();
 
         protected override void Dispose(bool disposing)
