@@ -277,15 +277,27 @@ export class FileTable {
       this._showContextMenu(file, nameSpan, tr, e.clientX, e.clientY);
     });
 
-    // Shift-click anywhere on the row (outside interactive controls, which
-    // handle their own clicks) extends the selection from the last-clicked
-    // row through this one — standard Explorer/Finder range-select.
+    // Click anywhere on the row (outside interactive controls, which handle
+    // their own clicks) toggles that row's selection — shift-click extends
+    // the range from the last-clicked row instead, standard Explorer/Finder
+    // behavior.
     tr.addEventListener("click", (e) => {
-      if (this._locked || !e.shiftKey) return;
+      if (this._locked) return;
       const target = e.target as HTMLElement;
       if (target.closest("input, button")) return;
       e.preventDefault();
-      this._selectRange(file.id);
+
+      if (e.shiftKey) {
+        this._selectRange(file.id);
+        return;
+      }
+
+      const nowSelected = !this._selectedIds.has(file.id);
+      this._onRowCheck(file.id, nowSelected);
+      cb.checked = nowSelected;
+      tr.classList.toggle("is-selected", nowSelected);
+      this._lastClickedId = file.id;
+      this._lastClickedSelected = nowSelected;
     });
 
     // Checkbox cell

@@ -1,9 +1,14 @@
 /* File table — right-column list of PDFs with rename action and row selection */
 
+/* No top padding: the scroll container's padding box is part of the
+   scrollport, so content scrolls up *into* it and over the sticky header
+   underneath, which sticks to the padding edge rather than the container's
+   actual top. Horizontal/bottom padding don't interact with the sticky
+   header and are unaffected. */
 .file-table-wrap {
   flex: 1;
   overflow-y: auto;
-  padding: var(--gap);
+  padding: 0 var(--gap) var(--gap);
 }
 
 .file-table {
