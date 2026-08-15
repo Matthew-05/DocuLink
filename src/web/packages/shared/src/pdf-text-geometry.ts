@@ -10,6 +10,7 @@ interface PdfTextItem {
   width: number;
   height: number;
   fontName: string;
+  hasEOL: boolean;
 }
 
 function base64ToBytes(base64: string): Uint8Array {
@@ -54,16 +55,24 @@ async function buildPageEntries(page: pdfjsLib.PDFPageProxy): Promise<CharacterE
   let itemIndex = 0;
   let lineIndex = 0;
   let lastEntry: CharacterEntry | null = null;
+  let lastItemEndedLine = false;
 
   const measureCtx = document.createElement("canvas").getContext("2d");
 
   for (const raw of textContent.items) {
-    if (!("str" in raw) || !raw.str) {
+    if (!("str" in raw)) {
       itemIndex++;
       continue;
     }
 
     const item = raw as PdfTextItem;
+    if (!item.str) {
+      if (item.hasEOL && lastEntry && !lastItemEndedLine) lineIndex++;
+      lastItemEndedLine = item.hasEOL;
+      itemIndex++;
+      continue;
+    }
+
     const tx = item.transform[4];
     const ty = item.transform[5];
     const [vx, vy] = viewport.convertToViewportPoint(tx, ty);
@@ -83,7 +92,7 @@ async function buildPageEntries(page: pdfjsLib.PDFPageProxy): Promise<CharacterE
     const fontFamily = style?.fontFamily ?? "sans-serif";
     const fontSize = item.height;
 
-    if (lastEntry && isNewLine(lastEntry, normTop)) {
+    if (lastEntry && !lastItemEndedLine && isNewLine(lastEntry, normTop)) {
       lineIndex++;
     }
 
@@ -110,6 +119,9 @@ async function buildPageEntries(page: pdfjsLib.PDFPageProxy): Promise<CharacterE
       xOffset += charWidth;
     }
 
+    lastItemEndedLine = item.hasEOL;
+    if (lastItemEndedLine) lineIndex++;
+
     itemIndex++;
   }
 
@@ -123,6 +135,7 @@ function entryToCharacter(entry: CharacterEntry): TextGeometryCharacter {
     y: entry.normTop,
     width: entry.normRight - entry.normLeft,
     height: entry.normBottom - entry.normTop,
+    lineIndex: entry.lineIndex,
   };
 }
 

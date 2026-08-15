@@ -62,6 +62,27 @@ class ExtractPageCharactersFromRawdictTests(unittest.TestCase):
 
         self.assertEqual(_char(rawdict, self.PAGE_W, self.PAGE_H), ["a", "b"])
 
+        boxes = _extract_page_characters_from_rawdict(rawdict, self.PAGE_W, self.PAGE_H)
+        self.assertEqual([box["lineIndex"] for box in boxes], [0, 1])
+
+    def test_preserves_source_line_when_vertical_positions_are_ambiguous(self) -> None:
+        rawdict = {
+            "blocks": [
+                {
+                    "type": 0,
+                    "lines": [
+                        {"spans": [{"chars": [{"c": "7", "bbox": [10, 10, 20, 40]}]}]},
+                        {"spans": [{"chars": [{"c": "n", "bbox": [10, 22, 20, 42]}]}]},
+                    ],
+                }
+            ]
+        }
+
+        boxes = _extract_page_characters_from_rawdict(rawdict, self.PAGE_W, self.PAGE_H)
+
+        self.assertEqual([box["char"] for box in boxes], ["7", "n"])
+        self.assertEqual([box["lineIndex"] for box in boxes], [0, 1])
+
     def test_skips_non_text_blocks(self) -> None:
         rawdict = {
             "blocks": [
@@ -97,6 +118,7 @@ class ExtractPageCharactersFromRawdictTests(unittest.TestCase):
         self.assertEqual(boxes[0]["y"], 0.1)
         self.assertEqual(boxes[0]["width"], 0.1)
         self.assertEqual(boxes[0]["height"], 0.1)
+        self.assertEqual(boxes[0]["lineIndex"], 0)
 
     def test_skips_zero_area_boxes(self) -> None:
         rawdict = {"blocks": [_text_block([("q", (10, 10, 10, 30))])]}

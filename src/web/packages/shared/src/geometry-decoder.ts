@@ -15,6 +15,7 @@ export interface TextGeometryCharacter {
   y: number;
   width: number;
   height: number;
+  lineIndex: number;
 }
 
 function base64ToBytes(base64: string): Uint8Array {

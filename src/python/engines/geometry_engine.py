@@ -27,6 +27,7 @@ def _extract_page_characters_from_rawdict(
         return []
 
     characters: list[dict] = []
+    line_index = 0
 
     for block in raw.get("blocks", []):
         if block.get("type") != 0:
@@ -55,8 +56,10 @@ def _extract_page_characters_from_rawdict(
                             "y": y0 / page_h,
                             "width": width,
                             "height": height,
+                            "lineIndex": line_index,
                         }
                     )
+            line_index += 1
 
     return characters
 

@@ -9,14 +9,15 @@
     "CharacterBox": {
       "description": "A single character glyph box on one PDF page.",
       "type": "object",
-      "required": ["char", "x", "y", "width", "height"],
+      "required": ["char", "x", "y", "width", "height", "lineIndex"],
       "additionalProperties": false,
       "properties": {
         "char":   { "type": "string", "minLength": 1, "maxLength": 1, "description": "Single Unicode character." },
         "x":      { "type": "number", "minimum": 0, "maximum": 1, "description": "Left edge, normalized page width." },
         "y":      { "type": "number", "minimum": 0, "maximum": 1, "description": "Top edge, normalized page height." },
         "width":  { "type": "number", "minimum": 0, "maximum": 1, "description": "Box width, normalized page width." },
-        "height": { "type": "number", "minimum": 0, "maximum": 1, "description": "Box height, normalized page height." }
+        "height": { "type": "number", "minimum": 0, "maximum": 1, "description": "Box height, normalized page height." },
+        "lineIndex": { "type": "integer", "minimum": 0, "description": "0-based source text-line index within the page. Characters sharing a line have the same index." }
       }
     },
 
@@ -66,7 +67,7 @@
             {
               "pageIndex": 0,
               "characters": [
-                { "char": "H", "x": 0.12, "y": 0.08, "width": 0.009, "height": 0.014 }
+                { "char": "H", "x": 0.12, "y": 0.08, "width": 0.009, "height": 0.014, "lineIndex": 0 }
               ]
             }
           ]
