@@ -7,6 +7,7 @@ import { getLinkResizeCorner } from "./rect-utils.js";
 
 type Axis = "column" | "row";
 type TableUpdatedCallback = (payload: LinkRectUpdatedPayload) => void;
+type TableActionCallback = (id: string) => void;
 
 interface BoundaryDrag {
   id: string;
@@ -40,6 +41,7 @@ export class TableGridEditor {
   private _activeAxis: Axis = "column";
   private readonly _axisByRectId = new Map<string, Axis>();
   private readonly _callbacks: TableUpdatedCallback[] = [];
+  private readonly _copyCallbacks: TableActionCallback[] = [];
 
   constructor(
     private readonly _viewer: PdfViewer,
@@ -56,6 +58,10 @@ export class TableGridEditor {
 
   onTableUpdated(callback: TableUpdatedCallback): void {
     this._callbacks.push(callback);
+  }
+
+  onCopySelection(callback: TableActionCallback): void {
+    this._copyCallbacks.push(callback);
   }
 
   private _onMouseDown(event: MouseEvent): void {
@@ -156,6 +162,18 @@ export class TableGridEditor {
         toggle.classList.toggle("table-grid__axis-toggle--open", open);
         menuButton.setAttribute("aria-expanded", String(open));
       }
+      return;
+    }
+
+    const menuAction = event.target.closest<HTMLElement>(".table-grid__menu-action");
+    if (menuAction) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      const rectElement = menuAction.closest<HTMLElement>(TABLE_SELECTOR);
+      const id = rectElement?.dataset["rectId"];
+      if (!id) return;
+      this._closeAxisMenu(rectElement);
+      for (const callback of this._copyCallbacks) callback(id);
       return;
     }
 
@@ -329,8 +347,12 @@ export class TableGridEditor {
 
     const options = document.createElement("div");
     options.className = "table-grid__axis-options";
-    options.setAttribute("role", "group");
-    options.setAttribute("aria-label", "Edit table boundaries");
+    options.setAttribute("role", "menu");
+    options.setAttribute("aria-label", "Table options");
+    const axisGroup = document.createElement("div");
+    axisGroup.className = "table-grid__axis-group";
+    axisGroup.setAttribute("role", "group");
+    axisGroup.setAttribute("aria-label", "Edit table boundaries");
     for (const axis of ["column", "row"] as const) {
       const button = document.createElement("button");
       button.type = "button";
@@ -338,8 +360,19 @@ export class TableGridEditor {
       button.textContent = axis === "column" ? "Cols" : "Rows";
       button.title = axis === "column" ? "Edit columns" : "Edit rows";
       button.dataset["axis"] = axis;
-      options.appendChild(button);
+      axisGroup.appendChild(button);
     }
+    options.appendChild(axisGroup);
+
+    const divider = document.createElement("div");
+    divider.className = "table-grid__menu-divider";
+    options.appendChild(divider);
+    const copyAction = this._menuAction("copy", "Copy table selection…");
+    if ((this._viewer.getDocument()?.numPages ?? 0) < 2) {
+      copyAction.disabled = true;
+      copyAction.title = "This document has no other pages";
+    }
+    options.append(copyAction);
     toggle.appendChild(options);
     rectElement.appendChild(toggle);
     this._applyActiveAxis();
@@ -363,6 +396,16 @@ export class TableGridEditor {
       button.classList.toggle("table-grid__axis-button--active", active);
       button.setAttribute("aria-pressed", String(active));
     }
+  }
+
+  private _menuAction(action: string, label: string): HTMLButtonElement {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "table-grid__menu-action";
+    button.textContent = label;
+    button.dataset["action"] = action;
+    button.setAttribute("role", "menuitem");
+    return button;
   }
 
   private _positionForEvent(event: MouseEvent, rectElement: HTMLElement, axis: Axis): number {

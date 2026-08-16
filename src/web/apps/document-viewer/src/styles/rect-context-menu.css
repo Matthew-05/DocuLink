@@ -1,7 +1,7 @@
 .rect-context-menu {
   position: fixed;
   z-index: 1000;
-  min-width: 140px;
+  min-width: 210px;
   padding: 4px 0;
   background: #fff;
   border: 1px solid #cbd5e1;
@@ -19,11 +19,26 @@
   font: inherit;
   font-size: 0.875rem;
   text-align: left;
+  white-space: nowrap;
   cursor: pointer;
 }
 
 .rect-context-menu__item:hover {
   background: #f1f5f9;
+}
+
+.rect-context-menu__item--danger {
+  color: var(--color-danger);
+}
+
+.rect-context-menu__item--danger:hover {
+  background: rgba(196, 43, 43, 0.08);
+}
+
+.rect-context-menu__divider {
+  height: 1px;
+  margin: 3px 0;
+  background: #e2e8f0;
 }
 
 .rect-context-menu__item:focus-visible {

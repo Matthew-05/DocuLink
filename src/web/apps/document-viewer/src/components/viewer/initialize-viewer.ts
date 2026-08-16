@@ -15,9 +15,11 @@ import { createFitMode } from "./fit-mode.js";
 import { PdfTextSearcher, normalizeSearchQuery } from "./pdf-text-searcher.js";
 import { SearchMatchRenderer } from "./search-match-renderer.js";
 import { createSearchNavigator } from "./search-navigator.js";
+import { TableCopyModal } from "../table-copy-modal/table-copy-modal.js";
 import { TextContentCache } from "../../services/text-content-cache.js";
-import { detectTableGrid } from "../../services/table-extractor.js";
+import { detectTableGrid, withExtractedTableCells } from "../../services/table-extractor.js";
 import {
+  sendCopyTableSelection,
   sendLinkRectangleCreated,
   sendLinkRectangleUpdated,
   sendLinkRectangleClicked,
@@ -201,6 +203,7 @@ export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLEleme
   const overlay         = new RectDrawOverlay(viewer, cache);
   const editOverlay     = new RectEditOverlay(viewer, cache, renderer);
   const tableGridEditor = new TableGridEditor(viewer, cache, renderer);
+  const tableCopyModal  = new TableCopyModal();
   const charBboxDebug   = new CharBboxOverlay(viewer, cache);
   const matchRenderer   = new SearchMatchRenderer(viewer);
   const searcher        = new PdfTextSearcher(cache);
@@ -423,6 +426,28 @@ export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLEleme
     sendLinkRectangleUpdated(payload);
   });
 
+  tableGridEditor.onCopySelection(async (id) => {
+    const entry = renderer.getRectangle(id);
+    const totalPages = viewer.getDocument()?.numPages ?? 0;
+    if (!entry?.table || totalPages < 1) return;
+
+    const pages = await tableCopyModal.show(entry.page, totalPages);
+    if (!pages) return;
+
+    const targets = pages.map((page) => {
+      const pageEntries = cache.get(entry.pdfId, page);
+      const detected = detectTableGrid(pageEntries, entry.rect);
+      return {
+        page,
+        table: withExtractedTableCells(pageEntries, entry.rect, {
+          columnBoundaries: [...entry.table!.columnBoundaries],
+          rowBoundaries: detected.rowBoundaries,
+        }),
+      };
+    });
+    sendCopyTableSelection(id, targets);
+  });
+
   renderer.setClickGuard(() => editOverlay.consumeClickSuppression());
 
   renderer.onRectClicked((id) => {
@@ -440,6 +465,10 @@ export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLEleme
 
   contextMenu.onDelete((id) => {
     sendLinkRectangleDeleted(id);
+  });
+
+  contextMenu.onDeleteKeepData((id) => {
+    sendLinkRectangleDeleted(id, false);
   });
 
   let cacheGeneration = 0;

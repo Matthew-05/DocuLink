@@ -441,6 +441,14 @@
       }
     },
 
+    "TableGridWithCellsPayload": {
+      "description": "A table grid whose extracted row-major cell data is required.",
+      "allOf": [
+        { "$ref": "#/definitions/TableGridPayload" },
+        { "required": ["cells"] }
+      ]
+    },
+
     "LinkRectangleCreatedMessage": {
       "description": "Sent by the document-viewer when the user finishes drawing a link rectangle. Contains the PDF region and the extracted, formatted text ready for cell insertion.",
       "type": "object",
@@ -481,7 +489,7 @@
         "page":  { "type": "integer", "minimum": 0, "description": "0-based page index." },
         "rect":  { "$ref": "#/definitions/RectPayload" },
         "text":  { "type": "string", "description": "Re-extracted text contained within the updated rectangle." },
-        "table": { "$ref": "#/definitions/TableGridPayload" }
+        "table": { "$ref": "#/definitions/TableGridWithCellsPayload" }
       },
       "examples": [
         {
@@ -579,16 +587,69 @@
     },
 
     "LinkRectangleDeletedMessage": {
-      "description": "Sent by the document-viewer when the user deletes a persisted link rectangle (e.g. via context menu). The host removes the link from storage, clears the linked cell background, and notifies the viewer to remove the overlay.",
+      "description": "Sent by the document-viewer when the user removes a persisted link rectangle. The host always removes the link and its Excel tracking/style. When deleteCellData is true, the linked Excel data is removed (including a Table link's complete footprint); when false, existing values and formulas are preserved.",
       "type": "object",
-      "required": ["type", "id"],
+      "required": ["type", "id", "deleteCellData"],
       "additionalProperties": false,
       "properties": {
         "type": { "const": "link-rectangle-deleted" },
-        "id":   { "type": "string", "description": "GUID of the LinkedRectangle to delete." }
+        "id":   { "type": "string", "description": "GUID of the LinkedRectangle to delete." },
+        "deleteCellData": { "type": "boolean", "description": "True for a full delete; false to unlink while preserving the current Excel cell data." }
       },
       "examples": [
-        { "type": "link-rectangle-deleted", "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890" }
+        { "type": "link-rectangle-deleted", "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890", "deleteCellData": true },
+        { "type": "link-rectangle-deleted", "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890", "deleteCellData": false }
+      ]
+    },
+
+    "TableSelectionCopyTargetPayload": {
+      "description": "Recalculated table grid and extracted data for one page that will receive a copy of the source Table rectangle. Column boundaries match the source selection; row boundaries are detected independently on the target page.",
+      "type": "object",
+      "required": ["page", "table"],
+      "additionalProperties": false,
+      "properties": {
+        "page": { "type": "integer", "minimum": 0, "description": "0-based target page index." },
+        "table": { "$ref": "#/definitions/TableGridWithCellsPayload" }
+      }
+    },
+
+    "CopyTableSelectionMessage": {
+      "description": "Sent by the document-viewer to copy one persisted Table rectangle to other pages. The host creates one link per target and stacks their Excel table footprints immediately below the source table in ascending page order.",
+      "type": "object",
+      "required": ["type", "id", "targets"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "const": "copy-table-selection" },
+        "id": { "type": "string", "description": "GUID of the source Table LinkedRectangle." },
+        "targets": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/definitions/TableSelectionCopyTargetPayload" }
+        }
+      },
+      "examples": [
+        {
+          "type": "copy-table-selection",
+          "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+          "targets": [
+            {
+              "page": 1,
+              "table": {
+                "columnBoundaries": [0.7],
+                "rowBoundaries": [0.25, 0.5],
+                "cells": [["Item", "Amount"], ["Widget", "$10.00"], ["Tax", "$0.80"]]
+              }
+            },
+            {
+              "page": 2,
+              "table": {
+                "columnBoundaries": [0.7],
+                "rowBoundaries": [0.5],
+                "cells": [["Item", "Amount"], ["Service", "$25.00"]]
+              }
+            }
+          ]
+        }
       ]
     },
 
@@ -1068,6 +1129,7 @@
     { "$ref": "#/definitions/LinkedRectanglesLoadedMessage" },
     { "$ref": "#/definitions/LinkRectangleClickedMessage" },
     { "$ref": "#/definitions/LinkRectangleDeletedMessage" },
+    { "$ref": "#/definitions/CopyTableSelectionMessage" },
     { "$ref": "#/definitions/LinkRectanglesRemovedMessage" },
     { "$ref": "#/definitions/ExcelNavigateMessage" },
     { "$ref": "#/definitions/UndoLinkCreationMessage" },

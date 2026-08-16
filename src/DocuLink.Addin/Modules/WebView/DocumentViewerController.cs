@@ -218,6 +218,10 @@ namespace DocuLink.Addin.Modules.WebView
                         HandleLinkRectangleDeleted(raw);
                         break;
 
+                    case "copy-table-selection":
+                        HandleCopyTableSelection(raw);
+                        break;
+
                     case "excel-navigate":
                         HandleExcelNavigate(raw);
                         break;
@@ -448,8 +452,9 @@ namespace DocuLink.Addin.Modules.WebView
 
         private void HandleLinkRectangleDeleted(string json)
         {
-            string rectId = HostMessageParser.ParseLinkRectangleDeleted(json);
-            if (string.IsNullOrWhiteSpace(rectId)) return;
+            LinkRectangleDeletedPayload payload =
+                HostMessageParser.ParseLinkRectangleDeletion(json);
+            if (payload == null) return;
 
             Excel.Workbook wb = Globals.ThisAddIn.Application?.ActiveWorkbook;
             if (wb == null) return;
@@ -460,14 +465,43 @@ namespace DocuLink.Addin.Modules.WebView
 
             using (Globals.ThisAddIn.EnterSelectionNavSuppress())
             {
-                if (!new DeleteLinkService().DeleteLink(rectId, wb))
+                if (!new DeleteLinkService().DeleteLink(
+                    payload.Id, wb, payload.DeleteCellData))
                     return;
 
-                SendLinkRectanglesRemoved(new[] { rectId });
+                SendLinkRectanglesRemoved(new[] { payload.Id });
             }
 
             Globals.ThisAddIn.NotifyFileManagerLinksChanged();
 
+            RestoreExcelFocus();
+        }
+
+        private void HandleCopyTableSelection(string json)
+        {
+            CopyTableSelectionPayload payload = HostMessageParser.ParseCopyTableSelection(json);
+            if (payload == null) return;
+
+            Excel.Workbook wb = Globals.ThisAddIn.Application?.ActiveWorkbook;
+            if (wb == null) return;
+
+            IWin32Window owner = _invokeTarget.FindForm() ?? _invokeTarget;
+            if (!WorkbookProtectionGuard.TryRequireWritable(wb, owner))
+                return;
+
+            var targets = payload.Targets
+                .Select(target => (target.Page, target.TableGrid, target.TableCells))
+                .ToList();
+            IList<LinkedRectangle> allRects;
+            using (Globals.ThisAddIn.EnterSelectionNavSuppress())
+            {
+                allRects = new CopyTableSelectionService().Copy(
+                    payload.Id, targets, owner, wb);
+            }
+            if (allRects == null) return;
+
+            SendLinkedRectanglesToWebView(allRects);
+            Globals.ThisAddIn.NotifyFileManagerLinksChanged();
             RestoreExcelFocus();
         }
 

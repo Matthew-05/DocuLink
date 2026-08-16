@@ -229,6 +229,7 @@
     <Compile Include="Modules\Services\AutoDateFormatting.cs" />
     <Compile Include="Modules\Services\CellFormattingService.cs" />
     <Compile Include="Modules\Services\CreateLinkService.cs" />
+    <Compile Include="Modules\Services\CopyTableSelectionService.cs" />
     <Compile Include="Modules\Services\TextValueFormatter.cs" />
     <Compile Include="Modules\Services\TableExcelWriteService.cs" />
     <Compile Include="Modules\Services\DeleteLinkService.cs" />

@@ -7,6 +7,7 @@ import type {
   LinkSelectionEntry,
   LinkType,
   NormalizedRect,
+  TableSelectionCopyTarget,
   TableGridData,
 } from "./types/index.js";
 
@@ -394,8 +395,15 @@ export function sendLinkRectangleClicked(id: string): void {
   postToHost({ type: "link-rectangle-clicked", id });
 }
 
-export function sendLinkRectangleDeleted(id: string): void {
-  postToHost({ type: "link-rectangle-deleted", id });
+export function sendLinkRectangleDeleted(id: string, deleteCellData = true): void {
+  postToHost({ type: "link-rectangle-deleted", id, deleteCellData });
+}
+
+export function sendCopyTableSelection(
+  id: string,
+  targets: TableSelectionCopyTarget[],
+): void {
+  postToHost({ type: "copy-table-selection", id, targets });
 }
 
 export function sendLinkRectangleCreated(payload: LinkRectPayload): void {

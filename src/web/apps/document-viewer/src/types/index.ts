@@ -57,6 +57,11 @@ export interface LinkRectUpdatedPayload extends LinkRectPayload {
   id: string;
 }
 
+export interface TableSelectionCopyTarget {
+  page: number; // 0-based
+  table: TableGridData;
+}
+
 export interface LinkedRectEntry {
   id: string;
   pdfId: string;

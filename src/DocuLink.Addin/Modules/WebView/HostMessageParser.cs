@@ -34,6 +34,82 @@ namespace DocuLink.Addin.Modules.WebView
         return ParseRectangleIdMessage(json);
     }
 
+    /// <summary>Parses the deletion mode as well as the rectangle id.</summary>
+    public static LinkRectangleDeletedPayload ParseLinkRectangleDeletion(string json)
+    {
+        if (string.IsNullOrWhiteSpace(json))
+            return null;
+
+        try
+        {
+            var obj = WebMessageParser.Serializer.Deserialize<Dictionary<string, object>>(json);
+            if (obj == null) return null;
+
+            string id = obj.TryGetValue("id", out object idValue) ? idValue as string : null;
+            if (string.IsNullOrWhiteSpace(id)) return null;
+
+            return new LinkRectangleDeletedPayload
+            {
+                Id = id,
+                DeleteCellData = !obj.ContainsKey("deleteCellData")
+                    || ParseBoolean(obj, "deleteCellData"),
+            };
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    /// <summary>Parses a request to copy a Table rectangle to one or more pages.</summary>
+    public static CopyTableSelectionPayload ParseCopyTableSelection(string json)
+    {
+        if (string.IsNullOrWhiteSpace(json))
+            return null;
+
+        try
+        {
+            var obj = WebMessageParser.Serializer.Deserialize<Dictionary<string, object>>(json);
+            if (obj == null) return null;
+
+            string id = obj.TryGetValue("id", out object idValue) ? idValue as string : null;
+            if (string.IsNullOrWhiteSpace(id)
+                || !obj.TryGetValue("targets", out object targetsValue)
+                || !(targetsValue is IEnumerable targets)
+                || targetsValue is string)
+                return null;
+
+            var parsedTargets = new List<TableSelectionCopyTargetPayload>();
+            foreach (object targetValue in targets)
+            {
+                if (!(targetValue is Dictionary<string, object> target)
+                    || !target.TryGetValue("page", out object pageValue))
+                    continue;
+
+                ParseTableGrid(
+                    target,
+                    out TableGrid tableGrid,
+                    out IList<IList<string>> tableCells);
+                if (tableGrid == null || tableCells == null) continue;
+
+                parsedTargets.Add(new TableSelectionCopyTargetPayload
+                {
+                    Page = Convert.ToInt32(pageValue),
+                    TableGrid = tableGrid,
+                    TableCells = tableCells,
+                });
+            }
+
+            return parsedTargets.Count == 0
+                ? null
+                : new CopyTableSelectionPayload { Id = id, Targets = parsedTargets };
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
     private static string ParseRectangleIdMessage(string json)
     {
         if (string.IsNullOrWhiteSpace(json))
@@ -203,21 +279,25 @@ namespace DocuLink.Addin.Modules.WebView
             RowBoundaries = ParseBoundaries(tableObject, "rowBoundaries"),
         };
 
-        if (!tableObject.TryGetValue("cells", out object cellsValue)
-            || !(cellsValue is IEnumerable rows)
-            || cellsValue is string)
-            return;
+        if (tableObject.TryGetValue("cells", out object cellsValue))
+            tableCells = ParseTableCells(cellsValue);
+    }
+
+    private static IList<IList<string>> ParseTableCells(object cellsValue)
+    {
+        if (!(cellsValue is IEnumerable rows) || cellsValue is string)
+            return null;
 
         var parsedRows = new List<IList<string>>();
         foreach (object rowValue in rows)
         {
             if (!(rowValue is IEnumerable values) || rowValue is string)
-                continue;
+                return null;
             parsedRows.Add(values.Cast<object>()
                 .Select(value => value?.ToString() ?? string.Empty)
                 .ToList());
         }
-        tableCells = parsedRows;
+        return parsedRows;
     }
 
     private static IList<double> ParseBoundaries(
@@ -289,6 +369,25 @@ namespace DocuLink.Addin.Modules.WebView
         public Services.ExcelCellNavigationService.Motion Motion { get; set; }
 
         public bool Reverse { get; set; }
+    }
+
+    internal sealed class LinkRectangleDeletedPayload
+    {
+        public string Id { get; set; }
+        public bool DeleteCellData { get; set; }
+    }
+
+    internal sealed class CopyTableSelectionPayload
+    {
+        public string Id { get; set; }
+        public IList<TableSelectionCopyTargetPayload> Targets { get; set; }
+    }
+
+    internal sealed class TableSelectionCopyTargetPayload
+    {
+        public int Page { get; set; }
+        public TableGrid TableGrid { get; set; }
+        public IList<IList<string>> TableCells { get; set; }
     }
 
     /// <summary>Deserialized payload for a <c>link-rectangle-created</c> message.</summary>

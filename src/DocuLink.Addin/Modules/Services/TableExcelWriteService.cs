@@ -33,6 +33,29 @@ namespace DocuLink.Addin.Modules.Services
             return conflicts == 0 || ConfirmOverwrite(owner, anchor, newGrid, conflicts);
         }
 
+        public bool ConfirmCopy(
+            Excel.Range firstAnchor,
+            IList<(TableGrid Grid, IList<IList<string>> Cells)> tables,
+            IWin32Window owner)
+        {
+            if (tables == null || tables.Count == 0) return false;
+            if (tables[0].Grid == null)
+                throw new ArgumentNullException(nameof(tables), "Copied table grid is required.");
+            int columns = tables[0].Grid.ColumnCount;
+            int rows = 0;
+            foreach ((TableGrid Grid, IList<IList<string>> Cells) table in tables)
+            {
+                ValidateShape(table.Grid, table.Cells);
+                if (table.Grid.ColumnCount != columns)
+                    throw new ArgumentException("Copied tables must use the same columns.", nameof(tables));
+                rows = checked(rows + table.Grid.RowCount);
+            }
+
+            int conflicts = CountConflicts(firstAnchor, rows, columns);
+            return conflicts == 0
+                || ConfirmOverwrite(owner, GetFootprint(firstAnchor, rows, columns), conflicts);
+        }
+
         public void WriteCreate(
             Excel.Range anchor, TableGrid tableGrid, IList<IList<string>> cells)
         {
@@ -112,6 +135,20 @@ namespace DocuLink.Addin.Modules.Services
             return conflicts;
         }
 
+        private static int CountConflicts(Excel.Range anchor, int rows, int columns)
+        {
+            int conflicts = 0;
+            for (int row = 0; row < rows; row++)
+            {
+                for (int column = 0; column < columns; column++)
+                {
+                    Excel.Range cell = (Excel.Range)anchor.Cells[row + 1, column + 1];
+                    if (HasContent(cell)) conflicts++;
+                }
+            }
+            return conflicts;
+        }
+
         private static bool HasContent(Excel.Range cell)
         {
             try
@@ -131,7 +168,13 @@ namespace DocuLink.Addin.Modules.Services
         private static bool ConfirmOverwrite(
             IWin32Window owner, Excel.Range anchor, TableGrid grid, int conflictCount)
         {
-            string rangeAddress = GetFootprint(anchor, grid).Address;
+            return ConfirmOverwrite(owner, GetFootprint(anchor, grid), conflictCount);
+        }
+
+        private static bool ConfirmOverwrite(
+            IWin32Window owner, Excel.Range footprint, int conflictCount)
+        {
+            string rangeAddress = footprint.Address;
             DialogResult first = MessageBox.Show(
                 owner,
                 $"The table would overwrite {conflictCount} existing cell(s) in {rangeAddress}.\n\nContinue?",
@@ -154,6 +197,11 @@ namespace DocuLink.Addin.Modules.Services
         internal static Excel.Range GetFootprint(Excel.Range anchor, TableGrid grid)
         {
             return anchor.get_Resize(grid.RowCount, grid.ColumnCount);
+        }
+
+        internal static Excel.Range GetFootprint(Excel.Range anchor, int rows, int columns)
+        {
+            return anchor.get_Resize(rows, columns);
         }
 
         private static void ValidateShape(TableGrid tableGrid, IList<IList<string>> cells)

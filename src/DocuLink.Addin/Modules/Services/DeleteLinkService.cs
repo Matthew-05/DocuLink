@@ -9,12 +9,16 @@ using Excel = Microsoft.Office.Interop.Excel;
 namespace DocuLink.Addin.Modules.Services
 {
     /// <summary>
-    /// Removes persisted link rectangles and cleans up the associated Excel cell
-    /// (background fill and XmlMap binding).
+    /// Removes persisted link rectangles and cleans up the associated Excel tracking.
+    /// Full deletion also removes the Excel data owned by the link; unlink-only deletion
+    /// preserves values and formulas.
     /// </summary>
     internal sealed class DeleteLinkService
     {
-        public bool DeleteLink(string rectId, Excel.Workbook workbook)
+        public bool DeleteLink(
+            string rectId,
+            Excel.Workbook workbook,
+            bool deleteCellData = true)
         {
             if (string.IsNullOrWhiteSpace(rectId) || workbook == null)
                 return false;
@@ -23,11 +27,14 @@ namespace DocuLink.Addin.Modules.Services
 
             using (Globals.ThisAddIn.EnterSelectionNavSuppress())
             {
-                return DeleteLinkCore(rectId, workbook);
+                return DeleteLinkCore(rectId, workbook, deleteCellData);
             }
         }
 
-        private bool DeleteLinkCore(string rectId, Excel.Workbook workbook)
+        private bool DeleteLinkCore(
+            string rectId,
+            Excel.Workbook workbook,
+            bool deleteCellData)
         {
             try
             {
@@ -36,32 +43,29 @@ namespace DocuLink.Addin.Modules.Services
                     return false;
 
                 int trackIndex = rect.LinkedCell.TrackIndex;
+                IList<LinkedRectangle> allLinks = session.GetLinks();
+                var siblings = allLinks
+                    .Where(r => !string.Equals(r.Id, rectId, StringComparison.Ordinal)
+                             && r.LinkedCell.TrackIndex == trackIndex)
+                    .ToList();
 
-                if (rect.LinkType == LinkType.Sum)
+                if (deleteCellData && rect.LinkType == LinkType.Sum)
                 {
-                    IList<LinkedRectangle> allLinks = session.GetLinks();
-                    var siblings = allLinks
-                        .Where(r => !string.Equals(r.Id, rectId, StringComparison.Ordinal)
-                                 && r.LinkedCell.TrackIndex == trackIndex)
-                        .ToList();
-
                     if (siblings.Count > 0)
                         return DeleteSumRectPartial(rectId, rect, siblings, workbook, session);
                 }
+
+                // When another rectangle still owns the same tracked cell, unlinking this
+                // rectangle must leave the shared binding and styling intact.
+                if (!deleteCellData && siblings.Count > 0)
+                    return session.RemoveLink(rectId);
 
                 Excel.Range cell = LinkCellResolver.TryResolveCell(workbook, rect);
 
                 if (cell != null)
                 {
-                    if (rect.LinkType == LinkType.Table)
-                    {
-                        try { new TableExcelWriteService().Clear(cell, rect.TableGrid); }
-                        catch (COMException ex)
-                        {
-                            System.Diagnostics.Debug.WriteLine(
-                                $"[DocuLink] DeleteLink table clear failed: {ex.Message}");
-                        }
-                    }
+                    if (deleteCellData)
+                        ClearLinkedData(cell, rect);
                     try { CellFormattingService.ClearLinkStyle(cell); }
                     catch (COMException ex)
                     {
@@ -96,23 +100,15 @@ namespace DocuLink.Addin.Modules.Services
                 Excel.Range cell = LinkCellResolver.TryResolveCell(workbook, rect);
                 if (cell != null)
                 {
-                    try
+                    if (formula != null)
                     {
-                        if (formula != null)
-                        {
-                            CellFormattingService.ApplySumNumberFormat(cell, remainingTexts);
-                            cell.Formula = formula;
-                            cell.Calculate();
-                        }
-                        else
-                        {
-                            cell.Value2 = null;
-                        }
+                        CellFormattingService.ApplySumNumberFormat(cell, remainingTexts);
+                        cell.Formula = formula;
+                        cell.Calculate();
                     }
-                    catch (COMException ex)
+                    else
                     {
-                        System.Diagnostics.Debug.WriteLine(
-                            $"[DocuLink] DeleteSumRectPartial cell update failed: {ex.Message}");
+                        ClearCellContents(cell);
                     }
                 }
 
@@ -123,6 +119,32 @@ namespace DocuLink.Addin.Modules.Services
                 System.Diagnostics.Debug.WriteLine(
                     $"[DocuLink] DeleteSumRectPartial failed: {ex.Message}");
                 return false;
+            }
+        }
+
+        private static void ClearLinkedData(Excel.Range cell, LinkedRectangle rect)
+        {
+            if (rect.LinkType == LinkType.Table && rect.TableGrid != null)
+            {
+                new TableExcelWriteService().Clear(cell, rect.TableGrid);
+                return;
+            }
+
+            ClearCellContents(cell);
+        }
+
+        private static void ClearCellContents(Excel.Range cell)
+        {
+            Excel.Application app = cell.Application as Excel.Application;
+            bool previousEvents = app?.EnableEvents ?? true;
+            try
+            {
+                if (app != null) app.EnableEvents = false;
+                cell.ClearContents();
+            }
+            finally
+            {
+                if (app != null) app.EnableEvents = previousEvents;
             }
         }
 
@@ -321,14 +343,7 @@ namespace DocuLink.Addin.Modules.Services
                 {
                     cellsToClear.Add(cell);
                     if (rect.LinkType == LinkType.Table)
-                    {
-                        try { new TableExcelWriteService().Clear(cell, rect.TableGrid); }
-                        catch (COMException ex)
-                        {
-                            System.Diagnostics.Debug.WriteLine(
-                                $"[DocuLink] {operationName} table clear failed: {ex.Message}");
-                        }
-                    }
+                        new TableExcelWriteService().Clear(cell, rect.TableGrid);
                 }
 
                 unbindTargets.Add((cell, rect.LinkedCell.TrackIndex));

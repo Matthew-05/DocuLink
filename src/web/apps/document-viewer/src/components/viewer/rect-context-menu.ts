@@ -40,6 +40,7 @@ export function getViewportAwareMenuPosition(
 export class RectContextMenu {
   private readonly _element: HTMLDivElement;
   private readonly _onDeleteCallbacks: Array<(id: string) => void> = [];
+  private readonly _onDeleteKeepDataCallbacks: Array<(id: string) => void> = [];
   private _activeRectId: string | null = null;
 
   private readonly _onDocClick = (e: MouseEvent): void => {
@@ -59,25 +60,27 @@ export class RectContextMenu {
     this._element.className = MENU_CLASS;
     this._element.hidden = true;
 
-    const item = document.createElement("button");
-    item.type = "button";
-    item.className = ITEM_CLASS;
-    item.textContent = "Delete Link";
-    item.addEventListener("click", () => {
-      if (this._activeRectId !== null) {
-        const id = this._activeRectId;
-        this.hide();
-        for (const cb of this._onDeleteCallbacks) cb(id);
-      }
-    });
+    const keepDataItem = this._createItem(
+      "Delete link, keep cell data",
+      this._onDeleteKeepDataCallbacks,
+    );
+    const divider = document.createElement("div");
+    divider.className = "rect-context-menu__divider";
+    const deleteItem = this._createItem("Delete link", this._onDeleteCallbacks);
+    deleteItem.classList.add("rect-context-menu__item--danger");
 
-    this._element.append(item);
+    this._element.append(keepDataItem, divider, deleteItem);
     document.body.append(this._element);
   }
 
   /** Registers a callback invoked when the user chooses Delete Link. */
   onDelete(cb: (id: string) => void): void {
     this._onDeleteCallbacks.push(cb);
+  }
+
+  /** Registers a callback invoked when the link should be removed without clearing Excel data. */
+  onDeleteKeepData(cb: (id: string) => void): void {
+    this._onDeleteKeepDataCallbacks.push(cb);
   }
 
   /** Shows the menu at viewport coordinates for the given rectangle id. */
@@ -113,5 +116,22 @@ export class RectContextMenu {
   /** Attaches a scroll listener on a specific element (e.g. the viewer). */
   attachScrollTarget(element: HTMLElement): void {
     element.addEventListener("scroll", this._onScroll, { passive: true });
+  }
+
+  private _createItem(
+    label: string,
+    callbacks: Array<(id: string) => void>,
+  ): HTMLButtonElement {
+    const item = document.createElement("button");
+    item.type = "button";
+    item.className = ITEM_CLASS;
+    item.textContent = label;
+    item.addEventListener("click", () => {
+      if (this._activeRectId === null) return;
+      const id = this._activeRectId;
+      this.hide();
+      for (const callback of callbacks) callback(id);
+    });
+    return item;
   }
 }
