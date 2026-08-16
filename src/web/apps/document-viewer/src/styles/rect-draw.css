@@ -306,6 +306,11 @@
   z-index: 2;
 }
 
+.rect-draw__link--table.rect-draw__link--editing > .table-grid__line--column {
+  opacity: 0;
+  pointer-events: none;
+}
+
 /* Member of a multi-cell Excel selection: tinted, but not the focused rectangle. */
 .rect-draw__link--selected {
   background: var(--rect-link-selected-fill, rgba(37, 99, 235, 0.28));

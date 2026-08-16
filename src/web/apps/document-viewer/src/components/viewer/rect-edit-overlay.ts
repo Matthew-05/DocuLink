@@ -4,6 +4,7 @@ import type { RectRenderer } from "./rect-renderer.js";
 import { extractText } from "../../services/text-extractor.js";
 import { detectTableGrid } from "../../services/table-extractor.js";
 import type { LinkRectUpdatedPayload, NormalizedRect } from "../../types/index.js";
+import { DragAutoScroller } from "./drag-auto-scroller.js";
 import {
   applyNormalizedRectToElement,
   clamp,
@@ -36,6 +37,7 @@ const LINK_CLASS = "rect-draw__link";
  */
 export class RectEditOverlay {
   private _dragState: EditDragState | null = null;
+  private readonly _autoScroller: DragAutoScroller;
   /** Set after a committed drag so the subsequent click is suppressed. */
   private _suppressNextClick = false;
   private _hoveredLink: HTMLDivElement | null = null;
@@ -53,6 +55,7 @@ export class RectEditOverlay {
     private readonly _cache: TextContentCache,
     private readonly _renderer: RectRenderer,
   ) {
+    this._autoScroller = new DragAutoScroller(this._viewer.element);
     this._boundMouseDown  = this._onMouseDown.bind(this);
     this._boundMouseMove  = this._onMouseMove.bind(this);
     this._boundMouseUp    = this._onMouseUp.bind(this);
@@ -159,25 +162,34 @@ export class RectEditOverlay {
       startXPx,
       startYPx,
     };
+    this._autoScroller.start(e.clientX, e.clientY, pageWrapper, (clientX, clientY) => {
+      this._updateRectangle(clientX, clientY);
+    });
 
     document.addEventListener("mousemove", this._boundMouseMove);
     document.addEventListener("mouseup",   this._boundMouseUp);
   }
 
   private _onMouseMove(e: MouseEvent): void {
+    this._autoScroller.updatePointer(e.clientX, e.clientY);
+    this._updateRectangle(e.clientX, e.clientY);
+  }
+
+  private _updateRectangle(clientX: number, clientY: number): void {
     const state = this._dragState;
     if (!state) return;
 
     const { pageWrapper, startRect, linkEl, handle } = state;
     const wrapperRect = pageWrapper.getBoundingClientRect();
-    const curXPx = clamp(e.clientX - wrapperRect.left, 0, pageWrapper.offsetWidth);
-    const curYPx = clamp(e.clientY - wrapperRect.top,  0, pageWrapper.offsetHeight);
+    const curXPx = clamp(clientX - wrapperRect.left, 0, pageWrapper.offsetWidth);
+    const curYPx = clamp(clientY - wrapperRect.top,  0, pageWrapper.offsetHeight);
 
     const newRect = resizeRectFromHandle(pageWrapper, startRect, handle, curXPx, curYPx);
     applyNormalizedRectToElement(linkEl, newRect);
   }
 
   private _onMouseUp(e: MouseEvent): void {
+    this._autoScroller.stop();
     document.removeEventListener("mousemove", this._boundMouseMove);
     document.removeEventListener("mouseup",   this._boundMouseUp);
 
