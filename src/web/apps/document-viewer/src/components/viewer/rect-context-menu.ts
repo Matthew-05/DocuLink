@@ -1,5 +1,37 @@
 const MENU_CLASS = "rect-context-menu";
 const ITEM_CLASS = "rect-context-menu__item";
+const VIEWPORT_MARGIN_PX = 8;
+
+export interface ContextMenuPosition {
+  left: number;
+  top: number;
+}
+
+/** Positions a menu beside its anchor while keeping it inside the viewport. */
+export function getViewportAwareMenuPosition(
+  anchorX: number,
+  anchorY: number,
+  menuWidth: number,
+  menuHeight: number,
+  viewportWidth: number,
+  viewportHeight: number,
+  margin = VIEWPORT_MARGIN_PX,
+): ContextMenuPosition {
+  const maxLeft = Math.max(margin, viewportWidth - menuWidth - margin);
+  const maxTop = Math.max(margin, viewportHeight - menuHeight - margin);
+
+  const preferredLeft = anchorX + menuWidth + margin > viewportWidth
+    ? anchorX - menuWidth
+    : anchorX;
+  const preferredTop = anchorY + menuHeight + margin > viewportHeight
+    ? anchorY - menuHeight
+    : anchorY;
+
+  return {
+    left: Math.min(maxLeft, Math.max(margin, preferredLeft)),
+    top: Math.min(maxTop, Math.max(margin, preferredTop)),
+  };
+}
 
 /**
  * A minimal floating context menu for link rectangle overlays.
@@ -52,8 +84,17 @@ export class RectContextMenu {
   show(clientX: number, clientY: number, rectId: string): void {
     this._activeRectId = rectId;
     this._element.hidden = false;
-    this._element.style.left = `${clientX}px`;
-    this._element.style.top = `${clientY}px`;
+    const bounds = this._element.getBoundingClientRect();
+    const position = getViewportAwareMenuPosition(
+      clientX,
+      clientY,
+      bounds.width,
+      bounds.height,
+      document.documentElement.clientWidth,
+      document.documentElement.clientHeight,
+    );
+    this._element.style.left = `${position.left}px`;
+    this._element.style.top = `${position.top}px`;
 
     document.addEventListener("click", this._onDocClick, true);
     document.addEventListener("keydown", this._onKeyDown);
