@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.Collections;
+using System.Linq;
 using DocuLink.Addin.Modules.CustomXml.Models;
 
 namespace DocuLink.Addin.Modules.WebView
@@ -121,6 +123,7 @@ namespace DocuLink.Addin.Modules.WebView
                 string text  = obj.TryGetValue("text",  out object txtVal) ? (txtVal as string ?? "") : "";
                 LinkType linkType = ParseLinkType(obj);
                 bool appendToActiveSum = ParseBoolean(obj, "appendToActiveSum");
+                ParseTableGrid(obj, out TableGrid tableGrid, out IList<IList<string>> tableCells);
 
                 if (includeId && string.IsNullOrWhiteSpace(id))
                     return null;
@@ -147,6 +150,8 @@ namespace DocuLink.Addin.Modules.WebView
                         Width  = rw,
                         Height = rh,
                         Text   = text,
+                        TableGrid = tableGrid,
+                        TableCells = tableCells,
                     };
                 }
 
@@ -161,6 +166,8 @@ namespace DocuLink.Addin.Modules.WebView
                     Text     = text,
                     LinkType = linkType,
                     AppendToActiveSum = appendToActiveSum,
+                    TableGrid = tableGrid,
+                    TableCells = tableCells,
                 };
             }
             catch
@@ -175,7 +182,61 @@ namespace DocuLink.Addin.Modules.WebView
             return LinkType.Auto;
         if (string.Equals(ltStr, "raw", StringComparison.OrdinalIgnoreCase)) return LinkType.Raw;
         if (string.Equals(ltStr, "sum", StringComparison.OrdinalIgnoreCase)) return LinkType.Sum;
+        if (string.Equals(ltStr, "table", StringComparison.OrdinalIgnoreCase)) return LinkType.Table;
         return LinkType.Auto;
+    }
+
+    private static void ParseTableGrid(
+        Dictionary<string, object> obj,
+        out TableGrid tableGrid,
+        out IList<IList<string>> tableCells)
+    {
+        tableGrid = null;
+        tableCells = null;
+        if (!obj.TryGetValue("table", out object tableValue)
+            || !(tableValue is Dictionary<string, object> tableObject))
+            return;
+
+        tableGrid = new TableGrid
+        {
+            ColumnBoundaries = ParseBoundaries(tableObject, "columnBoundaries"),
+            RowBoundaries = ParseBoundaries(tableObject, "rowBoundaries"),
+        };
+
+        if (!tableObject.TryGetValue("cells", out object cellsValue)
+            || !(cellsValue is IEnumerable rows)
+            || cellsValue is string)
+            return;
+
+        var parsedRows = new List<IList<string>>();
+        foreach (object rowValue in rows)
+        {
+            if (!(rowValue is IEnumerable values) || rowValue is string)
+                continue;
+            parsedRows.Add(values.Cast<object>()
+                .Select(value => value?.ToString() ?? string.Empty)
+                .ToList());
+        }
+        tableCells = parsedRows;
+    }
+
+    private static IList<double> ParseBoundaries(
+        Dictionary<string, object> tableObject, string key)
+    {
+        if (!tableObject.TryGetValue(key, out object value)
+            || !(value is IEnumerable values)
+            || value is string)
+            return new List<double>();
+
+        return values.Cast<object>()
+            .Select(Convert.ToDouble)
+            .Where(position => !double.IsNaN(position)
+                && !double.IsInfinity(position)
+                && position > 0
+                && position < 1)
+            .Distinct()
+            .OrderBy(position => position)
+            .ToList();
     }
 
     private static bool ParseBoolean(Dictionary<string, object> obj, string key)
@@ -242,6 +303,8 @@ namespace DocuLink.Addin.Modules.WebView
         public string   Text     { get; set; }
         public LinkType LinkType { get; set; }
         public bool     AppendToActiveSum { get; set; }
+        public TableGrid TableGrid { get; set; }
+        public IList<IList<string>> TableCells { get; set; }
     }
 
     /// <summary>Deserialized payload for a <c>rotate-page</c> message.</summary>
@@ -263,5 +326,7 @@ namespace DocuLink.Addin.Modules.WebView
         public double Width  { get; set; }
         public double Height { get; set; }
         public string Text   { get; set; }
+        public TableGrid TableGrid { get; set; }
+        public IList<IList<string>> TableCells { get; set; }
     }
 }

@@ -24,6 +24,7 @@
     <xs:sequence>
       <xs:element name="Cell" type="dl:CellType" />
       <xs:element name="Rect" type="dl:RectType" />
+      <xs:element name="TableGrid" type="dl:TableGridType" minOccurs="0" />
     </xs:sequence>
     <xs:attribute name="id"         type="xs:string"        use="required" />
     <xs:attribute name="pdfId"      type="xs:string"        use="required" />
@@ -36,8 +37,20 @@
       <xs:enumeration value="auto" />
       <xs:enumeration value="raw" />
       <xs:enumeration value="sum" />
+      <xs:enumeration value="table" />
     </xs:restriction>
   </xs:simpleType>
+
+  <xs:complexType name="TableGridType">
+    <xs:sequence>
+      <xs:element name="ColumnBoundary" type="dl:BoundaryType" minOccurs="0" maxOccurs="unbounded" />
+      <xs:element name="RowBoundary" type="dl:BoundaryType" minOccurs="0" maxOccurs="unbounded" />
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="BoundaryType">
+    <xs:attribute name="position" type="xs:double" use="required" />
+  </xs:complexType>
 
   <xs:complexType name="CellType">
     <xs:attribute name="sheet"      type="xs:string"      use="required" />

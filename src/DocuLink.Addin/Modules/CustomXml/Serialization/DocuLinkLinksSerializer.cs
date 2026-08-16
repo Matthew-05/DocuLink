@@ -22,6 +22,10 @@ namespace DocuLink.Addin.Modules.CustomXml.Serialization
         private const string CoordinateSpaceAttribute = "coordinateSpace";
         private const string LinkTypeAttribute = "linkType";
         private const string SourceTextAttribute = "sourceText";
+        private const string TableGridElement = "TableGrid";
+        private const string ColumnBoundaryElement = "ColumnBoundary";
+        private const string RowBoundaryElement = "RowBoundary";
+        private const string PositionAttribute = "position";
 
         public static IList<LinkedRectangle> FromXDocument(XDocument document)
         {
@@ -135,11 +139,13 @@ namespace DocuLink.Addin.Modules.CustomXml.Serialization
 
             LinkType linkType = ParseLinkType(element);
             string sourceText = element.Attribute(SourceTextAttribute)?.Value;
+            TableGrid tableGrid = ParseTableGrid(element, linkType, index);
 
             return new LinkedRectangle(idAttribute.Value.Trim(), pdfIdAttribute.Value.Trim(), cell, rect)
             {
                 LinkType   = linkType,
                 SourceText = string.IsNullOrEmpty(sourceText) ? null : sourceText,
+                TableGrid  = tableGrid,
             };
         }
 
@@ -149,6 +155,7 @@ namespace DocuLink.Addin.Modules.CustomXml.Serialization
             if (string.IsNullOrEmpty(value)) return LinkType.Auto;
             if (string.Equals(value, "raw",  StringComparison.OrdinalIgnoreCase)) return LinkType.Raw;
             if (string.Equals(value, "sum",  StringComparison.OrdinalIgnoreCase)) return LinkType.Sum;
+            if (string.Equals(value, "table", StringComparison.OrdinalIgnoreCase)) return LinkType.Table;
             return LinkType.Auto;
         }
 
@@ -158,6 +165,7 @@ namespace DocuLink.Addin.Modules.CustomXml.Serialization
             {
                 case LinkType.Raw: return "raw";
                 case LinkType.Sum: return "sum";
+                case LinkType.Table: return "table";
                 default:           return "auto";
             }
         }
@@ -218,7 +226,71 @@ namespace DocuLink.Addin.Modules.CustomXml.Serialization
             if (!string.IsNullOrEmpty(linkedRect.SourceText))
                 element.Add(new XAttribute(SourceTextAttribute, linkedRect.SourceText));
 
+            if (linkedRect.LinkType == LinkType.Table)
+                element.Add(SerializeTableGrid(linkedRect.TableGrid));
+
             return element;
+        }
+
+        private static TableGrid ParseTableGrid(XElement element, LinkType linkType, int index)
+        {
+            XElement gridElement = element.Element(DocuLinkXml.LinksNs + TableGridElement);
+            if (gridElement == null)
+                return linkType == LinkType.Table ? new TableGrid() : null;
+
+            return new TableGrid
+            {
+                ColumnBoundaries = ParseBoundaries(gridElement, ColumnBoundaryElement, index),
+                RowBoundaries = ParseBoundaries(gridElement, RowBoundaryElement, index),
+            };
+        }
+
+        private static IList<double> ParseBoundaries(
+            XElement gridElement, string elementName, int rectangleIndex)
+        {
+            var result = new List<double>();
+            foreach (XElement boundary in gridElement.Elements(DocuLinkXml.LinksNs + elementName))
+            {
+                double position = ReadRequiredDouble(boundary, PositionAttribute, rectangleIndex);
+                if (position <= 0 || position >= 1)
+                    throw new InvalidOperationException(
+                        $"DocuLink links LinkedRectangle #{rectangleIndex} has a {elementName} outside (0, 1)." );
+                result.Add(position);
+            }
+
+            result.Sort();
+            return result.Distinct().ToList();
+        }
+
+        private static XElement SerializeTableGrid(TableGrid tableGrid)
+        {
+            tableGrid = tableGrid ?? new TableGrid();
+            var element = new XElement(DocuLinkXml.LinksNs + TableGridElement);
+            AppendBoundaries(element, ColumnBoundaryElement, tableGrid.ColumnBoundaries);
+            AppendBoundaries(element, RowBoundaryElement, tableGrid.RowBoundaries);
+            return element;
+        }
+
+        private static void AppendBoundaries(
+            XElement parent, string elementName, IEnumerable<double> boundaries)
+        {
+            foreach (double position in NormalizeBoundaries(boundaries))
+            {
+                parent.Add(new XElement(
+                    DocuLinkXml.LinksNs + elementName,
+                    new XAttribute(PositionAttribute, position.ToString(CultureInfo.InvariantCulture))));
+            }
+        }
+
+        private static IEnumerable<double> NormalizeBoundaries(IEnumerable<double> boundaries)
+        {
+            return (boundaries ?? Enumerable.Empty<double>())
+                .Where(position => !double.IsNaN(position)
+                    && !double.IsInfinity(position)
+                    && position > 0
+                    && position < 1)
+                .Distinct()
+                .OrderBy(position => position);
         }
 
         private static XElement SerializeRect(PdfRectangle rect, string linkedRectId)

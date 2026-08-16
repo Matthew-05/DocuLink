@@ -304,7 +304,7 @@ namespace DocuLink.Addin.Modules.WebView
                 catch (Exception ex) { DocuLinkLog.Trace($"pre-create cell read failed: {ex.Message}"); }
 
                 string text = payload.Text;
-                if (string.IsNullOrWhiteSpace(text))
+                if (payload.LinkType != LinkType.Table && string.IsNullOrWhiteSpace(text))
                 {
                     if (!LinkTextPromptDialog.TryPrompt(owner, out text))
                     {
@@ -326,6 +326,9 @@ namespace DocuLink.Addin.Modules.WebView
                         text,
                         payload.LinkType,
                         payload.AppendToActiveSum,
+                        payload.TableGrid,
+                        payload.TableCells,
+                        owner,
                         wb);
                 }
                 DocuLinkLog.Trace($"CreateLink returned id={linkedRect?.Id ?? "null"}");
@@ -373,7 +376,7 @@ namespace DocuLink.Addin.Modules.WebView
                 return;
 
             string text = payload.Text;
-            if (string.IsNullOrWhiteSpace(text))
+            if (payload.TableGrid == null && string.IsNullOrWhiteSpace(text))
             {
                 if (!LinkTextPromptDialog.TryPrompt(owner, out text))
                 {
@@ -387,6 +390,9 @@ namespace DocuLink.Addin.Modules.WebView
                 payload.Page,
                 payload.X, payload.Y, payload.Width, payload.Height,
                 text,
+                payload.TableGrid,
+                payload.TableCells,
+                owner,
                 wb);
 
             SendLinkedRectanglesToWebView();

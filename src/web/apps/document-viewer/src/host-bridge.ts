@@ -7,6 +7,7 @@ import type {
   LinkSelectionEntry,
   LinkType,
   NormalizedRect,
+  TableGridData,
 } from "./types/index.js";
 
 /**
@@ -87,6 +88,7 @@ interface LinkedRectPayload {
   page: number;
   rect: { x: number; y: number; width: number; height: number };
   linkType?: unknown;
+  table?: TableGridData;
 }
 
 interface LinkedRectanglesLoadedMessage {
@@ -192,7 +194,7 @@ function toFolderEntries(folders: FolderPayload[] | undefined): FolderEntry[] {
 }
 
 function normalizeLinkType(value: unknown): LinkType {
-  return value === "raw" || value === "sum" ? value : "auto";
+  return value === "raw" || value === "sum" || value === "table" ? value : "auto";
 }
 
 function handleMessage(raw: unknown, handlers: HostMessageHandlers): void {
@@ -261,6 +263,7 @@ function handleMessage(raw: unknown, handlers: HostMessageHandlers): void {
         page:  r.page,
         rect:  r.rect as NormalizedRect,
         linkType: normalizeLinkType(r.linkType),
+        ...(r.table ? { table: r.table } : {}),
       }));
       onLinkedRectangles(rects);
       return;
@@ -404,6 +407,7 @@ export function sendLinkRectangleCreated(payload: LinkRectPayload): void {
     text:     payload.text,
     linkType: payload.linkType ?? "auto",
     appendToActiveSum: payload.appendToActiveSum === true,
+    ...(payload.table ? { table: payload.table } : {}),
   });
 }
 
@@ -415,6 +419,7 @@ export function sendLinkRectangleUpdated(payload: LinkRectUpdatedPayload): void 
     page:  payload.page,
     rect:  payload.rect,
     text:  payload.text,
+    ...(payload.table ? { table: payload.table } : {}),
   });
 }
 

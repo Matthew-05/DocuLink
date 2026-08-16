@@ -417,6 +417,30 @@
       }
     },
 
+    "TableGridPayload": {
+      "description": "Editable table grid inside a table link rectangle. Boundary positions are fractions of the rectangle width/height and exclude the fixed outer edges. Cells are supplied by the viewer on create/update for the Excel write and omitted when the host reloads persisted rectangles.",
+      "type": "object",
+      "required": ["columnBoundaries", "rowBoundaries"],
+      "additionalProperties": false,
+      "properties": {
+        "columnBoundaries": {
+          "type": "array",
+          "items": { "type": "number", "exclusiveMinimum": 0, "exclusiveMaximum": 1 },
+          "description": "Sorted internal vertical boundary positions relative to the rectangle width."
+        },
+        "rowBoundaries": {
+          "type": "array",
+          "items": { "type": "number", "exclusiveMinimum": 0, "exclusiveMaximum": 1 },
+          "description": "Sorted internal horizontal boundary positions relative to the rectangle height."
+        },
+        "cells": {
+          "type": "array",
+          "items": { "type": "array", "items": { "type": "string" } },
+          "description": "Row-major extracted cell text. Required by the host for table create/update operations."
+        }
+      }
+    },
+
     "LinkRectangleCreatedMessage": {
       "description": "Sent by the document-viewer when the user finishes drawing a link rectangle. Contains the PDF region and the extracted, formatted text ready for cell insertion.",
       "type": "object",
@@ -428,7 +452,8 @@
         "page":     { "type": "integer", "minimum": 0, "description": "0-based page index." },
         "rect":     { "$ref": "#/definitions/RectPayload" },
         "text":     { "type": "string", "description": "Extracted and formatted text contained within the rectangle." },
-        "linkType": { "type": "string", "enum": ["auto", "raw", "sum"], "description": "How the extracted text is processed before writing to the Excel cell. Defaults to 'auto' if omitted." },
+        "linkType": { "type": "string", "enum": ["auto", "raw", "sum", "table"], "description": "How the extracted text is processed before writing to Excel. Defaults to 'auto' if omitted." },
+        "table": { "$ref": "#/definitions/TableGridPayload" },
         "appendToActiveSum": { "type": "boolean", "description": "When true for a Sum link, append this rectangle's numbers to the currently active Sum-linked cell instead of creating a new link cell. Sent when the user holds Ctrl while completing the rectangle." }
       },
       "examples": [
@@ -455,7 +480,8 @@
         "pdfId": { "type": "string", "description": "GUID of the PDF the rectangle belongs to." },
         "page":  { "type": "integer", "minimum": 0, "description": "0-based page index." },
         "rect":  { "$ref": "#/definitions/RectPayload" },
-        "text":  { "type": "string", "description": "Re-extracted text contained within the updated rectangle." }
+        "text":  { "type": "string", "description": "Re-extracted text contained within the updated rectangle." },
+        "table": { "$ref": "#/definitions/TableGridPayload" }
       },
       "examples": [
         {
@@ -505,7 +531,8 @@
         "pdfId":    { "type": "string", "description": "GUID of the PDF this rectangle belongs to." },
         "page":     { "type": "integer", "minimum": 0, "description": "0-based page index." },
         "rect":     { "$ref": "#/definitions/RectPayload" },
-        "linkType": { "type": "string", "enum": ["auto", "raw", "sum"], "description": "How the linked text is processed before writing to the Excel cell. Defaults to 'auto' if omitted." }
+        "linkType": { "type": "string", "enum": ["auto", "raw", "sum", "table"], "description": "How the linked text is processed before writing to Excel. Defaults to 'auto' if omitted." },
+        "table": { "$ref": "#/definitions/TableGridPayload" }
       }
     },
 

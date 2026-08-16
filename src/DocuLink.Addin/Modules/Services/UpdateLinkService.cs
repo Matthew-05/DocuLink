@@ -5,6 +5,7 @@ using System.Runtime.InteropServices;
 using DocuLink.Addin.Modules.CustomXml;
 using DocuLink.Addin.Modules.CustomXml.Models;
 using Excel = Microsoft.Office.Interop.Excel;
+using System.Windows.Forms;
 
 namespace DocuLink.Addin.Modules.Services
 {
@@ -19,6 +20,9 @@ namespace DocuLink.Addin.Modules.Services
             int page,
             double x, double y, double width, double height,
             string text,
+            TableGrid tableGrid,
+            IList<IList<string>> tableCells,
+            IWin32Window owner,
             Excel.Workbook workbook)
         {
             if (string.IsNullOrWhiteSpace(rectId) || workbook == null)
@@ -33,7 +37,20 @@ namespace DocuLink.Addin.Modules.Services
                     return false;
 
                 Excel.Range cell = LinkCellResolver.TryResolveCell(workbook, existing);
-                if (cell != null)
+                if (existing.LinkType == LinkType.Table)
+                {
+                    if (cell == null || tableGrid == null || tableCells == null)
+                        return false;
+
+                    var tableWriter = new TableExcelWriteService();
+                    if (!tableWriter.ConfirmUpdate(
+                        cell, existing.TableGrid ?? new TableGrid(), tableGrid, tableCells, owner))
+                        return false;
+
+                    tableWriter.Rewrite(
+                        cell, existing.TableGrid ?? new TableGrid(), tableGrid, tableCells);
+                }
+                else if (cell != null)
                 {
                     try
                     {
@@ -51,6 +68,7 @@ namespace DocuLink.Addin.Modules.Services
                 {
                     LinkType   = existing.LinkType,
                     SourceText = existing.LinkType == LinkType.Sum ? text : null,
+                    TableGrid  = existing.LinkType == LinkType.Table ? tableGrid : existing.TableGrid,
                 };
                 return session.UpdateLink(updated);
             }

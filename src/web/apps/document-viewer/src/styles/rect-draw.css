@@ -39,6 +39,73 @@
   --rect-link-selected-border: rgba(217, 119, 6, 0.85);
 }
 
+.rect-draw__link--table {
+  --rect-link-fill: rgba(124, 58, 237, 0.10);
+  --rect-link-border: rgba(124, 58, 237, 0.58);
+  --rect-link-selected-fill: rgba(124, 58, 237, 0.24);
+  --rect-link-selected-border: rgba(124, 58, 237, 0.9);
+}
+
+.table-grid__line {
+  position: absolute;
+  z-index: 1;
+  background: rgba(124, 58, 237, 0.9);
+  pointer-events: auto;
+}
+
+.table-grid__line--column {
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  transform: translateX(-1px);
+  cursor: col-resize;
+}
+
+.table-grid__line--row {
+  left: 0;
+  right: 0;
+  height: 2px;
+  transform: translateY(-1px);
+  cursor: row-resize;
+}
+
+.table-grid__line--dragging {
+  background: rgb(91, 33, 182);
+  z-index: 3;
+}
+
+.table-grid__preview {
+  background: rgba(124, 58, 237, 0.48);
+  pointer-events: none;
+}
+
+.table-grid__add {
+  position: absolute;
+  z-index: 4;
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 1px solid rgb(124, 58, 237);
+  border-radius: 50%;
+  background: white;
+  color: rgb(91, 33, 182);
+  font: 700 14px/1 sans-serif;
+  cursor: pointer;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.22);
+}
+
+.table-grid__add--column {
+  top: 0;
+  transform: translate(-50%, -55%);
+}
+
+.table-grid__add--row {
+  left: 0;
+  transform: translate(-55%, -50%);
+}
+
 .rect-draw__link--editing {
   z-index: 2;
 }

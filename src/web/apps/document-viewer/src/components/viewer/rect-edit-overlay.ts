@@ -2,6 +2,7 @@ import type { PdfViewer } from "./pdf-viewer.js";
 import type { TextContentCache } from "../../services/text-content-cache.js";
 import type { RectRenderer } from "./rect-renderer.js";
 import { extractText } from "../../services/text-extractor.js";
+import { withExtractedTableCells } from "../../services/table-extractor.js";
 import type { LinkRectUpdatedPayload, NormalizedRect } from "../../types/index.js";
 import {
   applyNormalizedRectToElement,
@@ -203,14 +204,20 @@ export class RectEditOverlay {
     const finalRect = resizeRectFromHandle(pageWrapper, startRect, handle, curXPx, curYPx);
 
     applyNormalizedRectToElement(linkEl, finalRect);
+    const existing = this._renderer.getRectangle(id);
     this._renderer.updateRectangle(id, finalRect);
 
     const entries = this._cache.get(pdfId, pageIndex);
     const text    = extractText(entries, finalRect);
 
     this._suppressNextClick = true;
+    const table = existing?.linkType === "table" && existing.table
+      ? withExtractedTableCells(entries, finalRect, existing.table)
+      : undefined;
+    if (table) this._renderer.updateTable(id, table);
+
     for (const cb of this._onRectUpdatedCallbacks) {
-      cb({ id, pdfId, page: pageIndex, rect: finalRect, text });
+      cb({ id, pdfId, page: pageIndex, rect: finalRect, text, ...(table ? { table } : {}) });
     }
 
     this._resetLinkCursor(linkEl);

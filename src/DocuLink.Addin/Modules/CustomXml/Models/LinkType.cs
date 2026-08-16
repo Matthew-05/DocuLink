@@ -5,5 +5,6 @@ namespace DocuLink.Addin.Modules.CustomXml.Models
         Auto,
         Raw,
         Sum,
+        Table,
     }
 }

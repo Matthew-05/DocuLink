@@ -27,5 +27,8 @@ namespace DocuLink.Addin.Modules.CustomXml.Models
         /// contributing rectangles is resized.
         /// </summary>
         public string SourceText { get; set; }
+
+        /// <summary>Editable internal table boundaries for Table links.</summary>
+        public TableGrid TableGrid { get; set; }
     }
 }

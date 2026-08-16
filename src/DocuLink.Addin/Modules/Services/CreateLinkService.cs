@@ -4,6 +4,7 @@ using System.Linq;
 using DocuLink.Addin.Modules.CustomXml;
 using DocuLink.Addin.Modules.CustomXml.Models;
 using Excel = Microsoft.Office.Interop.Excel;
+using System.Windows.Forms;
 using static DocuLink.Addin.Modules.DocuLinkLog;
 
 namespace DocuLink.Addin.Modules.Services
@@ -30,6 +31,9 @@ namespace DocuLink.Addin.Modules.Services
             string text,
             LinkType linkType,
             bool appendToActiveSum,
+            TableGrid tableGrid,
+            IList<IList<string>> tableCells,
+            IWin32Window owner,
             Excel.Workbook workbook)
         {
             if (workbook == null) throw new ArgumentNullException(nameof(workbook));
@@ -44,6 +48,14 @@ namespace DocuLink.Addin.Modules.Services
             Trace($"startCell={startCell.Address}");
 
             WorkbookStorageSession session = Globals.ThisAddIn.GetStorageSession(workbook);
+
+            if (linkType == LinkType.Table)
+            {
+                Excel.Range tableAnchor = app.ActiveCell as Excel.Range ?? startCell;
+                return CreateTableLink(
+                    tableAnchor, pdfId, page, x, y, width, height,
+                    tableGrid, tableCells, owner, session, workbook);
+            }
 
             // Sum-append: if the currently active cell is already a Sum link cell, add
             // this rectangle's numbers to its formula instead of targeting a new cell.
@@ -126,6 +138,62 @@ namespace DocuLink.Addin.Modules.Services
             RecordUndoEntry(workbook, linkedRect.Id, trackIndex, cell, previousNumberFormat);
             Trace("returning");
 
+            return (linkedRect, session.GetLinks());
+        }
+
+        private (LinkedRectangle LinkedRect, IList<LinkedRectangle> AllRects) CreateTableLink(
+            Excel.Range startCell,
+            string pdfId,
+            int page,
+            double x, double y, double width, double height,
+            TableGrid tableGrid,
+            IList<IList<string>> tableCells,
+            IWin32Window owner,
+            WorkbookStorageSession session,
+            Excel.Workbook workbook)
+        {
+            if (tableGrid == null || tableCells == null)
+                return (null, session.GetLinks());
+
+            var tableWriter = new TableExcelWriteService();
+            if (!tableWriter.ConfirmCreate(startCell, tableGrid, tableCells, owner))
+                return (null, session.GetLinks());
+
+            // Continuing through a conflict must not leave an older rectangle bound to a
+            // cell whose value this table is about to replace.
+            Excel.Range footprint = TableExcelWriteService.GetFootprint(startCell, tableGrid);
+            IList<string> replacedIds =
+                new DeleteLinkService().DeleteLinksInSelection(footprint, workbook);
+            Globals.ThisAddIn.GetLinkUndoStack(workbook)?.DropEntriesFor(replacedIds);
+
+            string sheetName = ((Excel.Worksheet)startCell.Worksheet).Name;
+            string address = startCell.Address;
+            int trackIndex = LinkCellTracker.NextTrackIndex(session.GetLinks());
+            var linkedCell = new LinkedCell(sheetName, address, trackIndex);
+            var rect = new PdfRectangle(
+                page, x, y, width, height, RectangleCoordinateSpace.Normalized);
+            var linkedRect = new LinkedRectangle(
+                Guid.NewGuid().ToString("D"), pdfId, linkedCell, rect)
+            {
+                LinkType = LinkType.Table,
+                TableGrid = tableGrid,
+            };
+
+            string previousNumberFormat = LinkCreationUndoStack.TryReadNumberFormat(startCell);
+            LinkCellTracker.BindCell(workbook, startCell, trackIndex);
+            try
+            {
+                tableWriter.WriteCreate(startCell, tableGrid, tableCells);
+                CellFormattingService.ApplyLinkStyle(startCell, LinkType.Table);
+            }
+            catch
+            {
+                LinkCellTracker.UnbindCell(workbook, startCell, trackIndex);
+                throw;
+            }
+
+            session.AddLink(linkedRect);
+            RecordUndoEntry(workbook, linkedRect.Id, trackIndex, startCell, previousNumberFormat);
             return (linkedRect, session.GetLinks());
         }
 

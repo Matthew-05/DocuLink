@@ -60,6 +60,11 @@
   color: rgb(217, 119, 6);
 }
 
+.link-type-selector__btn[data-type="table"]:hover:not(.link-type-selector__btn--active) {
+  background: rgba(124, 58, 237, 0.10);
+  color: rgb(124, 58, 237);
+}
+
 /* ── Per-type active state ──────────────────────────────────────────── */
 
 .link-type-selector__btn--active[data-type="auto"] {
@@ -74,5 +79,10 @@
 
 .link-type-selector__btn--active[data-type="sum"] {
   background: rgb(217, 119, 6);
+  color: #fff;
+}
+
+.link-type-selector__btn--active[data-type="table"] {
+  background: rgb(124, 58, 237);
   color: #fff;
 }

@@ -32,7 +32,16 @@ export interface NormalizedRect {
   height: number;
 }
 
-export type LinkType = "auto" | "raw" | "sum";
+export type LinkType = "auto" | "raw" | "sum" | "table";
+
+export interface TableGridData {
+  /** Internal vertical boundaries as fractions of the rectangle width. */
+  columnBoundaries: number[];
+  /** Internal horizontal boundaries as fractions of the rectangle height. */
+  rowBoundaries: number[];
+  /** Row-major text extracted for the current boundaries. */
+  cells?: string[][];
+}
 
 export interface LinkRectPayload {
   pdfId: string;
@@ -41,6 +50,7 @@ export interface LinkRectPayload {
   text: string;
   linkType?: LinkType;
   appendToActiveSum?: boolean;
+  table?: TableGridData;
 }
 
 export interface LinkRectUpdatedPayload extends LinkRectPayload {
@@ -53,6 +63,7 @@ export interface LinkedRectEntry {
   page: number; // 0-based
   rect: NormalizedRect;
   linkType?: LinkType;
+  table?: TableGridData;
 }
 
 /**

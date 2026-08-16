@@ -205,6 +205,7 @@
     <Compile Include="Modules\CustomXml\Models\LinkedCell.cs" />
     <Compile Include="Modules\CustomXml\Models\LinkedRectangle.cs" />
     <Compile Include="Modules\CustomXml\Models\LinkType.cs" />
+    <Compile Include="Modules\CustomXml\Models\TableGrid.cs" />
     <Compile Include="Modules\CustomXml\Models\PdfDocument.cs" />
     <Compile Include="Modules\CustomXml\Models\PdfFolder.cs" />
     <Compile Include="Modules\CustomXml\Models\PdfMetadata.cs" />
@@ -229,6 +230,7 @@
     <Compile Include="Modules\Services\CellFormattingService.cs" />
     <Compile Include="Modules\Services\CreateLinkService.cs" />
     <Compile Include="Modules\Services\TextValueFormatter.cs" />
+    <Compile Include="Modules\Services\TableExcelWriteService.cs" />
     <Compile Include="Modules\Services\DeleteLinkService.cs" />
     <Compile Include="Modules\Services\ExcelCellNavigationService.cs" />
     <Compile Include="Modules\Services\LinkCreationUndoStack.cs" />

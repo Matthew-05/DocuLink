@@ -130,6 +130,11 @@ namespace DocuLink.Addin.Modules.WebView
                 sb.Append(",\"height\":"); AppendDouble(sb, r.Rectangle.Height);
                 sb.Append("}");
                 sb.Append(",\"linkType\":"); AppendString(sb, SerializeLinkType(r.LinkType));
+                if (r.LinkType == LinkType.Table)
+                {
+                    sb.Append(",\"table\":");
+                    AppendTableGrid(sb, r.TableGrid);
+                }
                 sb.Append("}");
             }
 
@@ -310,7 +315,36 @@ namespace DocuLink.Addin.Modules.WebView
             {
                 case LinkType.Raw: return "raw";
                 case LinkType.Sum: return "sum";
+                case LinkType.Table: return "table";
                 default:           return "auto";
+            }
+        }
+
+        private static void AppendTableGrid(StringBuilder sb, TableGrid tableGrid)
+        {
+            tableGrid = tableGrid ?? new TableGrid();
+            sb.Append("{\"columnBoundaries\":[");
+            AppendBoundaries(sb, tableGrid.ColumnBoundaries);
+            sb.Append("],\"rowBoundaries\":[");
+            AppendBoundaries(sb, tableGrid.RowBoundaries);
+            sb.Append("]}");
+        }
+
+        private static void AppendBoundaries(StringBuilder sb, IList<double> boundaries)
+        {
+            if (boundaries == null) return;
+            bool first = true;
+            foreach (double position in boundaries
+                .Where(value => !double.IsNaN(value)
+                    && !double.IsInfinity(value)
+                    && value > 0
+                    && value < 1)
+                .Distinct()
+                .OrderBy(value => value))
+            {
+                if (!first) sb.Append(',');
+                AppendDouble(sb, position);
+                first = false;
             }
         }
 

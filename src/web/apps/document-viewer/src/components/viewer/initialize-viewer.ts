@@ -5,6 +5,7 @@ import { connectViewerToHostBridge } from "./viewer-bridge.js";
 import { RectDrawOverlay } from "./rect-draw-overlay.js";
 import { RectEditOverlay } from "./rect-edit-overlay.js";
 import { RectRenderer } from "./rect-renderer.js";
+import { TableGridEditor } from "./table-grid-editor.js";
 import { RectContextMenu } from "./rect-context-menu.js";
 import { LinkSelectionPanel } from "./link-selection-panel.js";
 import { CharBboxOverlay } from "./char-bbox-overlay.js";
@@ -15,6 +16,7 @@ import { PdfTextSearcher, normalizeSearchQuery } from "./pdf-text-searcher.js";
 import { SearchMatchRenderer } from "./search-match-renderer.js";
 import { createSearchNavigator } from "./search-navigator.js";
 import { TextContentCache } from "../../services/text-content-cache.js";
+import { detectTableGrid } from "../../services/table-extractor.js";
 import {
   sendLinkRectangleCreated,
   sendLinkRectangleUpdated,
@@ -198,6 +200,7 @@ export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLEleme
   const selectionPanel  = new LinkSelectionPanel();
   const overlay         = new RectDrawOverlay(viewer, cache);
   const editOverlay     = new RectEditOverlay(viewer, cache, renderer);
+  const tableGridEditor = new TableGridEditor(viewer, cache, renderer);
   const charBboxDebug   = new CharBboxOverlay(viewer, cache);
   const matchRenderer   = new SearchMatchRenderer(viewer);
   const searcher        = new PdfTextSearcher(cache);
@@ -398,17 +401,25 @@ export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLEleme
 
   overlay.onRectCreated((payload) => {
     const linkType = linkTypeSelector.getLinkType();
-    sendLinkRectangleCreated({ ...payload, linkType });
+    const table = linkType === "table"
+      ? detectTableGrid(cache.get(payload.pdfId, payload.page), payload.rect)
+      : undefined;
+    sendLinkRectangleCreated({ ...payload, linkType, ...(table ? { table } : {}) });
     renderer.addRectangle({
       id:    `temp-${Date.now()}`,
       pdfId: payload.pdfId,
       page:  payload.page,
       rect:  payload.rect,
       linkType,
+      ...(table ? { table } : {}),
     });
   });
 
   editOverlay.onRectUpdated((payload) => {
+    sendLinkRectangleUpdated(payload);
+  });
+
+  tableGridEditor.onTableUpdated((payload) => {
     sendLinkRectangleUpdated(payload);
   });
 

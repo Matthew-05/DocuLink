@@ -6,6 +6,7 @@ const TYPES: { value: LinkType; label: string; title: string }[] = [
   { value: "auto", label: "Auto",  title: "Auto: formats numbers (strips commas, converts parentheses to negatives)" },
   { value: "raw",  label: "Raw",   title: "Raw: writes extracted text exactly as-is" },
   { value: "sum",  label: "Sum",   title: "Sum: generates an Excel formula summing all numbers in the selection" },
+  { value: "table", label: "Table", title: "Table: detects an editable row and column grid and mirrors it into Excel" },
 ];
 
 export class LinkTypeSelector {

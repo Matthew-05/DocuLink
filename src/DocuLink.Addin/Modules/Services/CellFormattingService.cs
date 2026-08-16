@@ -14,6 +14,7 @@ namespace DocuLink.Addin.Modules.Services
         private static readonly int AutoFill = ColorTranslator.ToOle(Color.FromArgb(221, 235, 255));
         private static readonly int RawFill  = ColorTranslator.ToOle(Color.FromArgb(220, 252, 231));
         private static readonly int SumFill  = ColorTranslator.ToOle(Color.FromArgb(254, 243, 199));
+        private static readonly int TableFill = ColorTranslator.ToOle(Color.FromArgb(237, 233, 254));
 
         private static readonly IAutoDateFormatPolicy AutoDateFormatPolicy =
             new DefaultAutoDateFormatPolicy();
@@ -141,6 +142,7 @@ namespace DocuLink.Addin.Modules.Services
             {
                 case LinkType.Raw: return RawFill;
                 case LinkType.Sum: return SumFill;
+                case LinkType.Table: return TableFill;
                 default:           return AutoFill;
             }
         }

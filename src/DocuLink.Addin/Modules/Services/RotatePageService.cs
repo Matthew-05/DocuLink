@@ -67,7 +67,12 @@ namespace DocuLink.Addin.Modules.Services
                     continue;
 
                 PdfRectangle transformed = TransformRect(link.Rectangle, delta / 90);
-                allLinks[i] = new LinkedRectangle(link.Id, link.PdfId, link.LinkedCell, transformed);
+                allLinks[i] = new LinkedRectangle(link.Id, link.PdfId, link.LinkedCell, transformed)
+                {
+                    LinkType = link.LinkType,
+                    SourceText = link.SourceText,
+                    TableGrid = link.TableGrid,
+                };
                 anyChanged = true;
             }
 

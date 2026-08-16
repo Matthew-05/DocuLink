@@ -10,6 +10,7 @@ const LINK_TYPE_CLASSES = {
   auto: "rect-draw__link--auto",
   raw:  "rect-draw__link--raw",
   sum:  "rect-draw__link--sum",
+  table: "rect-draw__link--table",
 } as const;
 
 /**
@@ -96,6 +97,19 @@ export class RectRenderer {
       `[data-rect-id="${CSS.escape(id)}"]`,
     );
     if (el) applyNormalizedRectToElement(el, rect);
+  }
+
+  /** Replaces a table grid in state and re-renders its rectangle. */
+  updateTable(id: string, table: NonNullable<LinkedRectEntry["table"]>): void {
+    const entry = this._rects.find((rect) => rect.id === id);
+    if (!entry) return;
+    entry.table = table;
+    const element = this._findElement(id);
+    if (!element) return;
+    for (const child of Array.from(
+      element.querySelectorAll<HTMLElement>(".table-grid__line, .table-grid__add"),
+    )) child.remove();
+    this._appendTableGrid(element, entry);
   }
 
   private _applyHighlight(): void {
@@ -198,6 +212,7 @@ export class RectRenderer {
       div.classList.add(LINK_TYPE_CLASSES[entry.linkType ?? "auto"]);
       div.dataset["rectId"] = entry.id;
       applyNormalizedRectToElement(div, entry.rect);
+      this._appendTableGrid(div, entry);
       div.addEventListener("click", (e) => {
         e.stopPropagation();
         if (this._clickGuard?.()) return;
@@ -212,6 +227,24 @@ export class RectRenderer {
         }
       });
       overlayLayer.appendChild(div);
+    }
+  }
+
+  private _appendTableGrid(div: HTMLElement, entry: LinkedRectEntry): void {
+    if (entry.linkType !== "table" || !entry.table) return;
+    for (const position of entry.table.columnBoundaries) {
+      const line = document.createElement("div");
+      line.className = "table-grid__line table-grid__line--column";
+      line.dataset["boundaryPosition"] = String(position);
+      line.style.left = `${position * 100}%`;
+      div.appendChild(line);
+    }
+    for (const position of entry.table.rowBoundaries) {
+      const line = document.createElement("div");
+      line.className = "table-grid__line table-grid__line--row";
+      line.dataset["boundaryPosition"] = String(position);
+      line.style.top = `${position * 100}%`;
+      div.appendChild(line);
     }
   }
 }

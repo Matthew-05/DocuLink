@@ -53,6 +53,15 @@ namespace DocuLink.Addin.Modules.Services
 
                 if (cell != null)
                 {
+                    if (rect.LinkType == LinkType.Table)
+                    {
+                        try { new TableExcelWriteService().Clear(cell, rect.TableGrid); }
+                        catch (COMException ex)
+                        {
+                            System.Diagnostics.Debug.WriteLine(
+                                $"[DocuLink] DeleteLink table clear failed: {ex.Message}");
+                        }
+                    }
                     try { CellFormattingService.ClearLinkStyle(cell); }
                     catch (COMException ex)
                     {
@@ -309,7 +318,18 @@ namespace DocuLink.Addin.Modules.Services
 
                 Excel.Range cell = LinkCellResolver.TryResolveCell(workbook, rect);
                 if (cell != null)
+                {
                     cellsToClear.Add(cell);
+                    if (rect.LinkType == LinkType.Table)
+                    {
+                        try { new TableExcelWriteService().Clear(cell, rect.TableGrid); }
+                        catch (COMException ex)
+                        {
+                            System.Diagnostics.Debug.WriteLine(
+                                $"[DocuLink] {operationName} table clear failed: {ex.Message}");
+                        }
+                    }
+                }
 
                 unbindTargets.Add((cell, rect.LinkedCell.TrackIndex));
                 deletedIds.Add(id);
