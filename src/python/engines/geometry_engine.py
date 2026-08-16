@@ -6,7 +6,7 @@ import gzip
 import json
 from typing import Callable
 
-import fitz
+import pymupdf as fitz
 
 # rawdict normally materializes the fully decoded bytes of every image block.
 # We discard image blocks (type != 0), so on an OCR'd scan — where each page is

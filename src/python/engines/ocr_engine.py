@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import statistics
 import sys
 import tempfile
 from pathlib import Path
@@ -161,6 +162,216 @@ def configure_tesseract() -> None:
 MODE_REDO = "redo"
 MODE_FORCE = "force"
 
+PROFILE_DEFAULT = "default"
+PROFILE_HIGH_RESOLUTION_AUTO = "high-resolution-auto"
+PROFILE_TABLE_SINGLE_BLOCK = "table-single-block"
+PROFILE_TABLE_SPARSE = "table-sparse"
+
+_ADAPTIVE_OVERSAMPLE_DPI = 300
+_ADAPTIVE_PROFILE_PSMS = {
+    PROFILE_HIGH_RESOLUTION_AUTO: 3,
+    PROFILE_TABLE_SINGLE_BLOCK: 6,
+    PROFILE_TABLE_SPARSE: 11,
+}
+_LOW_RESOLUTION_SCAN_DPI = 225.0
+_MINIMUM_SCAN_IMAGE_COVERAGE = 0.05
+
+
+def summarize_geometry_quality(geometry: dict) -> dict:
+    """Return cheap text-coverage signals from text-geometry-v1 data."""
+    pages = geometry.get("pages", [])
+    total_characters = 0
+    alphanumeric_characters = 0
+    word_count = 0
+    populated_lines = 0
+
+    for page in pages:
+        lines: dict[int, list[str]] = {}
+        for character in page.get("characters", []):
+            char = str(character.get("char", ""))
+            if not char:
+                continue
+            total_characters += 1
+            alphanumeric_characters += sum(part.isalnum() for part in char)
+            line_index = int(character.get("lineIndex", 0))
+            lines.setdefault(line_index, []).append(char)
+
+        for chars in lines.values():
+            text = "".join(chars).strip()
+            if not any(char.isalnum() for char in text):
+                continue
+            populated_lines += 1
+            word_count += len(text.split())
+
+    return {
+        "page_count": len(pages),
+        "total_characters": total_characters,
+        "alphanumeric_characters": alphanumeric_characters,
+        "word_count": word_count,
+        "populated_lines": populated_lines,
+    }
+
+
+def needs_adaptive_retry(summary: dict) -> bool:
+    """Detect an implausibly sparse OCR result without penalizing blank PDFs."""
+    page_count = int(summary.get("page_count", 0))
+    if page_count <= 0:
+        return False
+
+    minimum_alphanumeric = max(40, page_count * 20)
+    minimum_words = max(8, page_count * 4)
+    minimum_lines = max(3, page_count * 2)
+    return (
+        int(summary.get("alphanumeric_characters", 0)) < minimum_alphanumeric
+        or int(summary.get("word_count", 0)) < minimum_words
+        or int(summary.get("populated_lines", 0)) < minimum_lines
+    )
+
+
+def needs_high_resolution_retry(pdf_bytes: bytes) -> bool:
+    """Detect materially sized scan images whose effective DPI is too low for OCR."""
+    import pymupdf as fitz
+
+    doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+    try:
+        for page in doc:
+            page_area = page.rect.get_area()
+            if page_area <= 0:
+                continue
+            for image in page.get_image_info(xrefs=True):
+                bbox = fitz.Rect(image["bbox"])
+                displayed_area = bbox.get_area()
+                if displayed_area <= 0:
+                    continue
+                coverage = displayed_area / page_area
+                if coverage < _MINIMUM_SCAN_IMAGE_COVERAGE:
+                    continue
+                pixel_area = int(image.get("width", 0)) * int(image.get("height", 0))
+                if pixel_area <= 0:
+                    continue
+                effective_dpi = 72.0 * (pixel_area / displayed_area) ** 0.5
+                if effective_dpi < _LOW_RESOLUTION_SCAN_DPI:
+                    return True
+        return False
+    finally:
+        doc.close()
+
+
+def profile_ocr_options(profile: str) -> dict:
+    """Translate an internal OCR profile into OCRmyPDF/Tesseract options."""
+    if profile == PROFILE_DEFAULT:
+        return {"tesseract_pagesegmode": None, "oversample": 0}
+    if profile not in _ADAPTIVE_PROFILE_PSMS:
+        raise ValueError(f"Unknown OCR profile: {profile}")
+    return {
+        "tesseract_pagesegmode": _ADAPTIVE_PROFILE_PSMS[profile],
+        "oversample": _ADAPTIVE_OVERSAMPLE_DPI,
+    }
+
+
+def select_best_adaptive_profile(evaluations: list[dict]) -> dict:
+    """Prefer confidence and recall while giving coherent PSM 6 ordering a tie-break."""
+    if not evaluations:
+        raise ValueError("No adaptive OCR profiles were evaluated")
+
+    def score(evaluation: dict) -> float:
+        confidence = float(evaluation.get("mean_confidence", 0.0))
+        word_count = int(evaluation.get("word_count", 0))
+        order_bonus = (
+            3.0
+            if evaluation.get("profile")
+            in {PROFILE_HIGH_RESOLUTION_AUTO, PROFILE_TABLE_SINGLE_BLOCK}
+            else 0.0
+        )
+        return confidence + min(12.0, word_count / 20.0) + order_bonus
+
+    return max(evaluations, key=score)
+
+
+def evaluate_adaptive_profiles(pdf_bytes: bytes, language: str = "eng") -> list[dict]:
+    """
+    Score high-resolution Tesseract layouts at 300 DPI before committing to a retry.
+
+    OCRmyPDF's final PDF does not retain word confidence, so this lightweight
+    preflight renders each source page once and asks Tesseract for TSV-equivalent
+    data for automatic, single-block, and sparse layouts. The chosen profile is
+    then run through OCRmyPDF so
+    text placement and PDF preservation remain in the existing engine.
+    """
+    configure_tesseract()
+
+    import pymupdf as fitz
+    import pytesseract
+    from PIL import Image
+
+    aggregates = {
+        profile: {"confidences": [], "words": [], "lines": set()}
+        for profile in _ADAPTIVE_PROFILE_PSMS
+    }
+    doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+    try:
+        for page_index in range(doc.page_count):
+            page = doc.load_page(page_index)
+            pixmap = page.get_pixmap(dpi=_ADAPTIVE_OVERSAMPLE_DPI, alpha=False)
+            image = Image.frombytes(
+                "RGB",
+                (pixmap.width, pixmap.height),
+                pixmap.samples,
+            )
+
+            for profile, psm in _ADAPTIVE_PROFILE_PSMS.items():
+                data = pytesseract.image_to_data(
+                    image,
+                    lang=language,
+                    config=f"--psm {psm}",
+                    output_type=pytesseract.Output.DICT,
+                )
+                aggregate = aggregates[profile]
+                for index, raw_text in enumerate(data.get("text", [])):
+                    text = str(raw_text).strip()
+                    if not text:
+                        continue
+                    try:
+                        confidence = float(data["conf"][index])
+                    except (KeyError, TypeError, ValueError, IndexError):
+                        continue
+                    if confidence < 0:
+                        continue
+                    aggregate["confidences"].append(confidence)
+                    aggregate["words"].append(text)
+                    aggregate["lines"].add(
+                        (
+                            page_index,
+                            data.get("block_num", [0])[index],
+                            data.get("par_num", [0])[index],
+                            data.get("line_num", [0])[index],
+                        )
+                    )
+    finally:
+        doc.close()
+
+    evaluations: list[dict] = []
+    for profile, aggregate in aggregates.items():
+        confidences = aggregate["confidences"]
+        words = aggregate["words"]
+        evaluations.append(
+            {
+                "profile": profile,
+                "mean_confidence": round(statistics.fmean(confidences), 2)
+                if confidences
+                else 0.0,
+                "median_confidence": round(statistics.median(confidences), 2)
+                if confidences
+                else 0.0,
+                "word_count": len(words),
+                "alphanumeric_characters": sum(
+                    sum(char.isalnum() for char in word) for word in words
+                ),
+                "populated_lines": len(aggregate["lines"]),
+            }
+        )
+    return evaluations
+
 
 def ocr_pdf_bytes(
     pdf_bytes: bytes,
@@ -168,6 +379,8 @@ def ocr_pdf_bytes(
     auto_rotate_pages: bool = True,
     rotate_pages_threshold: float = 2.0,
     mode: str = MODE_REDO,
+    tesseract_pagesegmode: int | None = None,
+    oversample: int = 0,
     progress_callback: "callable[[str], None] | None" = None,
 ) -> bytes:
     """
@@ -203,20 +416,24 @@ def ocr_pdf_bytes(
         if progress_callback:
             progress_callback("Starting OCR…")
 
-        ocrmypdf.ocr(
-            src_path,
-            dst_path,
-            language=language,
-            mode=mode,
-            rotate_pages=auto_rotate_pages,
-            rotate_pages_threshold=rotate_pages_threshold,
-            progress_bar=False,
+        options = {
+            "language": language,
+            "mode": mode,
+            "rotate_pages": auto_rotate_pages,
+            "rotate_pages_threshold": rotate_pages_threshold,
+            "progress_bar": False,
             # See the tuning knobs above. Both are environment-overridable so the
             # rasterizer/concurrency matrix can be benchmarked without a rebuild.
-            rasterizer=resolve_rasterizer(),
-            use_threads=resolve_use_threads(),
-            output_type="pdf",
-        )
+            "rasterizer": resolve_rasterizer(),
+            "use_threads": resolve_use_threads(),
+            "output_type": "pdf",
+        }
+        if tesseract_pagesegmode is not None:
+            options["tesseract_pagesegmode"] = tesseract_pagesegmode
+        if oversample > 0:
+            options["oversample"] = oversample
+
+        ocrmypdf.ocr(src_path, dst_path, **options)
 
         if progress_callback:
             progress_callback("OCR complete, reading output…")

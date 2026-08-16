@@ -1,6 +1,7 @@
 import type * as pdfjsLib from "pdfjs-dist";
 import type { ZoomLevel } from "../../types/index.js";
 import { loadPdfDocument } from "./pdf-loader.js";
+import { normalizeRotation, resolvePageRotation } from "./page-rotation.js";
 import { renderPage } from "./page-renderer.js";
 
 const ZOOM_DEBOUNCE_MS = 300;
@@ -10,6 +11,7 @@ interface PageEntry {
   baseWidth: number;
   baseHeight: number;
   renderedScale: ZoomLevel | null;
+  nativeRotation: number;
   rotation: number;
 }
 
@@ -118,15 +120,24 @@ export class PdfViewer {
     }
 
     const dims = pages.map((page, i) => {
-      const rotation = this._pageRotations.get(i) ?? 0;
+      const nativeRotation = normalizeRotation(page.rotate);
+      const rotation = resolvePageRotation(nativeRotation, this._pageRotations.get(i) ?? 0);
       const vp = page.getViewport({ scale: 1.0, rotation });
       page.cleanup();
-      return { baseWidth: vp.width, baseHeight: vp.height, rotation };
+      return { baseWidth: vp.width, baseHeight: vp.height, nativeRotation, rotation };
     });
 
     // Create all wrappers with correct dimensions and populate _pageEntries fully.
     // renderedScale is initialized to null — all pages are unrendered.
-    this._createPageWrappers(doc.numPages, dims as Array<{ baseWidth: number; baseHeight: number; rotation: number }>);
+    this._createPageWrappers(
+      doc.numPages,
+      dims as Array<{
+        baseWidth: number;
+        baseHeight: number;
+        nativeRotation: number;
+        rotation: number;
+      }>,
+    );
 
     for (const cb of this._onLoadedCallbacks) {
       cb(doc.numPages);
@@ -292,14 +303,15 @@ export class PdfViewer {
     ++this._renderGeneration;
     const capturedRenderGen = this._renderGeneration;
     const previousRotation = entry.rotation;
+    const resolvedRotation = resolvePageRotation(entry.nativeRotation, rotation);
     const previousWidth = entry.baseWidth;
     const previousHeight = entry.baseHeight;
-    const rotationDelta = normalizeRotation(rotation - previousRotation);
+    const rotationDelta = normalizeRotation(resolvedRotation - previousRotation);
     const previewWidth = rotationDelta === 90 || rotationDelta === 270 ? previousHeight : previousWidth;
     const previewHeight = rotationDelta === 90 || rotationDelta === 270 ? previousWidth : previousHeight;
 
     this._applyCssRotationPreview(entry, rotationDelta, previousWidth, previousHeight);
-    entry.rotation = rotation;
+    entry.rotation = resolvedRotation;
     entry.baseWidth = previewWidth;
     entry.baseHeight = previewHeight;
     entry.renderedScale = null;
@@ -309,7 +321,7 @@ export class PdfViewer {
     const loadGen = this._loadGeneration;
     void doc.getPage(pageIndex + 1).then((page) => {
       if (this._loadGeneration !== loadGen) { page.cleanup(); return; }
-      const vp = page.getViewport({ scale: 1.0, rotation });
+      const vp = page.getViewport({ scale: 1.0, rotation: resolvedRotation });
       page.cleanup();
       if (this._renderGeneration !== capturedRenderGen) return;
 
@@ -325,7 +337,7 @@ export class PdfViewer {
           pageIndex + 1,
           entry.wrapper,
           this._scale,
-          rotation,
+          resolvedRotation,
           () => this._renderGeneration === capturedRenderGen && this._doc === doc,
         );
         if (this._renderGeneration !== capturedRenderGen) return;
@@ -338,21 +350,33 @@ export class PdfViewer {
 
   private _createPageWrappers(
     total: number,
-    dims: Array<{ baseWidth: number; baseHeight: number; rotation: number }>,
+    dims: Array<{
+      baseWidth: number;
+      baseHeight: number;
+      nativeRotation: number;
+      rotation: number;
+    }>,
   ): void {
     this.element.replaceChildren();
     const documentElement = document.createElement("div");
     documentElement.className = "viewer__document";
 
     for (let i = 0; i < total; i++) {
-      const { baseWidth, baseHeight, rotation } = dims[i]!;
+      const { baseWidth, baseHeight, nativeRotation, rotation } = dims[i]!;
       const div = document.createElement("div");
       div.className = "viewer__page";
       div.dataset["page"] = String(i + 1);
       div.style.width  = `${baseWidth  * this._scale}px`;
       div.style.height = `${baseHeight * this._scale}px`;
       documentElement.appendChild(div);
-      this._pageEntries[i] = { wrapper: div, renderedScale: null, baseWidth, baseHeight, rotation };
+      this._pageEntries[i] = {
+        wrapper: div,
+        renderedScale: null,
+        baseWidth,
+        baseHeight,
+        nativeRotation,
+        rotation,
+      };
     }
 
     this.element.appendChild(documentElement);
@@ -383,6 +407,3 @@ export class PdfViewer {
   }
 }
 
-function normalizeRotation(rotation: number): number {
-  return ((rotation % 360) + 360) % 360;
-}

@@ -38,7 +38,7 @@ from email import policy
 from email.parser import BytesParser
 from typing import Callable
 
-import fitz
+import pymupdf as fitz
 from PIL import Image, ImageSequence
 
 from engines.spreadsheet_engine import (
