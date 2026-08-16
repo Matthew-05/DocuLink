@@ -237,6 +237,7 @@ export class RectRenderer {
       line.className = "table-grid__line table-grid__line--column";
       line.dataset["boundaryPosition"] = String(position);
       line.style.left = `${position * 100}%`;
+      this._appendRemoveControl(line, "column", position);
       div.appendChild(line);
     }
     for (const position of entry.table.rowBoundaries) {
@@ -244,7 +245,25 @@ export class RectRenderer {
       line.className = "table-grid__line table-grid__line--row";
       line.dataset["boundaryPosition"] = String(position);
       line.style.top = `${position * 100}%`;
+      this._appendRemoveControl(line, "row", position);
       div.appendChild(line);
     }
   }
+
+  private _appendRemoveControl(
+    line: HTMLElement,
+    axis: "column" | "row",
+    position: number,
+  ): void {
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.className = `table-grid__remove table-grid__remove--${axis}`;
+    remove.textContent = "×";
+    remove.title = `Remove ${axis}`;
+    remove.setAttribute("aria-label", `Remove ${axis}`);
+    remove.dataset["axis"] = axis;
+    remove.dataset["position"] = String(position);
+    line.appendChild(remove);
+  }
+
 }

@@ -87,3 +87,27 @@ test("finds shared column gutters when labels and values have uneven widths", ()
     ["Medium label", "Q3", "300"],
   ]);
 });
+
+test("re-detection resets manual columns and rows to best guesses", () => {
+  const entries = [
+    ...text("Alpha", 0.08, 0.15, 1),
+    ...text("10", 0.65, 0.15, 1),
+    ...text("Beta", 0.08, 0.45, 2),
+    ...text("20", 0.65, 0.45, 2),
+  ];
+  const manuallyEdited = {
+    columnBoundaries: [0.2, 0.4, 0.8],
+    rowBoundaries: [0.38, 0.72],
+  };
+
+  const grid = detectTableGrid(entries, rect);
+
+  assert.equal(grid.columnBoundaries.length, 1);
+  assert.notDeepEqual(grid.columnBoundaries, manuallyEdited.columnBoundaries);
+  assert.equal(grid.rowBoundaries.length, 1);
+  assert.notDeepEqual(grid.rowBoundaries, manuallyEdited.rowBoundaries);
+  assert.deepEqual(grid.cells, [
+    ["Alpha", "10"],
+    ["Beta", "20"],
+  ]);
+});

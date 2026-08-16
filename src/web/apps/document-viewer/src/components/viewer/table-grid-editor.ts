@@ -1,8 +1,9 @@
 import type { TextContentCache } from "../../services/text-content-cache.js";
 import { withExtractedTableCells } from "../../services/table-extractor.js";
-import type { LinkRectUpdatedPayload, LinkedRectEntry, TableGridData } from "../../types/index.js";
+import type { LinkRectUpdatedPayload, TableGridData } from "../../types/index.js";
 import type { PdfViewer } from "./pdf-viewer.js";
 import type { RectRenderer } from "./rect-renderer.js";
+import { getLinkResizeCorner } from "./rect-utils.js";
 
 type Axis = "column" | "row";
 type TableUpdatedCallback = (payload: LinkRectUpdatedPayload) => void;
@@ -18,6 +19,7 @@ interface BoundaryDrag {
 
 const TABLE_SELECTOR = ".rect-draw__link--table";
 const LINE_SELECTOR = ".table-grid__line";
+const PREVIEW_SELECTOR = ".table-grid__preview, .table-grid__add";
 const MIN_GAP = 0.01;
 
 function copyTable(table: TableGridData): TableGridData {
@@ -34,6 +36,9 @@ function copyTable(table: TableGridData): TableGridData {
  */
 export class TableGridEditor {
   private _drag: BoundaryDrag | null = null;
+  private _activeRect: HTMLElement | null = null;
+  private _activeAxis: Axis = "column";
+  private readonly _axisByRectId = new Map<string, Axis>();
   private readonly _callbacks: TableUpdatedCallback[] = [];
 
   constructor(
@@ -46,7 +51,7 @@ export class TableGridEditor {
     element.addEventListener("mousedown", (event: MouseEvent) => this._onMouseDown(event), true);
     element.addEventListener("click", (event: MouseEvent) => this._onClick(event), true);
     element.addEventListener("contextmenu", (event: MouseEvent) => this._onContextMenu(event), true);
-    element.addEventListener("mouseleave", () => this._clearPreviews());
+    element.addEventListener("mouseleave", () => this._deactivateTable());
   }
 
   onTableUpdated(callback: TableUpdatedCallback): void {
@@ -55,6 +60,9 @@ export class TableGridEditor {
 
   private _onMouseDown(event: MouseEvent): void {
     if (event.button !== 0 || !(event.target instanceof Element)) return;
+    if (event.target.closest(
+      ".table-grid__add, .table-grid__remove, .table-grid__axis-toggle",
+    )) return;
     const line = event.target.closest<HTMLElement>(LINE_SELECTOR);
     if (!line || line.classList.contains("table-grid__preview")) return;
 
@@ -112,17 +120,77 @@ export class TableGridEditor {
     const rectElement = event.target.closest<HTMLElement>(TABLE_SELECTOR);
     const id = rectElement?.dataset["rectId"];
     if (!rectElement || !id || id.startsWith("temp-")) {
-      this._clearPreviews();
+      this._deactivateTable();
       return;
     }
 
-    const x = this._positionForEvent(event, rectElement, "column");
-    const y = this._positionForEvent(event, rectElement, "row");
-    this._showPreviews(rectElement, x, y);
+    this._activateTable(rectElement);
+    if (rectElement.classList.contains("rect-draw__link--editing")) {
+      this._clearPreviews(rectElement);
+      return;
+    }
+    // Keep the preview mounted while the pointer crosses onto its own add button.
+    // Removing it here makes the element disappear from under the pointer and causes
+    // a rapid remove/recreate flicker at the table edge.
+    if (event.target.closest(".table-grid__add")) return;
+    if (event.target.closest(
+      `${LINE_SELECTOR}, .table-grid__remove, .table-grid__axis-toggle`,
+    ) || getLinkResizeCorner(rectElement, event.clientX, event.clientY)) {
+      this._clearPreviews(rectElement);
+      return;
+    }
+
+    const position = this._positionForEvent(event, rectElement, this._activeAxis);
+    this._showPreview(rectElement, this._activeAxis, position);
   }
 
   private _onClick(event: MouseEvent): void {
     if (!(event.target instanceof Element)) return;
+    const menuButton = event.target.closest<HTMLElement>(".table-grid__axis-menu-button");
+    if (menuButton) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      const toggle = menuButton.closest<HTMLElement>(".table-grid__axis-toggle");
+      if (toggle) {
+        const open = !toggle.classList.contains("table-grid__axis-toggle--open");
+        toggle.classList.toggle("table-grid__axis-toggle--open", open);
+        menuButton.setAttribute("aria-expanded", String(open));
+      }
+      return;
+    }
+
+    const axisButton = event.target.closest<HTMLElement>(".table-grid__axis-button");
+    if (axisButton) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      const rectElement = axisButton.closest<HTMLElement>(TABLE_SELECTOR);
+      const axis = axisButton.dataset["axis"] as Axis | undefined;
+      if (rectElement && (axis === "column" || axis === "row")) {
+        this._activeRect = rectElement;
+        this._activeAxis = axis;
+        const id = rectElement.dataset["rectId"];
+        if (id) this._axisByRectId.set(id, axis);
+        this._applyActiveAxis();
+        this._clearPreviews(rectElement);
+        this._closeAxisMenu(rectElement);
+      }
+      return;
+    }
+
+    this._closeAxisMenu();
+
+    const remove = event.target.closest<HTMLElement>(".table-grid__remove");
+    if (remove) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      const rectElement = remove.closest<HTMLElement>(TABLE_SELECTOR);
+      const id = rectElement?.dataset["rectId"];
+      const axis = remove.dataset["axis"] as Axis | undefined;
+      const position = Number(remove.dataset["position"]);
+      if (id && axis && Number.isFinite(position)) this._removeBoundary(id, axis, position);
+      return;
+    }
+
     const add = event.target.closest<HTMLElement>(".table-grid__add");
     if (add) {
       event.preventDefault();
@@ -145,22 +213,8 @@ export class TableGridEditor {
     if (!(event.target instanceof Element)) return;
     const line = event.target.closest<HTMLElement>(LINE_SELECTOR);
     if (!line || line.classList.contains("table-grid__preview")) return;
-    const rectElement = line.closest<HTMLElement>(TABLE_SELECTOR);
-    const id = rectElement?.dataset["rectId"];
-    if (!id) return;
-
     event.preventDefault();
     event.stopImmediatePropagation();
-    const axis: Axis = line.classList.contains("table-grid__line--column") ? "column" : "row";
-    const position = Number(line.dataset["boundaryPosition"]);
-    const entry = this._renderer.getRectangle(id);
-    if (!entry?.table) return;
-    const table = copyTable(entry.table);
-    const boundaries = axis === "column" ? table.columnBoundaries : table.rowBoundaries;
-    const index = boundaries.findIndex((value) => Math.abs(value - position) < 0.000001);
-    if (index < 0) return;
-    boundaries.splice(index, 1);
-    this._commit(id, table);
   }
 
   private _addBoundary(id: string, axis: Axis, position: number): void {
@@ -171,6 +225,17 @@ export class TableGridEditor {
     if (boundaries.some((value) => Math.abs(value - position) < MIN_GAP)) return;
     boundaries.push(Math.min(1 - MIN_GAP, Math.max(MIN_GAP, position)));
     boundaries.sort((a, b) => a - b);
+    this._commit(id, table);
+  }
+
+  private _removeBoundary(id: string, axis: Axis, position: number): void {
+    const entry = this._renderer.getRectangle(id);
+    if (!entry?.table) return;
+    const table = copyTable(entry.table);
+    const boundaries = axis === "column" ? table.columnBoundaries : table.rowBoundaries;
+    const index = boundaries.findIndex((value) => Math.abs(value - position) < 0.000001);
+    if (index < 0) return;
+    boundaries.splice(index, 1);
     this._commit(id, table);
   }
 
@@ -192,13 +257,8 @@ export class TableGridEditor {
     for (const callback of this._callbacks) callback(payload);
   }
 
-  private _showPreviews(rectElement: HTMLElement, x: number, y: number): void {
+  private _showPreview(rectElement: HTMLElement, axis: Axis, position: number): void {
     this._clearPreviews(rectElement);
-    this._appendPreview(rectElement, "column", x);
-    this._appendPreview(rectElement, "row", y);
-  }
-
-  private _appendPreview(rectElement: HTMLElement, axis: Axis, position: number): void {
     const line = document.createElement("div");
     line.className = `table-grid__line table-grid__line--${axis} table-grid__preview`;
     if (axis === "column") line.style.left = `${position * 100}%`;
@@ -210,6 +270,7 @@ export class TableGridEditor {
     add.className = `table-grid__add table-grid__add--${axis}`;
     add.textContent = "+";
     add.title = `Add ${axis}`;
+    add.setAttribute("aria-label", `Add ${axis}`);
     add.dataset["axis"] = axis;
     add.dataset["position"] = String(position);
     if (axis === "column") add.style.left = `${position * 100}%`;
@@ -219,15 +280,88 @@ export class TableGridEditor {
 
   private _clearPreviews(except?: HTMLElement): void {
     for (const element of Array.from(
-      this._viewer.element.querySelectorAll<HTMLElement>(".table-grid__preview, .table-grid__add"),
+      this._viewer.element.querySelectorAll<HTMLElement>(PREVIEW_SELECTOR),
     )) {
       if (except && element.parentElement === except) continue;
       element.remove();
     }
     if (except) {
       for (const element of Array.from(
-        except.querySelectorAll<HTMLElement>(".table-grid__preview, .table-grid__add"),
+        except.querySelectorAll<HTMLElement>(PREVIEW_SELECTOR),
       )) element.remove();
+    }
+  }
+
+  private _activateTable(rectElement: HTMLElement): void {
+    if (this._activeRect === rectElement) {
+      this._ensureAxisToggle(rectElement);
+      return;
+    }
+    this._deactivateTable();
+    this._activeRect = rectElement;
+    const id = rectElement.dataset["rectId"];
+    this._activeAxis = id ? this._axisByRectId.get(id) ?? "column" : "column";
+    this._ensureAxisToggle(rectElement);
+    this._applyActiveAxis();
+  }
+
+  private _deactivateTable(): void {
+    if (this._drag) return;
+    this._clearPreviews();
+    this._activeRect?.classList.remove("table-grid--editing-rows");
+    this._activeRect?.querySelector(".table-grid__axis-toggle")?.remove();
+    this._activeRect = null;
+    this._activeAxis = "column";
+  }
+
+  private _ensureAxisToggle(rectElement: HTMLElement): void {
+    if (rectElement.querySelector(".table-grid__axis-toggle")) return;
+    const toggle = document.createElement("div");
+    toggle.className = "table-grid__axis-toggle";
+    const menuButton = document.createElement("button");
+    menuButton.type = "button";
+    menuButton.className = "table-grid__axis-menu-button";
+    menuButton.textContent = "•••";
+    menuButton.title = "Table grid options";
+    menuButton.setAttribute("aria-label", "Table grid options");
+    menuButton.setAttribute("aria-expanded", "false");
+    toggle.appendChild(menuButton);
+
+    const options = document.createElement("div");
+    options.className = "table-grid__axis-options";
+    options.setAttribute("role", "group");
+    options.setAttribute("aria-label", "Edit table boundaries");
+    for (const axis of ["column", "row"] as const) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "table-grid__axis-button";
+      button.textContent = axis === "column" ? "Cols" : "Rows";
+      button.title = axis === "column" ? "Edit columns" : "Edit rows";
+      button.dataset["axis"] = axis;
+      options.appendChild(button);
+    }
+    toggle.appendChild(options);
+    rectElement.appendChild(toggle);
+    this._applyActiveAxis();
+  }
+
+  private _closeAxisMenu(rectElement = this._activeRect): void {
+    const toggle = rectElement?.querySelector<HTMLElement>(".table-grid__axis-toggle");
+    if (!toggle) return;
+    toggle.classList.remove("table-grid__axis-toggle--open");
+    toggle.querySelector(".table-grid__axis-menu-button")?.setAttribute("aria-expanded", "false");
+  }
+
+  private _applyActiveAxis(): void {
+    const rectElement = this._activeRect;
+    if (!rectElement) return;
+    rectElement.classList.toggle("table-grid--editing-rows", this._activeAxis === "row");
+    for (const button of Array.from(
+      rectElement.querySelectorAll<HTMLElement>(".table-grid__axis-button"),
+    )) {
+      const active = button.dataset["axis"] === this._activeAxis;
+      button.classList.toggle("table-grid__axis-button--active", active);
+      button.setAttribute("aria-pressed", String(active));
     }
   }
 
