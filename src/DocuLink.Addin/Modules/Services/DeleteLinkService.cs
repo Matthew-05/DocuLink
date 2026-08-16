@@ -274,7 +274,7 @@ namespace DocuLink.Addin.Modules.Services
                             if (!SameCellAddress(lr, cellSheet, cellAddress))
                                 continue;
 
-                            Excel.Range liveCell = LinkCellResolver.TryResolveCellViaXmlMap(
+                            Excel.Range liveCell = LinkCellResolver.TryResolveCellViaTracker(
                                 workbook,
                                 lr.LinkedCell.TrackIndex);
 

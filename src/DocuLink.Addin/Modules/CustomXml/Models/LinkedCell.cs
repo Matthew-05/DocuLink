@@ -15,8 +15,8 @@ namespace DocuLink.Addin.Modules.CustomXml.Models
 
         /// <summary>
         /// Stable, monotonically-increasing integer assigned at link creation.
-        /// Maps to the XmlMap XPath "/DocuLinkCellTrack/Link[n]" used for
-        /// position tracking. Never reused after a link is deleted.
+        /// Selects the row on DocuLink's very-hidden formula tracking sheet used to
+        /// follow structural cell moves. Never reused after a link is deleted.
         /// </summary>
         public int TrackIndex { get; set; }
     }

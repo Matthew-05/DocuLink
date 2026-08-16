@@ -693,9 +693,9 @@ namespace DocuLink.Addin.Modules.WebView
 
                 // Must be the selection's workbook. This used to read ActiveWorkbook, so if
                 // focus moved during the run — matching is slow enough to invite that — the
-                // link records and XmlMap bindings went to the newly active workbook while
-                // the target cells stayed in this one. The bindings then failed and the other
-                // workbook was left holding link entries for cells it does not own.
+                // link records and formula tracking bindings went to the newly active
+                // workbook while the target cells stayed in this one. The bindings then
+                // failed and the other workbook was left holding entries for cells it does not own.
                 var workbook = GetSelectedWorkbook();
                 if (workbook == null || _selectedRange == null)
                 {

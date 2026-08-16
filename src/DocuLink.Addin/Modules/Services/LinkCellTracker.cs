@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Runtime.InteropServices;
 using DocuLink.Addin.Modules;
@@ -10,117 +11,145 @@ using Excel = Microsoft.Office.Interop.Excel;
 namespace DocuLink.Addin.Modules.Services
 {
     /// <summary>
-    /// Manages Excel XmlMap-based cell position tracking. Each linked cell is
-    /// bound to a dedicated XmlMap named "DocuLink_{trackIndex}" via a trivial
-    /// single-element schema. Excel's internal range-reference machinery keeps
-    /// the binding accurate through cut/paste moves and sheet renames.
+    /// Tracks linked cells through direct-reference formulas stored on an
+    /// <c>xlSheetVeryHidden</c> worksheet. Excel rewrites those references for
+    /// cut/paste moves, inserted or deleted rows and columns, and worksheet renames,
+    /// without imposing the filtering restrictions of mapped XML cells.
     /// </summary>
     internal static class LinkCellTracker
     {
-        private const string MapNamePrefix = "DocuLink_";
+        private const string TrackerSheetBaseName = "_DocuLinkTracking";
+        private const string TrackerSheetSentinel = "DocuLink Formula Tracking v1";
+        private const string LegacyMapNamePrefix = "DocuLink_";
+        private const string LegacyLinkXPath = "/DocuLinkLink";
+        private const int TrackIndexColumn = 1;
+        private const int FormulaColumn = 2;
+        private const int FirstTrackerRow = 2;
+        private const int MaximumTrackIndex = 1048574;
 
-        // Minimal schema — one string element per map; each map is unique to one link.
-        private const string MapSchemaXml =
-            "<?xml version=\"1.0\" encoding=\"utf-8\"?>" +
-            "<xs:schema xmlns:xs=\"http://www.w3.org/2001/XMLSchema\">" +
-            "<xs:element name=\"DocuLinkLink\" type=\"xs:string\"/>" +
-            "</xs:schema>";
-
-        private const string LinkXPath = "/DocuLinkLink";
-
-        // ── Public API ────────────────────────────────────────────────────────
-
-        /// <summary>
-        /// Returns the next available TrackIndex for a new link by inspecting the
-        /// largest existing TrackIndex and incrementing it.
-        /// </summary>
         public static int NextTrackIndex(IEnumerable<LinkedRectangle> linkedRectangles)
         {
             if (linkedRectangles == null) throw new ArgumentNullException(nameof(linkedRectangles));
+
             int max = 0;
-            foreach (LinkedRectangle r in linkedRectangles)
-                if (r.LinkedCell.TrackIndex > max)
-                    max = r.LinkedCell.TrackIndex;
-            return max + 1;
+            foreach (LinkedRectangle rectangle in linkedRectangles)
+                if (rectangle.LinkedCell.TrackIndex > max)
+                    max = rectangle.LinkedCell.TrackIndex;
+
+            return checked(max + 1);
+        }
+
+        public static void BindCell(Excel.Workbook workbook, Excel.Range cell, int trackIndex)
+        {
+            ValidateBindingArguments(workbook, cell, trackIndex);
+            WorkbookProtectionGuard.ThrowIfStructureProtected(workbook);
+
+            ExecuteWorkbookMutation(workbook, () =>
+            {
+                Excel.Worksheet trackerSheet = EnsureTrackingSheet(workbook);
+                WriteBinding(trackerSheet, cell, trackIndex);
+                RemoveLegacyMap(workbook, trackIndex);
+            });
+        }
+
+        public static void UnbindCell(Excel.Workbook workbook, Excel.Range cell, int trackIndex)
+        {
+            if (trackIndex <= 0) return;
+            if (workbook != null)
+                WorkbookProtectionGuard.ThrowIfStructureProtected(workbook);
+            if (workbook == null) return;
+
+            ExecuteWorkbookMutation(workbook, () =>
+            {
+                Excel.Worksheet trackerSheet = FindTrackingSheet(workbook);
+                if (trackerSheet != null && trackIndex <= MaximumTrackIndex)
+                {
+                    int row = GetTrackerRow(trackIndex);
+                    ((Excel.Range)trackerSheet.Cells[row, TrackIndexColumn]).ClearContents();
+                    ((Excel.Range)trackerSheet.Cells[row, FormulaColumn]).ClearContents();
+                    DeleteTrackingSheetIfEmpty(trackerSheet);
+                }
+
+                RemoveLegacyMap(workbook, trackIndex);
+            });
         }
 
         /// <summary>
-        /// Binds <paramref name="cell"/> to the XmlMap for <paramref name="trackIndex"/>,
-        /// creating the map if it does not yet exist.
+        /// Creates formula trackers for persisted links that do not have one, then removes
+        /// the old XML maps. Existing broken formula references are not rebuilt from their
+        /// stored address because <c>#REF!</c> means the tracked cell was deleted.
         /// </summary>
-        public static void BindCell(Excel.Workbook workbook, Excel.Range cell, int trackIndex)
+        public static void EnsureBindings(
+            Excel.Workbook workbook,
+            IEnumerable<LinkedRectangle> linkedRectangles)
         {
             if (workbook == null) throw new ArgumentNullException(nameof(workbook));
-            if (cell == null) throw new ArgumentNullException(nameof(cell));
-            if (trackIndex <= 0) throw new ArgumentOutOfRangeException(nameof(trackIndex));
+            if (linkedRectangles == null) throw new ArgumentNullException(nameof(linkedRectangles));
+
+            List<LinkedRectangle> distinctLinks = linkedRectangles
+                .Where(link => link?.LinkedCell != null && link.LinkedCell.TrackIndex > 0)
+                .GroupBy(link => link.LinkedCell.TrackIndex)
+                .Select(group => group.First())
+                .ToList();
+            var liveTrackIndexes = new HashSet<int>(
+                distinctLinks.Select(link => link.LinkedCell.TrackIndex));
+            Excel.Worksheet trackerSheet = FindTrackingSheet(workbook);
+
+            bool hasMissingBindings = distinctLinks.Any(link =>
+                !BindingExists(trackerSheet, link.LinkedCell.TrackIndex));
+            bool hasOrphanBindings = trackerSheet != null
+                && FindStoredTrackIndexes(trackerSheet).Any(index => !liveTrackIndexes.Contains(index));
+            bool visibilityNeedsRepair = trackerSheet != null
+                && trackerSheet.Visible != Excel.XlSheetVisibility.xlSheetVeryHidden;
+            bool hasLegacyMaps = HasLegacyMaps(workbook);
+
+            if (!hasMissingBindings && !hasOrphanBindings
+                && !visibilityNeedsRepair && !hasLegacyMaps)
+                return;
 
             WorkbookProtectionGuard.ThrowIfStructureProtected(workbook);
 
-            Excel.XmlMap map = EnsureMap(workbook, trackIndex, out bool created);
-            ConfigureMapFormatting(map);
-
-            // If the map was orphaned (e.g. prior delete that left the XmlMap behind),
-            // its XPath is still bound to the old cell. Excel rejects a second SetValue
-            // on the same map+XPath, so clear the stale binding first.
-            if (!created)
+            ExecuteWorkbookMutation(workbook, () =>
             {
-                Excel.Range stale = FindRangeForMap(workbook, map);
-                if (stale != null)
-                {
-                    try { stale.XPath.Clear(); }
-                    catch (COMException) { }
-                }
-            }
+                trackerSheet = FindTrackingSheet(workbook);
 
-            Excel.Application app = null;
-            bool restoreDisplayAlerts = false;
-            bool previousDisplayAlerts = true;
-
-            try
-            {
-                app = workbook.Application as Excel.Application;
-                if (app != null)
+                foreach (LinkedRectangle link in distinctLinks)
                 {
-                    previousDisplayAlerts = app.DisplayAlerts;
-                    app.DisplayAlerts = false;
-                    restoreDisplayAlerts = true;
+                    int trackIndex = link.LinkedCell.TrackIndex;
+                    if (BindingExists(trackerSheet, trackIndex))
+                        continue;
+
+                    Excel.Range target = FindRangeForLegacyMap(
+                        workbook,
+                        FindLegacyMap(workbook, trackIndex));
+                    if (target == null)
+                        target = ResolveStoredCell(workbook, link.LinkedCell);
+                    if (target == null)
+                        continue;
+
+                    trackerSheet = trackerSheet ?? EnsureTrackingSheet(workbook);
+                    WriteBinding(trackerSheet, target, trackIndex);
                 }
 
-                cell.XPath.SetValue(map, LinkXPath, Type.Missing, false);
-            }
-            finally
-            {
-                if (restoreDisplayAlerts && app != null)
+                if (trackerSheet != null)
                 {
-                    try { app.DisplayAlerts = previousDisplayAlerts; }
-                    catch (COMException) { }
+                    foreach (int orphanTrackIndex in FindStoredTrackIndexes(trackerSheet)
+                        .Where(index => !liveTrackIndexes.Contains(index))
+                        .ToList())
+                    {
+                        int row = GetTrackerRow(orphanTrackIndex);
+                        ((Excel.Range)trackerSheet.Cells[row, TrackIndexColumn]).ClearContents();
+                        ((Excel.Range)trackerSheet.Cells[row, FormulaColumn]).ClearContents();
+                    }
+
+                    EnsureTrackingSheetHidden(workbook, trackerSheet);
+                    DeleteTrackingSheetIfEmpty(trackerSheet);
                 }
-            }
+
+                RemoveAllLegacyMaps(workbook);
+            });
         }
 
-        /// <summary>
-        /// Removes the XPath binding from <paramref name="cell"/> and deletes the
-        /// XmlMap for <paramref name="trackIndex"/> from the workbook.
-        /// </summary>
-        public static void UnbindCell(Excel.Workbook workbook, Excel.Range cell, int trackIndex)
-        {
-            if (workbook != null)
-                WorkbookProtectionGuard.ThrowIfStructureProtected(workbook);
-
-            if (cell != null)
-            {
-                try { cell.XPath.Clear(); }
-                catch (COMException) { }
-            }
-
-            if (workbook == null) return;
-
-            Excel.XmlMap map = FindMap(workbook, trackIndex);
-            try { map?.Delete(); }
-            catch (COMException) { }
-        }
-
-        /// <summary>A linked cell discovered inside a selection, with its TrackIndex.</summary>
         public sealed class TrackedCell
         {
             public TrackedCell(int trackIndex, Excel.Range cell)
@@ -134,86 +163,100 @@ namespace DocuLink.Addin.Modules.Services
             public Excel.Range Cell { get; }
         }
 
-        /// <summary>
-        /// Returns every DocuLink-bound cell that lies inside <paramref name="target"/>,
-        /// ordered by row then column. Enumerates the workbook's XmlMaps once, so it is
-        /// the cheap way to resolve a multi-cell selection.
-        /// </summary>
         public static IList<TrackedCell> FindTrackedCellsInRange(Excel.Range target)
         {
             var found = new List<TrackedCell>();
             if (target == null) return found;
 
             Excel.Workbook workbook;
-            Excel.Application app;
+            Excel.Application application;
             try
             {
                 var worksheet = target.Worksheet as Excel.Worksheet;
-                if (worksheet == null) return found;
-                workbook = worksheet.Parent as Excel.Workbook;
-                if (workbook == null) return found;
-                app = workbook.Application as Excel.Application;
-                if (app == null) return found;
+                workbook = worksheet?.Parent as Excel.Workbook;
+                application = workbook?.Application as Excel.Application;
+                if (workbook == null || application == null) return found;
             }
-            catch (COMException) { return found; }
-
-            // Reverse lookup: probe each DocuLink XmlMap via XmlDataQuery rather than
-            // calling cell.XPath.Map, which throws a COMException on unbound cells in
-            // some Excel versions.
-            foreach (Excel.XmlMap map in workbook.XmlMaps)
+            catch (COMException)
             {
-                string name;
-                try { name = map.Name; } catch (COMException) { continue; }
+                return found;
+            }
 
-                if (string.IsNullOrEmpty(name) ||
-                    !name.StartsWith(MapNamePrefix, StringComparison.Ordinal))
-                    continue;
+            Excel.Worksheet trackerSheet = FindTrackingSheet(workbook);
+            if (trackerSheet == null) return found;
 
-                if (!int.TryParse(name.Substring(MapNamePrefix.Length), out int idx) || idx <= 0)
-                    continue;
-
-                Excel.Range boundRange = FindRangeForMap(workbook, map);
-                if (boundRange == null) continue;
+            foreach (int trackIndex in FindStoredTrackIndexes(trackerSheet))
+            {
+                Excel.Range trackedCell = TryResolveCell(workbook, trackIndex, out _);
+                if (trackedCell == null) continue;
 
                 try
                 {
-                    // Intersect throws when the ranges live on different sheets.
-                    if (app.Intersect(boundRange, target) == null) continue;
+                    if (application.Intersect(trackedCell, target) == null) continue;
                 }
-                catch (COMException) { continue; }
+                catch (COMException)
+                {
+                    continue;
+                }
 
-                found.Add(new TrackedCell(idx, boundRange));
+                found.Add(new TrackedCell(trackIndex, trackedCell));
             }
 
-            found.Sort((a, b) =>
+            found.Sort((left, right) =>
             {
                 try
                 {
-                    int rowCompare = a.Cell.Row.CompareTo(b.Cell.Row);
-                    return rowCompare != 0 ? rowCompare : a.Cell.Column.CompareTo(b.Cell.Column);
+                    int rowCompare = left.Cell.Row.CompareTo(right.Cell.Row);
+                    return rowCompare != 0
+                        ? rowCompare
+                        : left.Cell.Column.CompareTo(right.Cell.Column);
                 }
-                catch (COMException) { return 0; }
+                catch (COMException)
+                {
+                    return 0;
+                }
             });
 
             return found;
         }
 
-        /// <summary>
-        /// Returns the TrackIndex encoded in the XmlMap bound to <paramref name="cell"/>,
-        /// or 0 if the cell carries no DocuLink XPath binding.
-        /// </summary>
         public static int FindTrackIndexForCell(Excel.Range cell)
         {
             IList<TrackedCell> tracked = FindTrackedCellsInRange(cell);
             return tracked.Count > 0 ? tracked[0].TrackIndex : 0;
         }
 
-        /// <summary>
-        /// Queries each worksheet for the current range of every linked rectangle's
-        /// XmlMap binding and updates the stored <see cref="LinkedCell.SheetName"/>
-        /// and <see cref="LinkedCell.Address"/> in the workbook's Custom XML part.
-        /// Call this on <c>WorkbookBeforeSave</c> to keep persisted addresses current.
-        /// </summary>
+        internal static Excel.Range TryResolveCell(
+            Excel.Workbook workbook,
+            int trackIndex,
+            out bool bindingExists)
+        {
+            bindingExists = false;
+            if (workbook == null || trackIndex <= 0 || trackIndex > MaximumTrackIndex)
+                return null;
+
+            Excel.Worksheet trackerSheet = FindTrackingSheet(workbook);
+            if (trackerSheet == null) return null;
+
+            Excel.Range formulaCell =
+                (Excel.Range)trackerSheet.Cells[GetTrackerRow(trackIndex), FormulaColumn];
+            string formula;
+            try
+            {
+                formula = Convert.ToString(formulaCell.Formula, CultureInfo.InvariantCulture);
+            }
+            catch (COMException)
+            {
+                return null;
+            }
+
+            bindingExists = !string.IsNullOrWhiteSpace(formula)
+                && formula.StartsWith("=", StringComparison.Ordinal);
+            if (!bindingExists) return null;
+
+            return ResolveReferenceFormula(workbook, formula);
+        }
+
         public static void SyncAllPositions(Excel.Workbook workbook)
         {
             if (workbook == null)
@@ -226,97 +269,350 @@ namespace DocuLink.Addin.Modules.Services
 
             using (DocuLinkLog.Time("SyncAllPositions total"))
             {
-            WorkbookProtectionGuard.ThrowIfStructureProtected(workbook);
+                WorkbookProtectionGuard.ThrowIfStructureProtected(workbook);
 
-            DocuLinkLog.Trace("getting storage session");
-            WorkbookStorageSession session = Globals.ThisAddIn.GetStorageSession(workbook);
+                WorkbookStorageSession session = Globals.ThisAddIn.GetStorageSession(workbook);
+                IList<LinkedRectangle> links = session.GetLinks();
+                EnsureBindings(workbook, links);
 
-            DocuLinkLog.Trace("loading links");
-            IList<LinkedRectangle> links = session.GetLinks();
-            DocuLinkLog.Trace($"loaded links count={links.Count}");
+                bool anyChanged = false;
+                int scanned = 0;
+                int missingBindings = 0;
+                int brokenReferences = 0;
+                int changed = 0;
 
-            bool anyChanged = false;
-            int scanned = 0;
-            int missingMaps = 0;
-            int missingRanges = 0;
-            int changed = 0;
-
-            foreach (LinkedRectangle linkedRect in links)
-            {
-                scanned++;
-                int trackIndex = linkedRect.LinkedCell.TrackIndex;
-                Excel.XmlMap map = FindMap(workbook, trackIndex);
-                if (map == null)
+                foreach (LinkedRectangle linkedRectangle in links)
                 {
-                    missingMaps++;
-                    continue;
-                }
+                    scanned++;
+                    Excel.Range foundRange = TryResolveCell(
+                        workbook,
+                        linkedRectangle.LinkedCell.TrackIndex,
+                        out bool bindingExists);
+                    if (foundRange == null)
+                    {
+                        if (bindingExists) brokenReferences++;
+                        else missingBindings++;
+                        continue;
+                    }
 
-                Excel.Range foundRange = FindRangeForMap(workbook, map);
-                if (foundRange == null)
-                {
-                    missingRanges++;
-                    continue;
-                }
+                    string newSheet = ((Excel.Worksheet)foundRange.Worksheet).Name;
+                    string newAddress = foundRange.Address;
+                    if (string.Equals(newSheet, linkedRectangle.LinkedCell.SheetName, StringComparison.Ordinal)
+                        && string.Equals(newAddress, linkedRectangle.LinkedCell.Address, StringComparison.Ordinal))
+                        continue;
 
-                string newSheet = ((Excel.Worksheet)foundRange.Worksheet).Name;
-                string newAddress = foundRange.Address;
-
-                if (!string.Equals(newSheet, linkedRect.LinkedCell.SheetName, StringComparison.Ordinal) ||
-                    !string.Equals(newAddress, linkedRect.LinkedCell.Address, StringComparison.Ordinal))
-                {
-                    linkedRect.LinkedCell.SheetName = newSheet;
-                    linkedRect.LinkedCell.Address = newAddress;
+                    linkedRectangle.LinkedCell.SheetName = newSheet;
+                    linkedRectangle.LinkedCell.Address = newAddress;
                     anyChanged = true;
                     changed++;
                 }
-            }
 
-            DocuLinkLog.Trace($"scan done scanned={scanned} changed={changed} missingMaps={missingMaps} missingRanges={missingRanges}");
+                DocuLinkLog.Trace(
+                    $"scan done scanned={scanned} changed={changed} "
+                    + $"missingBindings={missingBindings} brokenReferences={brokenReferences}");
 
-            if (anyChanged)
-            {
-                DocuLinkLog.Trace("saving updated link positions");
-                session.SetLinks(links.ToList());
-                DocuLinkLog.Trace("saved updated link positions");
+                if (anyChanged)
+                    session.SetLinks(links.ToList());
             }
 
             DocuLinkLog.Trace("EXIT");
+        }
+
+        private static void ValidateBindingArguments(
+            Excel.Workbook workbook,
+            Excel.Range cell,
+            int trackIndex)
+        {
+            if (workbook == null) throw new ArgumentNullException(nameof(workbook));
+            if (cell == null) throw new ArgumentNullException(nameof(cell));
+            if (trackIndex <= 0 || trackIndex > MaximumTrackIndex)
+                throw new ArgumentOutOfRangeException(nameof(trackIndex));
+        }
+
+        private static int GetTrackerRow(int trackIndex)
+        {
+            return checked(trackIndex + 1);
+        }
+
+        private static void WriteBinding(
+            Excel.Worksheet trackerSheet,
+            Excel.Range target,
+            int trackIndex)
+        {
+            int row = GetTrackerRow(trackIndex);
+            ((Excel.Range)trackerSheet.Cells[row, TrackIndexColumn]).Value2 = trackIndex;
+            ((Excel.Range)trackerSheet.Cells[row, FormulaColumn]).Formula =
+                BuildReferenceFormula(target);
+        }
+
+        private static string BuildReferenceFormula(Excel.Range target)
+        {
+            string sheetName = ((Excel.Worksheet)target.Worksheet).Name;
+            string escapedSheetName = sheetName.Replace("'", "''");
+            return $"='{escapedSheetName}'!{target.Address}";
+        }
+
+        private static Excel.Range ResolveReferenceFormula(
+            Excel.Workbook workbook,
+            string formula)
+        {
+            if (string.IsNullOrWhiteSpace(formula)
+                || !formula.StartsWith("=", StringComparison.Ordinal)
+                || formula.IndexOf("#REF!", StringComparison.OrdinalIgnoreCase) >= 0)
+                return null;
+
+            string reference = formula.Substring(1).Trim();
+            int separator = reference.LastIndexOf('!');
+            if (separator <= 0 || separator >= reference.Length - 1)
+                return null;
+
+            string sheetToken = reference.Substring(0, separator).Trim();
+            string address = reference.Substring(separator + 1).Trim();
+            if (address.StartsWith("@", StringComparison.Ordinal))
+                address = address.Substring(1);
+
+            if (sheetToken.StartsWith("'", StringComparison.Ordinal)
+                && sheetToken.EndsWith("'", StringComparison.Ordinal)
+                && sheetToken.Length >= 2)
+            {
+                sheetToken = sheetToken.Substring(1, sheetToken.Length - 2)
+                    .Replace("''", "'");
+            }
+
+            if (sheetToken.IndexOf("[", StringComparison.Ordinal) >= 0
+                || sheetToken.IndexOf("]", StringComparison.Ordinal) >= 0)
+                return null;
+
+            Excel.Worksheet worksheet = FindWorksheet(workbook, sheetToken);
+            if (worksheet == null) return null;
+
+            try
+            {
+                return worksheet.Range[address] as Excel.Range;
+            }
+            catch (COMException)
+            {
+                return null;
             }
         }
 
-        // ── Private helpers ───────────────────────────────────────────────────
-
-        private static Excel.XmlMap EnsureMap(Excel.Workbook workbook, int trackIndex, out bool created)
+        private static Excel.Range ResolveStoredCell(
+            Excel.Workbook workbook,
+            LinkedCell linkedCell)
         {
-            Excel.XmlMap existing = FindMap(workbook, trackIndex);
+            if (linkedCell == null) return null;
+
+            Excel.Worksheet worksheet = FindWorksheet(workbook, linkedCell.SheetName);
+            if (worksheet == null) return null;
+
+            try
+            {
+                return worksheet.Range[linkedCell.Address] as Excel.Range;
+            }
+            catch (COMException)
+            {
+                return null;
+            }
+        }
+
+        private static Excel.Worksheet FindWorksheet(
+            Excel.Workbook workbook,
+            string sheetName)
+        {
+            if (string.IsNullOrWhiteSpace(sheetName)) return null;
+
+            foreach (Excel.Worksheet worksheet in workbook.Worksheets)
+            {
+                try
+                {
+                    if (string.Equals(worksheet.Name, sheetName, StringComparison.OrdinalIgnoreCase))
+                        return worksheet;
+                }
+                catch (COMException)
+                {
+                }
+            }
+
+            return null;
+        }
+
+        private static Excel.Worksheet FindTrackingSheet(Excel.Workbook workbook)
+        {
+            foreach (Excel.Worksheet worksheet in workbook.Worksheets)
+            {
+                try
+                {
+                    string sentinel = Convert.ToString(
+                        ((Excel.Range)worksheet.Cells[1, 1]).Value2,
+                        CultureInfo.InvariantCulture);
+                    if (string.Equals(sentinel, TrackerSheetSentinel, StringComparison.Ordinal))
+                        return worksheet;
+                }
+                catch (COMException)
+                {
+                }
+            }
+
+            return null;
+        }
+
+        private static Excel.Worksheet EnsureTrackingSheet(Excel.Workbook workbook)
+        {
+            Excel.Worksheet existing = FindTrackingSheet(workbook);
             if (existing != null)
             {
-                created = false;
+                EnsureTrackingSheetHidden(workbook, existing);
                 return existing;
             }
 
-            Excel.XmlMap map = workbook.XmlMaps.Add(MapSchemaXml, Type.Missing);
-            map.Name = MapNamePrefix + trackIndex;
-            ConfigureMapFormatting(map);
-            created = true;
-            return map;
-        }
+            Excel.Worksheet previouslyActive = workbook.ActiveSheet as Excel.Worksheet;
+            object after = workbook.Worksheets[workbook.Worksheets.Count];
+            var trackerSheet = (Excel.Worksheet)workbook.Worksheets.Add(
+                Type.Missing,
+                after,
+                Type.Missing,
+                Type.Missing);
+            trackerSheet.Name = FindAvailableTrackerSheetName(workbook);
+            ((Excel.Range)trackerSheet.Cells[1, 1]).Value2 = TrackerSheetSentinel;
+            ((Excel.Range)trackerSheet.Cells[1, 2]).Value2 = "Reference";
 
-        private static void ConfigureMapFormatting(Excel.XmlMap map)
-        {
-            if (map == null) return;
-
-            try { map.PreserveNumberFormatting = true; }
+            try { previouslyActive?.Activate(); }
             catch (COMException) { }
 
-            try { map.AdjustColumnWidth = false; }
-            catch (COMException) { }
+            EnsureTrackingSheetHidden(workbook, trackerSheet);
+            return trackerSheet;
         }
 
-        private static Excel.XmlMap FindMap(Excel.Workbook workbook, int trackIndex)
+        private static string FindAvailableTrackerSheetName(Excel.Workbook workbook)
         {
-            string targetName = MapNamePrefix + trackIndex;
+            for (int suffix = 0; suffix < 1000; suffix++)
+            {
+                string candidate = suffix == 0
+                    ? TrackerSheetBaseName
+                    : TrackerSheetBaseName + "_" + suffix.ToString(CultureInfo.InvariantCulture);
+                if (FindWorksheet(workbook, candidate) == null)
+                    return candidate;
+            }
+
+            throw new InvalidOperationException("Unable to allocate a DocuLink tracking worksheet name.");
+        }
+
+        private static void EnsureTrackingSheetHidden(
+            Excel.Workbook workbook,
+            Excel.Worksheet trackerSheet)
+        {
+            if (trackerSheet.Visible == Excel.XlSheetVisibility.xlSheetVeryHidden)
+                return;
+
+            try
+            {
+                string activeName = (workbook.ActiveSheet as Excel.Worksheet)?.Name;
+                if (string.Equals(activeName, trackerSheet.Name, StringComparison.Ordinal))
+                {
+                    foreach (Excel.Worksheet worksheet in workbook.Worksheets)
+                    {
+                        if (string.Equals(worksheet.Name, trackerSheet.Name, StringComparison.Ordinal))
+                            continue;
+                        if (worksheet.Visible != Excel.XlSheetVisibility.xlSheetVisible)
+                            continue;
+                        worksheet.Activate();
+                        break;
+                    }
+                }
+            }
+            catch (COMException)
+            {
+            }
+
+            trackerSheet.Visible = Excel.XlSheetVisibility.xlSheetVeryHidden;
+        }
+
+        private static bool BindingExists(Excel.Worksheet trackerSheet, int trackIndex)
+        {
+            if (trackerSheet == null || trackIndex <= 0 || trackIndex > MaximumTrackIndex)
+                return false;
+
+            try
+            {
+                string formula = Convert.ToString(
+                    ((Excel.Range)trackerSheet.Cells[GetTrackerRow(trackIndex), FormulaColumn]).Formula,
+                    CultureInfo.InvariantCulture);
+                return !string.IsNullOrWhiteSpace(formula)
+                    && formula.StartsWith("=", StringComparison.Ordinal);
+            }
+            catch (COMException)
+            {
+                return false;
+            }
+        }
+
+        private static IList<int> FindStoredTrackIndexes(Excel.Worksheet trackerSheet)
+        {
+            var indexes = new List<int>();
+            if (trackerSheet == null) return indexes;
+
+            int lastRow;
+            try
+            {
+                Excel.Range usedRange = trackerSheet.UsedRange;
+                lastRow = usedRange.Row + usedRange.Rows.Count - 1;
+            }
+            catch (COMException)
+            {
+                return indexes;
+            }
+
+            for (int row = FirstTrackerRow; row <= lastRow; row++)
+            {
+                try
+                {
+                    object raw = ((Excel.Range)trackerSheet.Cells[row, TrackIndexColumn]).Value2;
+                    if (raw == null) continue;
+                    int trackIndex = Convert.ToInt32(raw, CultureInfo.InvariantCulture);
+                    if (trackIndex > 0 && trackIndex <= MaximumTrackIndex)
+                        indexes.Add(trackIndex);
+                }
+                catch (Exception ex) when (ex is COMException || ex is FormatException
+                    || ex is InvalidCastException || ex is OverflowException)
+                {
+                }
+            }
+
+            return indexes;
+        }
+
+        private static void DeleteTrackingSheetIfEmpty(Excel.Worksheet trackerSheet)
+        {
+            if (trackerSheet == null || FindStoredTrackIndexes(trackerSheet).Count > 0)
+                return;
+
+            // Excel rejects Delete on an xlSheetVeryHidden worksheet. Mutations run with
+            // screen updating and events disabled, so briefly revealing it is not visible
+            // to the user and does not disturb the active worksheet.
+            trackerSheet.Visible = Excel.XlSheetVisibility.xlSheetVisible;
+            trackerSheet.Delete();
+        }
+
+        private static bool HasLegacyMaps(Excel.Workbook workbook)
+        {
+            foreach (Excel.XmlMap map in workbook.XmlMaps)
+            {
+                try
+                {
+                    if (map.Name?.StartsWith(LegacyMapNamePrefix, StringComparison.Ordinal) == true)
+                        return true;
+                }
+                catch (COMException)
+                {
+                }
+            }
+
+            return false;
+        }
+
+        private static Excel.XmlMap FindLegacyMap(Excel.Workbook workbook, int trackIndex)
+        {
+            string targetName = LegacyMapNamePrefix + trackIndex.ToString(CultureInfo.InvariantCulture);
             foreach (Excel.XmlMap map in workbook.XmlMaps)
             {
                 try
@@ -324,29 +620,110 @@ namespace DocuLink.Addin.Modules.Services
                     if (string.Equals(map.Name, targetName, StringComparison.Ordinal))
                         return map;
                 }
-                catch (COMException) { }
+                catch (COMException)
+                {
+                }
             }
+
             return null;
         }
 
-        /// <summary>
-        /// Iterates all worksheets calling <c>XmlDataQuery</c> with <paramref name="map"/>
-        /// and returns the first range found, or <c>null</c> if the binding is not present
-        /// on any sheet.
-        /// </summary>
-        private static Excel.Range FindRangeForMap(Excel.Workbook workbook, Excel.XmlMap map)
+        private static Excel.Range FindRangeForLegacyMap(
+            Excel.Workbook workbook,
+            Excel.XmlMap map)
         {
-            foreach (Excel.Worksheet ws in workbook.Worksheets)
+            if (map == null) return null;
+
+            foreach (Excel.Worksheet worksheet in workbook.Worksheets)
             {
                 try
                 {
-                    object result = ws.XmlDataQuery(LinkXPath, Type.Missing, map);
+                    object result = worksheet.XmlDataQuery(
+                        LegacyLinkXPath,
+                        Type.Missing,
+                        map);
                     if (result is Excel.Range range)
                         return range;
                 }
+                catch (COMException)
+                {
+                }
+            }
+
+            return null;
+        }
+
+        private static void RemoveLegacyMap(Excel.Workbook workbook, int trackIndex)
+        {
+            Excel.XmlMap map = FindLegacyMap(workbook, trackIndex);
+            if (map == null) return;
+
+            Excel.Range mappedRange = FindRangeForLegacyMap(workbook, map);
+            if (mappedRange != null)
+            {
+                try { mappedRange.XPath.Clear(); }
                 catch (COMException) { }
             }
-            return null;
+
+            try { map.Delete(); }
+            catch (COMException) { }
+        }
+
+        private static void RemoveAllLegacyMaps(Excel.Workbook workbook)
+        {
+            for (int index = workbook.XmlMaps.Count; index >= 1; index--)
+            {
+                Excel.XmlMap map;
+                try { map = workbook.XmlMaps[index]; }
+                catch (COMException) { continue; }
+
+                string name;
+                try { name = map.Name; }
+                catch (COMException) { continue; }
+                if (name?.StartsWith(LegacyMapNamePrefix, StringComparison.Ordinal) != true)
+                    continue;
+
+                Excel.Range mappedRange = FindRangeForLegacyMap(workbook, map);
+                if (mappedRange != null)
+                {
+                    try { mappedRange.XPath.Clear(); }
+                    catch (COMException) { }
+                }
+
+                try { map.Delete(); }
+                catch (COMException) { }
+            }
+        }
+
+        private static void ExecuteWorkbookMutation(Excel.Workbook workbook, Action action)
+        {
+            Excel.Application application = workbook.Application as Excel.Application;
+            if (application == null)
+            {
+                action();
+                return;
+            }
+
+            bool previousEnableEvents = application.EnableEvents;
+            bool previousDisplayAlerts = application.DisplayAlerts;
+            bool previousScreenUpdating = application.ScreenUpdating;
+
+            try
+            {
+                application.EnableEvents = false;
+                application.DisplayAlerts = false;
+                application.ScreenUpdating = false;
+                action();
+            }
+            finally
+            {
+                try { application.ScreenUpdating = previousScreenUpdating; }
+                catch (COMException) { }
+                try { application.DisplayAlerts = previousDisplayAlerts; }
+                catch (COMException) { }
+                try { application.EnableEvents = previousEnableEvents; }
+                catch (COMException) { }
+            }
         }
 
         private static string GetWorkbookDebugName(Excel.Workbook workbook)

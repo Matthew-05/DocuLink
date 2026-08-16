@@ -876,6 +876,8 @@ namespace DocuLink.Addin
 
             ((Excel.AppEvents_Event)Application).NewWorkbook += Application_NewWorkbook;
 
+            EnsureLinkTracking(Application.ActiveWorkbook);
+
             _excelUndoKeyHook = new Modules.Infrastructure.ExcelUndoKeyHook(
                 () => UndoLastLinkCreation());
 
@@ -1171,6 +1173,8 @@ namespace DocuLink.Addin
 
             ReconcileClosedWorkbooks();
 
+            EnsureLinkTracking(wb);
+
             // Pending undo belongs to whichever workbook is in front, so re-evaluate before
             // anything else — including the pop-out early return further down.
             RefreshExcelUndoArmedState();
@@ -1225,6 +1229,8 @@ namespace DocuLink.Addin
 
             ReconcileClosedWorkbooks();
 
+            EnsureLinkTracking(wb);
+
             WarmUpTaskPaneFor(wb);
 
             await CheckForUpdateOnOpenAsync();
@@ -1256,6 +1262,8 @@ namespace DocuLink.Addin
         private void Application_NewWorkbook(Excel.Workbook wb)
 
         {
+
+            EnsureLinkTracking(wb);
 
             WarmUpTaskPaneFor(wb);
 
@@ -1301,6 +1309,28 @@ namespace DocuLink.Addin
 
             }
 
+        }
+
+        /// <summary>
+        /// Creates filter-safe formula trackers for persisted links and removes legacy
+        /// per-cell XML maps. The operation is idempotent and normally becomes a quick
+        /// read-only check on subsequent workbook activations.
+        /// </summary>
+        private void EnsureLinkTracking(Excel.Workbook wb)
+        {
+            if (wb == null || WorkbookProtectionGuard.IsStructureProtected(wb))
+                return;
+
+            try
+            {
+                WorkbookStorageSession session = GetStorageSession(wb);
+                LinkCellTracker.EnsureBindings(wb, session.GetLinks());
+            }
+            catch (Exception ex)
+            {
+                Modules.DocuLinkLog.Trace(
+                    $"EnsureLinkTracking failed: {ex.GetType().FullName}: {ex.Message}");
+            }
         }
 
 

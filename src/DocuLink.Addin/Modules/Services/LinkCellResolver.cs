@@ -31,7 +31,7 @@ namespace DocuLink.Addin.Modules.Services
         /// and, within a cell, in stored order. A Sum cell shares one
         /// <see cref="LinkedCell"/> across its contributing rectangles, so it yields one
         /// entry per rectangle. Resolves the whole selection in a single pass over the
-        /// workbook's XmlMaps.
+        /// workbook's formula trackers.
         /// </summary>
         internal static IList<SelectedLink> ResolveLinksInSelection(
             IList<LinkedRectangle> links,
@@ -71,10 +71,18 @@ namespace DocuLink.Addin.Modules.Services
 
         internal static Excel.Range TryResolveCell(Excel.Workbook workbook, LinkedRectangle rect)
         {
-            // PRIMARY: Query XmlMap binding (always current through cell moves and worksheet renames)
-            Excel.Range cell = TryResolveCellViaXmlMap(workbook, rect.LinkedCell.TrackIndex);
+            // PRIMARY: Resolve the formula reference Excel maintains through structural moves.
+            Excel.Range cell = LinkCellTracker.TryResolveCell(
+                workbook,
+                rect.LinkedCell.TrackIndex,
+                out bool bindingExists);
             if (cell != null)
                 return cell;
+
+            // A tracker with a broken reference means the linked cell was deleted. Do not
+            // silently attach the link to whatever now occupies its last persisted address.
+            if (bindingExists)
+                return null;
 
             // FALLBACK: Use stored sheet name + address (for backward compatibility with old workbooks)
             try
@@ -92,43 +100,9 @@ namespace DocuLink.Addin.Modules.Services
             return null;
         }
 
-        internal static Excel.Range TryResolveCellViaXmlMap(Excel.Workbook workbook, int trackIndex)
+        internal static Excel.Range TryResolveCellViaTracker(Excel.Workbook workbook, int trackIndex)
         {
-            if (trackIndex <= 0)
-                return null;
-
-            string mapName = "DocuLink_" + trackIndex;
-            Excel.XmlMap map = null;
-
-            foreach (Excel.XmlMap candidate in workbook.XmlMaps)
-            {
-                try
-                {
-                    if (string.Equals(candidate.Name, mapName, StringComparison.Ordinal))
-                    {
-                        map = candidate;
-                        break;
-                    }
-                }
-                catch (COMException) { }
-            }
-
-            if (map == null)
-                return null;
-
-            const string linkXPath = "/DocuLinkLink";
-            foreach (Excel.Worksheet ws in workbook.Worksheets)
-            {
-                try
-                {
-                    object result = ws.XmlDataQuery(linkXPath, Type.Missing, map);
-                    if (result is Excel.Range range)
-                        return range;
-                }
-                catch (COMException) { }
-            }
-
-            return null;
+            return LinkCellTracker.TryResolveCell(workbook, trackIndex, out _);
         }
 
         private static Excel.Worksheet FindWorksheet(Excel.Workbook workbook, string sheetName)
