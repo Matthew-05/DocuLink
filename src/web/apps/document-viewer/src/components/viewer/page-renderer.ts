@@ -68,7 +68,10 @@ export async function renderPage(
   // overlay layer. The canvas has contain:strict which creates a stacking context
   // at z-index:0; the overlay (position:absolute, z-index:auto) must come later
   // in DOM order to paint on top of the canvas and keep rectangles visible.
-  const old = wrapper.querySelector("canvas");
+  // Search highlights also use a canvas inside the overlay layer. Only replace
+  // the page canvas here; otherwise an unrendered page with active search hits
+  // moves the PDF canvas into the overlay layer, where it covers link rectangles.
+  const old = wrapper.querySelector<HTMLCanvasElement>(".viewer__canvas");
   if (old) {
     old.replaceWith(canvas);
   } else {

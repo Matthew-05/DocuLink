@@ -844,7 +844,7 @@
     },
 
     "OcrPdfsMessage": {
-      "description": "Sent by the file-manager web app when the user clicks 'OCR'. The host runs full OCR on scanned PDFs and replaces embedded text layers on PDFs that already contain text, replying with one or more OcrStatusMessages.",
+      "description": "Sent by the file-manager web app when the user clicks 'OCR'. The host runs full OCR on every selected PDF, replacing native or previously generated OCR text layers, and replies with one or more OcrStatusMessages.",
       "type": "object",
       "required": ["type", "pdfIds"],
       "additionalProperties": false,

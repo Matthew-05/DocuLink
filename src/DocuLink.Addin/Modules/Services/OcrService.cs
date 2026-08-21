@@ -58,10 +58,9 @@ namespace DocuLink.Addin.Modules.Services
         }
 
         /// <summary>
-        /// Queues OCR for the given PDF ids. Scanned PDFs (status none) and PDFs
-        /// with an embedded text layer (status text) both receive full OCR so a
-        /// stale or mismatched text layer is replaced rather than trusted.
-        /// Already-processed PDFs (status ocr) are skipped.
+        /// Queues full OCR for every requested PDF. Existing native or OCR text
+        /// layers are replaced so users can rerun OCR when the stored result is
+        /// stale or inaccurate.
         /// </summary>
         public Task RunOcrAsync(
             IList<string> pdfIds,
@@ -328,9 +327,6 @@ namespace DocuLink.Addin.Modules.Services
                 if (metadata == null) continue;
 
                 string status = metadata.OcrStatus ?? PdfStatus.None;
-                if (string.Equals(status, PdfStatus.Ocr, StringComparison.Ordinal)) continue;
-
-                // Load binary only for PDFs that actually need OCR
                 store.TryLoadPdfBinary(id, out string base64, out _);
                 result.Add(new OcrJobEntry
                 {
