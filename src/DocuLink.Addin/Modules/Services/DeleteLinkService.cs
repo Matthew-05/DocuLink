@@ -159,28 +159,35 @@ namespace DocuLink.Addin.Modules.Services
             IList<LinkedRectangle> links = session.GetLinks();
             var idsToDelete = new HashSet<string>(StringComparer.Ordinal);
             var orphanBindings = new List<(Excel.Range cell, int trackIndex)>();
-            var orphanTrackIndexes = new HashSet<int>();
+            var byTrackIndex = new Dictionary<int, List<LinkedRectangle>>();
 
-            try
+            foreach (LinkedRectangle link in links)
             {
-                Excel.Areas areas = selection.Areas;
-                int areaCount = areas?.Count ?? 1;
-
-                if (areaCount > 1)
+                int trackIndex = link?.LinkedCell?.TrackIndex ?? 0;
+                if (trackIndex <= 0) continue;
+                if (!byTrackIndex.TryGetValue(trackIndex, out List<LinkedRectangle> forCell))
                 {
-                    foreach (Excel.Range area in areas)
-                        CollectLinkedRectIds(workbook, area, links, idsToDelete, orphanBindings, orphanTrackIndexes);
+                    forCell = new List<LinkedRectangle>();
+                    byTrackIndex[trackIndex] = forCell;
+                }
+                forCell.Add(link);
+            }
+
+            // Resolve the formula trackers once for the complete range. The old path walked
+            // every destination cell, and every one-cell lookup scanned the tracking sheet
+            // again; multi-page table footprints made that cost grow explosively.
+            foreach (LinkCellTracker.TrackedCell tracked in
+                     LinkCellTracker.FindTrackedCellsInRange(selection))
+            {
+                if (byTrackIndex.TryGetValue(tracked.TrackIndex, out List<LinkedRectangle> forCell))
+                {
+                    foreach (LinkedRectangle link in forCell)
+                        idsToDelete.Add(link.Id);
                 }
                 else
                 {
-                    CollectLinkedRectIds(workbook, selection, links, idsToDelete, orphanBindings, orphanTrackIndexes);
+                    orphanBindings.Add((tracked.Cell, tracked.TrackIndex));
                 }
-            }
-            catch (COMException ex)
-            {
-                System.Diagnostics.Debug.WriteLine(
-                    $"[DocuLink] DeleteLinksInSelection iteration failed: {ex.Message}");
-                CollectLinkedRectIds(workbook, selection, links, idsToDelete, orphanBindings, orphanTrackIndexes);
             }
 
             if (idsToDelete.Count == 0 && orphanBindings.Count == 0)
@@ -225,97 +232,6 @@ namespace DocuLink.Addin.Modules.Services
                     idsToDelete,
                     new List<(Excel.Range cell, int trackIndex)>(),
                     "DeleteLinksForPdf");
-            }
-        }
-
-        private static void CollectLinkedRectIds(
-            Excel.Workbook workbook,
-            Excel.Range range,
-            IList<LinkedRectangle> links,
-            HashSet<string> idsToDelete,
-            List<(Excel.Range cell, int trackIndex)> orphanBindings,
-            HashSet<int> orphanTrackIndexes)
-        {
-            int rows = range.Rows.Count;
-            int cols = range.Columns.Count;
-
-            for (int r = 1; r <= rows; r++)
-            {
-                for (int c = 1; c <= cols; c++)
-                {
-                    Excel.Range cell = null;
-                    try
-                    {
-                        cell = (Excel.Range)range.Cells[r, c];
-
-                        string cellSheet = ((Excel.Worksheet)cell.Worksheet).Name;
-                        string cellAddress = cell.Address;
-
-                        int trackIndex = LinkCellTracker.FindTrackIndexForCell(cell);
-                        bool foundStoredLink = false;
-
-                        if (trackIndex > 0)
-                        {
-                            foreach (LinkedRectangle lr in links)
-                            {
-                                if (lr.LinkedCell.TrackIndex == trackIndex)
-                                {
-                                    idsToDelete.Add(lr.Id);
-                                    foundStoredLink = true;
-                                }
-                            }
-
-                            if (!foundStoredLink && orphanTrackIndexes.Add(trackIndex))
-                                orphanBindings.Add((cell, trackIndex));
-                        }
-
-                        foreach (LinkedRectangle lr in links)
-                        {
-                            if (!SameCellAddress(lr, cellSheet, cellAddress))
-                                continue;
-
-                            Excel.Range liveCell = LinkCellResolver.TryResolveCellViaTracker(
-                                workbook,
-                                lr.LinkedCell.TrackIndex);
-
-                            if (liveCell != null && !SameCellAddress(liveCell, cellSheet, cellAddress))
-                                continue;
-
-                            idsToDelete.Add(lr.Id);
-                        }
-                    }
-                    catch (COMException ex)
-                    {
-                        System.Diagnostics.Debug.WriteLine(
-                            $"[DocuLink] CollectLinkedRectIds cell failed: {ex.Message}");
-                    }
-                }
-            }
-        }
-
-        private static bool SameCellAddress(LinkedRectangle link, string sheetName, string address)
-        {
-            if (link?.LinkedCell == null) return false;
-
-            return string.Equals(link.LinkedCell.SheetName, sheetName, StringComparison.OrdinalIgnoreCase)
-                && string.Equals(link.LinkedCell.Address, address, StringComparison.Ordinal);
-        }
-
-        private static bool SameCellAddress(Excel.Range cell, string sheetName, string address)
-        {
-            if (cell == null) return false;
-
-            try
-            {
-                string resolvedSheet = ((Excel.Worksheet)cell.Worksheet).Name;
-                string resolvedAddress = cell.Address;
-
-                return string.Equals(resolvedSheet, sheetName, StringComparison.OrdinalIgnoreCase)
-                    && string.Equals(resolvedAddress, address, StringComparison.Ordinal);
-            }
-            catch (COMException)
-            {
-                return false;
             }
         }
 

@@ -17,7 +17,10 @@ import { SearchMatchRenderer } from "./search-match-renderer.js";
 import { createSearchNavigator } from "./search-navigator.js";
 import { TableCopyModal } from "../table-copy-modal/table-copy-modal.js";
 import { TextContentCache } from "../../services/text-content-cache.js";
-import { detectTableGrid, withExtractedTableCells } from "../../services/table-extractor.js";
+import {
+  detectCopiedTable,
+  detectTableGrid,
+} from "../../services/table-extractor.js";
 import {
   sendCopyTableSelection,
   sendLinkRectangleCreated,
@@ -434,17 +437,21 @@ export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLEleme
     const pages = await tableCopyModal.show(entry.page, totalPages);
     if (!pages) return;
 
-    const targets = pages.map((page) => {
+    const targets = [];
+    for (const page of pages) {
+      // Give the viewer a paint opportunity between pages. Table extraction is managed
+      // data work, but a large page range should not monopolize the WebView UI thread.
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
       const pageEntries = cache.get(entry.pdfId, page);
-      const detected = detectTableGrid(pageEntries, entry.rect);
-      return {
+      targets.push({
         page,
-        table: withExtractedTableCells(pageEntries, entry.rect, {
-          columnBoundaries: [...entry.table!.columnBoundaries],
-          rowBoundaries: detected.rowBoundaries,
-        }),
-      };
-    });
+        table: detectCopiedTable(
+          pageEntries,
+          entry.rect,
+          entry.table.columnBoundaries,
+        ),
+      });
+    }
     sendCopyTableSelection(id, targets);
   });
 
@@ -547,6 +554,14 @@ export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLEleme
         _currentRects = rects;
         renderer.setRectangles(rects);
         selector.updateLinkCounts(computeLinkCounts(rects));
+      },
+      onLinkedRectangleAdded: (rect) => {
+        if (_currentRects.some((current) => current.id === rect.id)) return;
+        _currentRects = [..._currentRects, rect];
+        renderer.addRectangle(rect);
+        selector.updateLinkCounts(computeLinkCounts(_currentRects));
+        focusRectangle(rect.id);
+        navigate(rect.id, rect.pdfId, rect.page);
       },
       onNavigateToRectangle: (id, pdfId, page) => {
         focusRectangle(id);

@@ -116,30 +116,43 @@ namespace DocuLink.Addin.Modules.WebView
 
             for (int i = 0; i < rects.Count; i++)
             {
-                LinkedRectangle r = rects[i];
                 if (i > 0) sb.Append(',');
-
-                sb.Append('{');
-                sb.Append("\"id\":"); AppendString(sb, r.Id);
-                sb.Append(",\"pdfId\":"); AppendString(sb, r.PdfId);
-                sb.Append(",\"page\":"); sb.Append(r.Rectangle.PageIndex);
-                sb.Append(",\"rect\":{");
-                sb.Append("\"x\":"); AppendDouble(sb, r.Rectangle.X);
-                sb.Append(",\"y\":"); AppendDouble(sb, r.Rectangle.Y);
-                sb.Append(",\"width\":"); AppendDouble(sb, r.Rectangle.Width);
-                sb.Append(",\"height\":"); AppendDouble(sb, r.Rectangle.Height);
-                sb.Append("}");
-                sb.Append(",\"linkType\":"); AppendString(sb, SerializeLinkType(r.LinkType));
-                if (r.LinkType == LinkType.Table)
-                {
-                    sb.Append(",\"table\":");
-                    AppendTableGrid(sb, r.TableGrid);
-                }
-                sb.Append("}");
+                AppendLinkedRectangle(sb, rects[i]);
             }
 
             sb.Append("]}");
             return sb.ToString();
+        }
+
+        /// <summary>Returns the JSON payload for a newly persisted linked rectangle.</summary>
+        public static string BuildLinkedRectangleAdded(LinkedRectangle rect)
+        {
+            var sb = new StringBuilder();
+            sb.Append("{\"type\":\"linked-rectangle-added\",\"rectangle\":");
+            AppendLinkedRectangle(sb, rect);
+            sb.Append('}');
+            return sb.ToString();
+        }
+
+        private static void AppendLinkedRectangle(StringBuilder sb, LinkedRectangle rect)
+        {
+            sb.Append('{');
+            sb.Append("\"id\":"); AppendString(sb, rect.Id);
+            sb.Append(",\"pdfId\":"); AppendString(sb, rect.PdfId);
+            sb.Append(",\"page\":"); sb.Append(rect.Rectangle.PageIndex);
+            sb.Append(",\"rect\":{");
+            sb.Append("\"x\":"); AppendDouble(sb, rect.Rectangle.X);
+            sb.Append(",\"y\":"); AppendDouble(sb, rect.Rectangle.Y);
+            sb.Append(",\"width\":"); AppendDouble(sb, rect.Rectangle.Width);
+            sb.Append(",\"height\":"); AppendDouble(sb, rect.Rectangle.Height);
+            sb.Append("}");
+            sb.Append(",\"linkType\":"); AppendString(sb, SerializeLinkType(rect.LinkType));
+            if (rect.LinkType == LinkType.Table)
+            {
+                sb.Append(",\"table\":");
+                AppendTableGrid(sb, rect.TableGrid);
+            }
+            sb.Append('}');
         }
 
         /// <summary>Returns the JSON payload for a <c>clear-rectangle-highlight</c> message.</summary>

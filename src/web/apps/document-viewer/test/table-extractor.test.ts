@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { detectTableGrid } from "../src/services/table-extractor.ts";
+import { detectCopiedTable, detectTableGrid } from "../src/services/table-extractor.ts";
 
 interface TestCharacter {
   char: string;
@@ -109,5 +109,24 @@ test("re-detection resets manual columns and rows to best guesses", () => {
   assert.deepEqual(grid.cells, [
     ["Alpha", "10"],
     ["Beta", "20"],
+  ]);
+});
+
+test("copied tables preserve source columns while detecting target rows", () => {
+  const entries = [
+    ...text("Alpha", 0.08, 0.15, 1),
+    ...text("10", 0.65, 0.15, 1),
+    ...text("Beta", 0.08, 0.45, 2),
+    ...text("20", 0.65, 0.45, 2),
+  ];
+  const sourceColumns = [0.4, 0.8];
+
+  const grid = detectCopiedTable(entries, rect, sourceColumns);
+
+  assert.deepEqual(grid.columnBoundaries, sourceColumns);
+  assert.equal(grid.rowBoundaries.length, 1);
+  assert.deepEqual(grid.cells, [
+    ["Alpha", "10", ""],
+    ["Beta", "20", ""],
   ]);
 });

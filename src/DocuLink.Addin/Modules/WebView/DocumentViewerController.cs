@@ -496,11 +496,10 @@ namespace DocuLink.Addin.Modules.WebView
             using (Globals.ThisAddIn.EnterSelectionNavSuppress())
             {
                 allRects = new CopyTableSelectionService().Copy(
-                    payload.Id, targets, owner, wb);
+                    payload.Id, targets, owner, wb, SendLinkedRectangleAdded);
             }
             if (allRects == null) return;
 
-            SendLinkedRectanglesToWebView(allRects);
             Globals.ThisAddIn.NotifyFileManagerLinksChanged();
             RestoreExcelFocus();
         }
@@ -566,6 +565,21 @@ namespace DocuLink.Addin.Modules.WebView
             {
                 System.Diagnostics.Debug.WriteLine(
                     $"[DocuLink] SendLinkRectanglesRemoved failed: {ex.Message}");
+            }
+        }
+
+        private void SendLinkedRectangleAdded(LinkedRectangle rectangle)
+        {
+            if (_disposed || !_webViewReady || rectangle == null) return;
+            try
+            {
+                string json = HostMessageSerializer.BuildLinkedRectangleAdded(rectangle);
+                _webView.CoreWebView2.PostWebMessageAsString(json);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine(
+                    $"[DocuLink] SendLinkedRectangleAdded failed: {ex.Message}");
             }
         }
 

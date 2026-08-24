@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Windows.Forms;
 using DocuLink.Addin.Modules.CustomXml;
 using DocuLink.Addin.Modules.CustomXml.Models;
@@ -19,7 +20,8 @@ namespace DocuLink.Addin.Modules.Services
             string sourceRectId,
             IList<(int Page, TableGrid Grid, IList<IList<string>> Cells)> targets,
             IWin32Window owner,
-            Excel.Workbook workbook)
+            Excel.Workbook workbook,
+            Action<LinkedRectangle> onCopied = null)
         {
             if (string.IsNullOrWhiteSpace(sourceRectId) || workbook == null || targets == null)
                 return null;
@@ -71,43 +73,74 @@ namespace DocuLink.Addin.Modules.Services
 
             int nextTrackIndex = LinkCellTracker.NextTrackIndex(session.GetLinks());
             int rowOffset = 0;
-            for (int index = 0; index < orderedTargets.Count; index++)
+            var copiedLinks = new List<LinkedRectangle>(orderedTargets.Count);
+            try
             {
-                (int Page, TableGrid Grid, IList<IList<string>> Cells) target = orderedTargets[index];
-                Excel.Range targetAnchor = firstAnchor.get_Offset(rowOffset, 0);
-                string sheetName = ((Excel.Worksheet)targetAnchor.Worksheet).Name;
-                var linkedCell = new LinkedCell(sheetName, targetAnchor.Address, nextTrackIndex++);
-                var rectangle = new PdfRectangle(
-                    target.Page,
-                    source.Rectangle.X,
-                    source.Rectangle.Y,
-                    source.Rectangle.Width,
-                    source.Rectangle.Height,
-                    RectangleCoordinateSpace.Normalized);
-                var copiedLink = new LinkedRectangle(
-                    Guid.NewGuid().ToString("D"), source.PdfId, linkedCell, rectangle)
+                for (int index = 0; index < orderedTargets.Count; index++)
                 {
-                    LinkType = LinkType.Table,
-                    TableGrid = CloneGrid(target.Grid),
-                };
+                    (int Page, TableGrid Grid, IList<IList<string>> Cells) target = orderedTargets[index];
+                    Excel.Range targetAnchor = firstAnchor.get_Offset(rowOffset, 0);
+                    string sheetName = ((Excel.Worksheet)targetAnchor.Worksheet).Name;
+                    var linkedCell = new LinkedCell(sheetName, targetAnchor.Address, nextTrackIndex++);
+                    var rectangle = new PdfRectangle(
+                        target.Page,
+                        source.Rectangle.X,
+                        source.Rectangle.Y,
+                        source.Rectangle.Width,
+                        source.Rectangle.Height,
+                        RectangleCoordinateSpace.Normalized);
+                    var copiedLink = new LinkedRectangle(
+                        Guid.NewGuid().ToString("D"), source.PdfId, linkedCell, rectangle)
+                    {
+                        LinkType = LinkType.Table,
+                        TableGrid = CloneGrid(target.Grid),
+                    };
 
-                LinkCellTracker.BindCell(workbook, targetAnchor, linkedCell.TrackIndex);
-                try
-                {
-                    writer.WriteCreate(targetAnchor, copiedLink.TableGrid, target.Cells);
-                    CellFormattingService.ApplyLinkStyle(targetAnchor, LinkType.Table);
-                    session.AddLink(copiedLink);
-                }
-                catch
-                {
-                    LinkCellTracker.UnbindCell(workbook, targetAnchor, linkedCell.TrackIndex);
-                    throw;
-                }
+                    LinkCellTracker.BindCell(workbook, targetAnchor, linkedCell.TrackIndex);
+                    try
+                    {
+                        writer.WriteCreate(targetAnchor, copiedLink.TableGrid, target.Cells);
+                        CellFormattingService.ApplyLinkStyle(targetAnchor, LinkType.Table);
+                    }
+                    catch
+                    {
+                        LinkCellTracker.UnbindCell(workbook, targetAnchor, linkedCell.TrackIndex);
+                        throw;
+                    }
 
-                rowOffset += target.Grid.RowCount;
+                    BringIntoView(targetAnchor);
+                    copiedLinks.Add(copiedLink);
+                    onCopied?.Invoke(copiedLink);
+                    rowOffset += target.Grid.RowCount;
+                }
+            }
+            catch
+            {
+                // Keep successfully imported pages recoverable if a later page fails.
+                session.AddLinks(copiedLinks);
+                throw;
             }
 
+            // Persist the complete batch once instead of replacing the Custom XML part for
+            // every target page. The progress callback above remains page-by-page.
+            session.AddLinks(copiedLinks);
             return session.GetLinks();
+        }
+
+        private static void BringIntoView(Excel.Range targetAnchor)
+        {
+            try
+            {
+                ((Excel.Worksheet)targetAnchor.Worksheet).Activate();
+                var app = targetAnchor.Application as Excel.Application;
+                app?.Goto(targetAnchor, true);
+            }
+            catch (COMException ex)
+            {
+                // View movement is best-effort and must never roll back a successful import.
+                System.Diagnostics.Debug.WriteLine(
+                    $"[DocuLink] CopyTableSelection BringIntoView failed: {ex.Message}");
+            }
         }
 
         private static TableGrid CloneGrid(TableGrid source)

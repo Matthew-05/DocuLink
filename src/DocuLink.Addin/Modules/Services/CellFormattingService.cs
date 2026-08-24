@@ -28,7 +28,16 @@ namespace DocuLink.Addin.Modules.Services
         /// <summary>Applies Auto-link date or number formatting inferred from <paramref name="sourceText"/>.</summary>
         public static void ApplyAutoNumberFormat(Excel.Range cell, string sourceText)
         {
-            cell.NumberFormat = BuildAutoFormat(sourceText) ?? "General";
+            cell.NumberFormat = GetAutoNumberFormat(sourceText);
+        }
+
+        /// <summary>
+        /// Returns the Excel number format used for an Auto-link value. Table writes use
+        /// this to calculate formats in memory before applying them to rectangular ranges.
+        /// </summary>
+        internal static string GetAutoNumberFormat(string sourceText)
+        {
+            return BuildAutoFormat(sourceText) ?? "General";
         }
 
         /// <summary>Applies Sum-link number formatting inferred from all contributing source texts.</summary>

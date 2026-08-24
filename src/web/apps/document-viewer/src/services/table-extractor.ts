@@ -217,6 +217,16 @@ export function extractTableCells(
   columnBoundaries: number[],
   rowBoundaries: number[],
 ): string[][] {
+  const included = (entries ?? []).filter((entry) => overlapsRect(entry, rect));
+  return extractIncludedTableCells(included, rect, columnBoundaries, rowBoundaries);
+}
+
+function extractIncludedTableCells(
+  included: CharacterEntry[],
+  rect: NormalizedRect,
+  columnBoundaries: number[],
+  rowBoundaries: number[],
+): string[][] {
   const columns = normalizeBoundaries(columnBoundaries);
   const rows = normalizeBoundaries(rowBoundaries);
   const buckets: CharacterEntry[][][] = Array.from(
@@ -224,8 +234,7 @@ export function extractTableCells(
     () => Array.from({ length: columns.length + 1 }, () => []),
   );
 
-  for (const entry of entries ?? []) {
-    if (!overlapsRect(entry, rect)) continue;
+  for (const entry of included) {
     const x = ((entry.normLeft + entry.normRight) / 2 - rect.x) / rect.width;
     const y = ((entry.normTop + entry.normBottom) / 2 - rect.y) / rect.height;
     buckets[findBand(y, rows)]![findBand(x, columns)]!.push(entry);
@@ -245,7 +254,27 @@ export function detectTableGrid(
   return {
     columnBoundaries,
     rowBoundaries,
-    cells: extractTableCells(included, rect, columnBoundaries, rowBoundaries),
+    cells: extractIncludedTableCells(included, rect, columnBoundaries, rowBoundaries),
+  };
+}
+
+/**
+ * Detects only the row layout for a copied table, preserving the source columns and
+ * extracting its cells in the same pass. Copying does not need target-page column
+ * detection because its columns are intentionally fixed to the source rectangle.
+ */
+export function detectCopiedTable(
+  entries: CharacterEntry[] | null,
+  rect: NormalizedRect,
+  sourceColumnBoundaries: number[],
+): TableGridData {
+  const included = (entries ?? []).filter((entry) => overlapsRect(entry, rect));
+  const rowBoundaries = detectRowBoundaries(buildVisualRows(included), rect);
+  const columnBoundaries = normalizeBoundaries(sourceColumnBoundaries);
+  return {
+    columnBoundaries,
+    rowBoundaries,
+    cells: extractIncludedTableCells(included, rect, columnBoundaries, rowBoundaries),
   };
 }
 
@@ -256,9 +285,10 @@ export function withExtractedTableCells(
 ): TableGridData {
   const columnBoundaries = normalizeBoundaries(table.columnBoundaries);
   const rowBoundaries = normalizeBoundaries(table.rowBoundaries);
+  const included = (entries ?? []).filter((entry) => overlapsRect(entry, rect));
   return {
     columnBoundaries,
     rowBoundaries,
-    cells: extractTableCells(entries, rect, columnBoundaries, rowBoundaries),
+    cells: extractIncludedTableCells(included, rect, columnBoundaries, rowBoundaries),
   };
 }

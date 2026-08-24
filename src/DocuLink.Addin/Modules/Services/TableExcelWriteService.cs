@@ -93,21 +93,32 @@ namespace DocuLink.Addin.Modules.Services
         private static void WriteCells(
             Excel.Range anchor, TableGrid tableGrid, IList<IList<string>> cells)
         {
+            int rows = tableGrid.RowCount;
+            int columns = tableGrid.ColumnCount;
+            var values = new object[rows, columns];
+            var formats = new string[rows, columns];
+
+            // Parsing is inexpensive managed work. Build both matrices before crossing the
+            // Excel COM boundary so values can be written in one operation and formatting
+            // can be applied to a small number of contiguous blocks.
+            for (int row = 0; row < rows; row++)
+            {
+                for (int column = 0; column < columns; column++)
+                {
+                    string sourceText = cells[row][column] ?? string.Empty;
+                    values[row, column] = TextValueFormatter.FormatAuto(sourceText);
+                    formats[row, column] = CellFormattingService.GetAutoNumberFormat(sourceText);
+                }
+            }
+
             Excel.Application app = anchor.Application as Excel.Application;
             bool previousEvents = app?.EnableEvents ?? true;
             try
             {
                 if (app != null) app.EnableEvents = false;
-                for (int row = 0; row < tableGrid.RowCount; row++)
-                {
-                    for (int column = 0; column < tableGrid.ColumnCount; column++)
-                    {
-                        Excel.Range cell = (Excel.Range)anchor.Cells[row + 1, column + 1];
-                        string sourceText = cells[row][column] ?? string.Empty;
-                        cell.Value2 = TextValueFormatter.FormatAuto(sourceText);
-                        CellFormattingService.ApplyAutoNumberFormat(cell, sourceText);
-                    }
-                }
+                Excel.Range footprint = GetFootprint(anchor, rows, columns);
+                footprint.Value2 = values;
+                ApplyNumberFormats(anchor, footprint, formats, rows, columns);
             }
             finally
             {
@@ -118,50 +129,201 @@ namespace DocuLink.Addin.Modules.Services
         private static int CountConflicts(
             Excel.Range anchor, TableGrid newGrid, TableGrid oldGrid)
         {
-            int conflicts = 0;
-            for (int row = 0; row < newGrid.RowCount; row++)
+            int rows = newGrid.RowCount;
+            int columns = newGrid.ColumnCount;
+            try
             {
-                for (int column = 0; column < newGrid.ColumnCount; column++)
-                {
-                    bool belongsToOldFootprint = oldGrid != null
-                        && row < oldGrid.RowCount
-                        && column < oldGrid.ColumnCount;
-                    if (belongsToOldFootprint) continue;
-
-                    Excel.Range cell = (Excel.Range)anchor.Cells[row + 1, column + 1];
-                    if (HasContent(cell)) conflicts++;
-                }
+                object formulas = GetFootprint(anchor, rows, columns).Formula;
+                return CountConflicts(
+                    formulas,
+                    rows,
+                    columns,
+                    (row, column) => oldGrid == null
+                        || row >= oldGrid.RowCount
+                        || column >= oldGrid.ColumnCount);
             }
-            return conflicts;
+            catch (COMException)
+            {
+                // If Excel refuses the bulk read, conservatively treat every newly-covered
+                // cell as occupied, matching the previous per-cell behavior.
+                int conflicts = 0;
+                for (int row = 0; row < rows; row++)
+                {
+                    for (int column = 0; column < columns; column++)
+                    {
+                        if (oldGrid == null
+                            || row >= oldGrid.RowCount
+                            || column >= oldGrid.ColumnCount)
+                            conflicts++;
+                    }
+                }
+                return conflicts;
+            }
         }
 
         private static int CountConflicts(Excel.Range anchor, int rows, int columns)
         {
+            try
+            {
+                object formulas = GetFootprint(anchor, rows, columns).Formula;
+                return CountConflicts(formulas, rows, columns, (row, column) => true);
+            }
+            catch (COMException)
+            {
+                return checked(rows * columns);
+            }
+        }
+
+        private static int CountConflicts(
+            object formulas,
+            int rows,
+            int columns,
+            Func<int, int, bool> shouldInspect)
+        {
+            var matrix = formulas as object[,];
             int conflicts = 0;
             for (int row = 0; row < rows; row++)
             {
                 for (int column = 0; column < columns; column++)
                 {
-                    Excel.Range cell = (Excel.Range)anchor.Cells[row + 1, column + 1];
-                    if (HasContent(cell)) conflicts++;
+                    if (!shouldInspect(row, column)) continue;
+
+                    object formula = matrix == null
+                        ? formulas
+                        : matrix[row + matrix.GetLowerBound(0), column + matrix.GetLowerBound(1)];
+                    if (formula != null && !string.IsNullOrWhiteSpace(formula.ToString()))
+                        conflicts++;
                 }
             }
             return conflicts;
         }
 
-        private static bool HasContent(Excel.Range cell)
+        private static void ApplyNumberFormats(
+            Excel.Range anchor,
+            Excel.Range footprint,
+            string[,] formats,
+            int rows,
+            int columns)
         {
-            try
+            string firstFormat = formats[0, 0];
+            bool allSame = true;
+            for (int row = 0; row < rows && allSame; row++)
             {
-                object formula = cell.Formula;
-                if (formula != null && !string.IsNullOrWhiteSpace(formula.ToString())) return true;
-                object value = cell.Value2;
-                return value != null && !string.IsNullOrWhiteSpace(value.ToString());
+                for (int column = 0; column < columns; column++)
+                {
+                    if (!string.Equals(firstFormat, formats[row, column], StringComparison.Ordinal))
+                    {
+                        allSame = false;
+                        break;
+                    }
+                }
             }
-            catch (COMException)
+
+            if (allSame)
             {
-                // If Excel refuses the read, conservatively treat the cell as occupied.
-                return true;
+                footprint.NumberFormat = firstFormat;
+                return;
+            }
+
+            // Reset formats overwritten by the table, then coalesce equal horizontal runs
+            // across adjacent rows. Typical financial tables collapse to only a handful of
+            // COM formatting calls even when they contain hundreds of cells.
+            footprint.NumberFormat = "General";
+            var active = new Dictionary<FormatRunKey, FormatBlock>();
+            var completed = new List<FormatBlock>();
+
+            for (int row = 0; row < rows; row++)
+            {
+                var next = new Dictionary<FormatRunKey, FormatBlock>();
+                int column = 0;
+                while (column < columns)
+                {
+                    string format = formats[row, column];
+                    int startColumn = column;
+                    while (column + 1 < columns
+                        && string.Equals(format, formats[row, column + 1], StringComparison.Ordinal))
+                        column++;
+
+                    int columnCount = column - startColumn + 1;
+                    if (!string.Equals(format, "General", StringComparison.Ordinal))
+                    {
+                        var key = new FormatRunKey(startColumn, columnCount, format);
+                        if (active.TryGetValue(key, out FormatBlock block))
+                        {
+                            block.RowCount++;
+                            next[key] = block;
+                            active.Remove(key);
+                        }
+                        else
+                        {
+                            next[key] = new FormatBlock(row, startColumn, columnCount, format);
+                        }
+                    }
+                    column++;
+                }
+
+                completed.AddRange(active.Values);
+                active = next;
+            }
+            completed.AddRange(active.Values);
+
+            foreach (FormatBlock block in completed)
+            {
+                Excel.Range start = anchor.get_Offset(block.StartRow, block.StartColumn);
+                start.get_Resize(block.RowCount, block.ColumnCount).NumberFormat = block.Format;
+            }
+        }
+
+        private sealed class FormatBlock
+        {
+            public FormatBlock(int startRow, int startColumn, int columnCount, string format)
+            {
+                StartRow = startRow;
+                StartColumn = startColumn;
+                RowCount = 1;
+                ColumnCount = columnCount;
+                Format = format;
+            }
+
+            public int StartRow { get; }
+            public int StartColumn { get; }
+            public int RowCount { get; set; }
+            public int ColumnCount { get; }
+            public string Format { get; }
+        }
+
+        private sealed class FormatRunKey : IEquatable<FormatRunKey>
+        {
+            public FormatRunKey(int startColumn, int columnCount, string format)
+            {
+                StartColumn = startColumn;
+                ColumnCount = columnCount;
+                Format = format;
+            }
+
+            public int StartColumn { get; }
+            public int ColumnCount { get; }
+            public string Format { get; }
+
+            public bool Equals(FormatRunKey other)
+            {
+                return other != null
+                    && StartColumn == other.StartColumn
+                    && ColumnCount == other.ColumnCount
+                    && string.Equals(Format, other.Format, StringComparison.Ordinal);
+            }
+
+            public override bool Equals(object obj) => Equals(obj as FormatRunKey);
+
+            public override int GetHashCode()
+            {
+                unchecked
+                {
+                    int hash = StartColumn;
+                    hash = (hash * 397) ^ ColumnCount;
+                    hash = (hash * 397) ^ (Format?.GetHashCode() ?? 0);
+                    return hash;
+                }
             }
         }
 

@@ -57,6 +57,22 @@ namespace DocuLink.Addin.Modules.CustomXml
             _store.SaveLinks(_linksCache);
         }
 
+        /// <summary>Adds several links and rewrites the links XML part once.</summary>
+        internal void AddLinks(IEnumerable<LinkedRectangle> linkedRectangles)
+        {
+            if (linkedRectangles == null)
+                throw new ArgumentNullException(nameof(linkedRectangles));
+
+            EnsureLinksLoaded();
+            var additions = linkedRectangles.ToList();
+            if (additions.Count == 0) return;
+            if (additions.Any(link => link == null))
+                throw new ArgumentException("Linked rectangles cannot contain null entries.", nameof(linkedRectangles));
+
+            _linksCache.AddRange(additions);
+            _store.SaveLinks(_linksCache);
+        }
+
         internal bool UpdateLink(LinkedRectangle linkedRectangle)
         {
             if (linkedRectangle == null) throw new ArgumentNullException(nameof(linkedRectangle));

@@ -19,6 +19,7 @@ export interface HostMessageHandlers {
   onPdfsLoaded: (entries: PdfEntry[], folders: FolderEntry[]) => void;
   onFoldersUpdated?: (folders: FolderEntry[], assignments: Map<string, string | undefined>) => void;
   onLinkedRectangles?: (rects: LinkedRectEntry[]) => void;
+  onLinkedRectangleAdded?: (rect: LinkedRectEntry) => void;
   onNavigateToRectangle?: (id: string, pdfId: string, page: number) => void;
   onClearRectangleHighlight?: () => void;
   onHighlightRectangle?: (id: string) => void;
@@ -95,6 +96,11 @@ interface LinkedRectPayload {
 interface LinkedRectanglesLoadedMessage {
   type: "linked-rectangles-loaded";
   rectangles: LinkedRectPayload[];
+}
+
+interface LinkedRectangleAddedMessage {
+  type: "linked-rectangle-added";
+  rectangle: LinkedRectPayload;
 }
 
 interface NavigateToRectangleMessage {
@@ -198,11 +204,23 @@ function normalizeLinkType(value: unknown): LinkType {
   return value === "raw" || value === "sum" || value === "table" ? value : "auto";
 }
 
+function toLinkedRectEntry(rect: LinkedRectPayload): LinkedRectEntry {
+  return {
+    id: rect.id,
+    pdfId: rect.pdfId,
+    page: rect.page,
+    rect: rect.rect as NormalizedRect,
+    linkType: normalizeLinkType(rect.linkType),
+    ...(rect.table ? { table: rect.table } : {}),
+  };
+}
+
 function handleMessage(raw: unknown, handlers: HostMessageHandlers): void {
   const {
     onPdfsLoaded,
     onFoldersUpdated,
     onLinkedRectangles,
+    onLinkedRectangleAdded,
     onNavigateToRectangle,
     onClearRectangleHighlight,
     onHighlightRectangle,
@@ -258,15 +276,15 @@ function handleMessage(raw: unknown, handlers: HostMessageHandlers): void {
     if (type === "linked-rectangles-loaded") {
       if (!onLinkedRectangles) return;
       const lrMsg = parsed as LinkedRectanglesLoadedMessage;
-      const rects: LinkedRectEntry[] = lrMsg.rectangles.map((r) => ({
-        id:    r.id,
-        pdfId: r.pdfId,
-        page:  r.page,
-        rect:  r.rect as NormalizedRect,
-        linkType: normalizeLinkType(r.linkType),
-        ...(r.table ? { table: r.table } : {}),
-      }));
+      const rects = lrMsg.rectangles.map(toLinkedRectEntry);
       onLinkedRectangles(rects);
+      return;
+    }
+
+    if (type === "linked-rectangle-added") {
+      if (!onLinkedRectangleAdded) return;
+      const added = parsed as LinkedRectangleAddedMessage;
+      onLinkedRectangleAdded(toLinkedRectEntry(added.rectangle));
       return;
     }
 

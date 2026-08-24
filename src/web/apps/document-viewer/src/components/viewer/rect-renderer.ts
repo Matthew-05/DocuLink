@@ -147,13 +147,21 @@ export class RectRenderer {
   }
 
   /**
-   * Appends a single rectangle and re-renders.
-   * Used for optimistic rendering immediately after a user draws a rect,
-   * before the host confirms persistence.
+   * Appends one rectangle and only touches its active page. Used for optimistic
+   * drawing and incremental multi-page copy updates.
    */
   addRectangle(rect: LinkedRectEntry): void {
+    if (this.hasRectangle(rect.id)) return;
     this._rects = [...this._rects, rect];
-    this._renderAll();
+    if (rect.pdfId !== this._viewer.getActivePdfId()) return;
+
+    const layout = this._viewer.getPageLayout().find(
+      ({ pageNumber }) => pageNumber - 1 === rect.page,
+    );
+    if (!layout) return;
+
+    ensureOverlayLayer(layout.wrapper).appendChild(this._createElement(rect));
+    this._applyHighlight();
   }
 
   /**
@@ -207,27 +215,31 @@ export class RectRenderer {
     const overlayLayer = ensureOverlayLayer(wrapper);
 
     for (const entry of pageRects) {
-      const div = document.createElement("div");
-      div.className = LINK_CLASS;
-      div.classList.add(LINK_TYPE_CLASSES[entry.linkType ?? "auto"]);
-      div.dataset["rectId"] = entry.id;
-      applyNormalizedRectToElement(div, entry.rect);
-      this._appendTableGrid(div, entry);
-      div.addEventListener("click", (e) => {
-        e.stopPropagation();
-        if (this._clickGuard?.()) return;
-        this.highlightRectangle(entry.id);
-        for (const cb of this._onRectClickedCallbacks) cb(entry.id);
-      });
-      div.addEventListener("contextmenu", (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        for (const cb of this._onRectContextMenuCallbacks) {
-          cb(entry.id, e.clientX, e.clientY);
-        }
-      });
-      overlayLayer.appendChild(div);
+      overlayLayer.appendChild(this._createElement(entry));
     }
+  }
+
+  private _createElement(entry: LinkedRectEntry): HTMLDivElement {
+    const div = document.createElement("div");
+    div.className = LINK_CLASS;
+    div.classList.add(LINK_TYPE_CLASSES[entry.linkType ?? "auto"]);
+    div.dataset["rectId"] = entry.id;
+    applyNormalizedRectToElement(div, entry.rect);
+    this._appendTableGrid(div, entry);
+    div.addEventListener("click", (e) => {
+      e.stopPropagation();
+      if (this._clickGuard?.()) return;
+      this.highlightRectangle(entry.id);
+      for (const cb of this._onRectClickedCallbacks) cb(entry.id);
+    });
+    div.addEventListener("contextmenu", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      for (const cb of this._onRectContextMenuCallbacks) {
+        cb(entry.id, e.clientX, e.clientY);
+      }
+    });
+    return div;
   }
 
   private _appendTableGrid(div: HTMLElement, entry: LinkedRectEntry): void {

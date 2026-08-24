@@ -545,7 +545,7 @@
     },
 
     "LinkedRectanglesLoadedMessage": {
-      "description": "Sent by the C# host to push the full set of persisted link rectangles to the viewer. Re-sent after any add operation so the viewer stays in sync.",
+      "description": "Sent by the C# host to push the full set of persisted link rectangles to the viewer.",
       "type": "object",
       "required": ["type", "rectangles"],
       "additionalProperties": false,
@@ -568,6 +568,30 @@
               "linkType": "auto"
             }
           ]
+        }
+      ]
+    },
+
+    "LinkedRectangleAddedMessage": {
+      "description": "Sent by the C# host after one link rectangle and its Excel data have been created. Allows multi-page Table copies to update the viewer incrementally without re-sending or re-rendering the complete rectangle collection.",
+      "type": "object",
+      "required": ["type", "rectangle"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "const": "linked-rectangle-added" },
+        "rectangle": { "$ref": "#/definitions/LinkedRectanglePayload" }
+      },
+      "examples": [
+        {
+          "type": "linked-rectangle-added",
+          "rectangle": {
+            "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+            "pdfId": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+            "page": 1,
+            "rect": { "x": 0.1, "y": 0.2, "width": 0.4, "height": 0.3 },
+            "linkType": "table",
+            "table": { "columnBoundaries": [0.5], "rowBoundaries": [0.25, 0.5, 0.75] }
+          }
         }
       ]
     },
@@ -1127,6 +1151,7 @@
     { "$ref": "#/definitions/CacheBuildStartedMessage" },
     { "$ref": "#/definitions/CacheBuildCompleteMessage" },
     { "$ref": "#/definitions/LinkedRectanglesLoadedMessage" },
+    { "$ref": "#/definitions/LinkedRectangleAddedMessage" },
     { "$ref": "#/definitions/LinkRectangleClickedMessage" },
     { "$ref": "#/definitions/LinkRectangleDeletedMessage" },
     { "$ref": "#/definitions/CopyTableSelectionMessage" },
