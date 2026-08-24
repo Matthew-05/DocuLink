@@ -1,5 +1,6 @@
 import type { FileEntry, FolderEntry } from "./types/index.js";
 import { initHostBridge, sendSelectedFolder, sendRemoveFile, sendMoveFile, sendOcrPdfs, sendCancelOcr } from "./host-bridge.js";
+import type { OcrProgress } from "./host-bridge.js";
 import { FolderPanel } from "./components/folder-panel/folder-panel.js";
 import { FileTable } from "./components/file-table/file-table.js";
 import { TableToolbar } from "./components/table-toolbar/table-toolbar.js";
@@ -101,14 +102,14 @@ export function mountApp(root: HTMLElement): void {
   function onOcrStatus(
     pdfId: string,
     status: string,
-    message: string | undefined
+    progress: OcrProgress
   ): void {
     if (status === "error") {
-      console.error(`[DocuLink] OCR error for pdf ${pdfId}:`, message ?? "(no details)");
+      console.error(`[DocuLink] OCR error for pdf ${pdfId}:`, progress.message ?? "(no details)");
     }
-    // Patch the single row rather than re-rendering the table, so the spinners
-    // on the other in-flight rows keep their animation instead of restarting.
-    fileTable.updateStatus(pdfId, status);
+    // Patch one row so determinate stage progress stays smooth and other rows
+    // retain their queued state without a full-table repaint.
+    fileTable.updateStatus(pdfId, status, progress);
 
     const { selectedHasActiveOcr, anyOcrRunning } = computeToolbarState();
     toolbar.update(selectedIds.length, selectedHasActiveOcr, anyOcrRunning);

@@ -934,10 +934,14 @@
           "enum": ["queued", "processing", "ocr", "error"],
           "description": "Job lifecycle state. ocr is sent when OCR or Enhance completes successfully."
         },
-        "message": { "type": "string", "description": "Optional human-readable detail, typically populated on error." }
+        "message": { "type": "string", "description": "Optional human-readable detail for errors or the current processing stage." },
+        "stage": { "type": "string", "description": "Optional stable identifier for the active processing stage, such as geometry, ocr, retry, table, or cache." },
+        "current": { "type": "integer", "minimum": 0, "description": "Optional completed units within the active stage." },
+        "total": { "type": "integer", "minimum": 1, "description": "Optional total units within the active stage. When present with current, the file manager renders determinate progress." }
       },
       "examples": [
         { "type": "ocr-status", "pdfId": "3fa85f64-5717-4562-b3fc-2c963f66afa6", "status": "processing" },
+        { "type": "ocr-status", "pdfId": "3fa85f64-5717-4562-b3fc-2c963f66afa6", "status": "processing", "message": "Direct OCR page 7 at 300 DPI (7 of 40)", "stage": "ocr", "current": 7, "total": 40 },
         { "type": "ocr-status", "pdfId": "3fa85f64-5717-4562-b3fc-2c963f66afa6", "status": "ocr" },
         { "type": "ocr-status", "pdfId": "3fa85f64-5717-4562-b3fc-2c963f66afa6", "status": "error", "message": "Tesseract not found" }
       ]

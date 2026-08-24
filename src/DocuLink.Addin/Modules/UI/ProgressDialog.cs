@@ -5,7 +5,8 @@ using System.Windows.Forms;
 namespace DocuLink.Addin.Modules.UI
 {
     /// <summary>
-    /// A non-closable modal-style dialog with an indeterminate marquee progress bar.
+    /// A non-closable modal-style progress dialog. It uses determinate progress
+    /// whenever the caller supplies a total and falls back to a marquee otherwise.
     /// The user cannot dismiss it — call <see cref="ForceClose"/> from code when
     /// the operation completes.
     /// </summary>
@@ -90,8 +91,20 @@ namespace DocuLink.Addin.Modules.UI
 
             _detailLabel.Text = detail ?? string.Empty;
 
-            _bar.Style = ProgressBarStyle.Marquee;
-            _bar.MarqueeAnimationSpeed = 30;
+            if (total > 0)
+            {
+                int boundedCurrent = Math.Min(Math.Max(current, 0), total);
+                _bar.MarqueeAnimationSpeed = 0;
+                _bar.Style = ProgressBarStyle.Continuous;
+                _bar.Minimum = 0;
+                _bar.Maximum = total;
+                _bar.Value = boundedCurrent;
+            }
+            else
+            {
+                _bar.Style = ProgressBarStyle.Marquee;
+                _bar.MarqueeAnimationSpeed = 30;
+            }
         }
 
         /// <summary>Closes the dialog from code, bypassing the close guard.</summary>

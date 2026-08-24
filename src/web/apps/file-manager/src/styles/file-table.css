@@ -287,6 +287,7 @@
    the fuzzy edges this pill had at 10.5px/19px. Width is left to content —
    a min-width wide enough to align every label overflows the cell. */
 .status-badge {
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -301,11 +302,28 @@
   font-weight: 600;
   line-height: 1;
   white-space: nowrap;
+  overflow: hidden;
 }
 
 .status-badge__label {
+  position: relative;
+  z-index: 1;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* Stage-local determinate fill. The label identifies the stage, so resetting
+   from a completed analysis pass to page 1 of OCR is explicit rather than
+   looking like the overall job moved backwards. */
+.status-badge__progress-fill {
+  position: absolute;
+  z-index: 0;
+  inset: 0 auto 0 0;
+  width: 0;
+  background: currentColor;
+  opacity: 0.16;
+  transition: width 0.18s ease-out;
+  pointer-events: none;
 }
 
 /* ── Indefinite spinner (processing) ──────────────────────────────────────── */
@@ -316,6 +334,8 @@
    spinner previously advanced for ~0.1s on row hover/unhover (the row's
    background transition) and sat frozen the rest of the time. */
 .status-badge__spinner {
+  position: relative;
+  z-index: 1;
   flex: none;
   width: 10px;
   height: 10px;

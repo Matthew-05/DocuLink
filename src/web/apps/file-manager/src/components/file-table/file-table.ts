@@ -1,5 +1,6 @@
 import type { FileEntry, FolderEntry } from "../../types/index.js";
 import { sendRenameFile, sendRemoveFile, sendSelectFile } from "../../host-bridge.js";
+import type { OcrProgress } from "../../host-bridge.js";
 
 export interface FileTableOptions {
   onSelectionChange(selectedIds: string[]): void;
@@ -23,6 +24,7 @@ export class FileTable {
   private _contextMenuNameSpan: HTMLSpanElement | null = null;
   private _contextMenuRow: HTMLTableRowElement | null = null;
   private _isLoading = true;
+  private readonly _ocrProgress = new Map<string, OcrProgress>();
   private readonly _onSelectionChange: (ids: string[]) => void;
   /** Anchor row for shift-click range selection — the last row explicitly clicked. */
   private _lastClickedId: string | null = null;
@@ -87,6 +89,12 @@ export class FileTable {
     for (const id of this._selectedIds) {
       if (!fileIds.has(id)) this._selectedIds.delete(id);
     }
+    for (const id of this._ocrProgress.keys()) {
+      const file = files.find((entry) => entry.id === id);
+      if (!file || (file.status !== "queued" && file.status !== "processing")) {
+        this._ocrProgress.delete(id);
+      }
+    }
     this._render();
   }
 
@@ -97,9 +105,15 @@ export class FileTable {
    * from 0°, so the spinners would visibly stutter for the whole run.
    * Falls back to a full render when the row isn't currently on screen.
    */
-  updateStatus(fileId: string, status: string): void {
+  updateStatus(fileId: string, status: string, progress: OcrProgress = {}): void {
     const entry = this._files.find((f) => f.id === fileId);
     if (entry) entry.status = status;
+
+    if (status === "queued" || status === "processing") {
+      this._ocrProgress.set(fileId, progress);
+    } else {
+      this._ocrProgress.delete(fileId);
+    }
 
     const row = Array.from(this._tbody.rows).find(
       (r) => r.dataset["id"] === fileId
@@ -107,7 +121,7 @@ export class FileTable {
     const cell = row?.querySelector<HTMLTableCellElement>("td.col-status");
     if (!cell) return;
 
-    cell.replaceChildren(buildStatusBadge(status));
+    cell.replaceChildren(buildStatusBadge(status, this._ocrProgress.get(fileId)));
   }
 
   setFilter(text: string): void {
@@ -354,7 +368,7 @@ export class FileTable {
     // Status cell
     const statusTd = document.createElement("td");
     statusTd.className = "col-status";
-    statusTd.appendChild(buildStatusBadge(file.status));
+    statusTd.appendChild(buildStatusBadge(file.status, this._ocrProgress.get(file.id)));
 
     // Size cell
     const sizeTd = document.createElement("td");
@@ -455,7 +469,7 @@ export class FileTable {
   };
 }
 
-/** Statuses that represent an in-flight OCR run and therefore render a spinner. */
+/** Statuses that represent active CPU work; determinate updates replace the spinner. */
 const ACTIVE_OCR_STATUSES = new Set(["processing"]);
 
 function formatStatusLabel(status: string): string {
@@ -476,11 +490,58 @@ function formatStatusLabel(status: string): string {
  * liveness cue rather than a progress bar. Queued rows show a plain label —
  * nothing is actively running yet, so a spinner would be misleading.
  */
-function buildStatusBadge(status: string): HTMLSpanElement {
+function formatProgressLabel(status: string, progress?: OcrProgress): string {
+  const stageLabels: Record<string, string> = {
+    queue: "Queued",
+    worker: "Starting",
+    geometry: "Analyzing",
+    ocr: "OCR",
+    retry: "Refining",
+    "adaptive-evaluation": "Evaluating",
+    "adaptive-ocr": "Refining",
+    "table-recovery": "Table OCR",
+    "forced-ocr": "Rasterizing",
+    table: "Table OCR",
+    cache: "Cached",
+    source: "Using text",
+  };
+  const base = progress?.stage ? stageLabels[progress.stage] : undefined;
+  const label = base ?? formatStatusLabel(status);
+  if (
+    typeof progress?.current === "number" &&
+    typeof progress.total === "number" &&
+    progress.total > 0
+  ) {
+    return `${label} ${Math.min(Math.max(progress.current, 0), progress.total)}/${progress.total}`;
+  }
+  return label;
+}
+
+function buildStatusBadge(status: string, progress?: OcrProgress): HTMLSpanElement {
   const badge = document.createElement("span");
   badge.className = `status-badge status-badge--${status}`;
+  if (progress?.message) badge.title = progress.message;
 
-  if (ACTIVE_OCR_STATUSES.has(status)) {
+  const determinate =
+    status === "processing" &&
+    typeof progress?.current === "number" &&
+    typeof progress.total === "number" &&
+    progress.total > 0;
+
+  if (determinate) {
+    const current = Math.min(Math.max(progress.current!, 0), progress.total!);
+    const fill = document.createElement("span");
+    fill.className = "status-badge__progress-fill";
+    fill.style.width = `${(current / progress.total!) * 100}%`;
+    fill.setAttribute("aria-hidden", "true");
+    badge.appendChild(fill);
+    badge.setAttribute("role", "progressbar");
+    badge.setAttribute("aria-valuemin", "0");
+    badge.setAttribute("aria-valuenow", String(current));
+    badge.setAttribute("aria-valuemax", String(progress.total));
+  }
+
+  if (ACTIVE_OCR_STATUSES.has(status) && !determinate) {
     const spinner = document.createElement("span");
     spinner.className = "status-badge__spinner";
     spinner.setAttribute("aria-hidden", "true");
@@ -491,7 +552,7 @@ function buildStatusBadge(status: string): HTMLSpanElement {
 
   const label = document.createElement("span");
   label.className = "status-badge__label";
-  label.textContent = formatStatusLabel(status);
+  label.textContent = formatProgressLabel(status, progress);
   badge.appendChild(label);
 
   return badge;

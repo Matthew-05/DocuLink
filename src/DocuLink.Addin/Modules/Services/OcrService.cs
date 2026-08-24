@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Web.Script.Serialization;
@@ -133,8 +134,13 @@ namespace DocuLink.Addin.Modules.Services
                 ["workbook_load_ms"] = loadClock.ElapsedMilliseconds,
             });
 
-            foreach (var job in jobs)
-                onStatusUpdate(job.PdfId, "queued", null);
+            for (int jobIndex = 0; jobIndex < jobs.Count; jobIndex++)
+            {
+                onStatusUpdate(
+                    jobs[jobIndex].PdfId,
+                    "queued",
+                    $"Waiting — file {jobIndex + 1} of {jobs.Count}");
+            }
 
             _cts = new CancellationTokenSource();
             IsRunning = true;
@@ -227,7 +233,10 @@ namespace DocuLink.Addin.Modules.Services
                         }
 
                         var processingCallbackClock = Stopwatch.StartNew();
-                        Invoke(() => onStatusUpdate(job.PdfId, "processing", null));
+                        Invoke(() => onStatusUpdate(
+                            job.PdfId,
+                            "processing",
+                            $"Starting file {jobIndex + 1} of {jobs.Count}…"));
                         processingCallbackClock.Stop();
 
                         var buildClock = Stopwatch.StartNew();
@@ -246,6 +255,14 @@ namespace DocuLink.Addin.Modules.Services
                             job.PdfId,
                             message =>
                             {
+                                // Worker progress used to stop at the performance log.
+                                // Forward every stage/page update to the file manager;
+                                // the host serializer adds stable stage/count fields.
+                                Invoke(() => onStatusUpdate(
+                                    job.PdfId,
+                                    "processing",
+                                    message));
+
                                 string stage = ProgressStage(message);
                                 if (string.Equals(stage, lastProgressStage, StringComparison.Ordinal)
                                     && progressLogClock.ElapsedMilliseconds < 5000)
@@ -451,11 +468,19 @@ namespace DocuLink.Addin.Modules.Services
             }
         }
 
-        private static string ProgressStage(string message)
+        internal static string ProgressStage(string message)
         {
             string value = message ?? string.Empty;
             if (value.StartsWith("Extracting geometry", StringComparison.OrdinalIgnoreCase))
                 return "geometry";
+            if (value.StartsWith("Direct OCR", StringComparison.OrdinalIgnoreCase))
+                return "ocr";
+            if (value.StartsWith("Retrying", StringComparison.OrdinalIgnoreCase))
+                return "retry";
+            if (value.StartsWith("Identical PDF", StringComparison.OrdinalIgnoreCase))
+                return "cache";
+            if (value.StartsWith("Source text", StringComparison.OrdinalIgnoreCase))
+                return "source";
             if (value.IndexOf("high-resolution layout", StringComparison.OrdinalIgnoreCase) >= 0)
                 return "adaptive-evaluation";
             if (value.StartsWith("Retrying OCR", StringComparison.OrdinalIgnoreCase))
@@ -468,6 +493,23 @@ namespace DocuLink.Addin.Modules.Services
             if (value.IndexOf("OCR", StringComparison.OrdinalIgnoreCase) >= 0)
                 return "ocr";
             return "worker";
+        }
+
+        internal static bool TryParseProgressCount(
+            string message,
+            out int current,
+            out int total)
+        {
+            current = 0;
+            total = 0;
+            Match match = Regex.Match(
+                message ?? string.Empty,
+                @"(?:\(|\b)(\d+)\s+of\s+(\d+)(?:\)|\b)",
+                RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+            return match.Success
+                && int.TryParse(match.Groups[1].Value, out current)
+                && int.TryParse(match.Groups[2].Value, out total)
+                && total > 0;
         }
 
         private static long Base64DecodedLength(string value)

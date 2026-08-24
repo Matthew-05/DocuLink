@@ -13,6 +13,16 @@ interface OcrStatusMessage {
   pdfId: string;
   status: "queued" | "processing" | "ocr" | "error" | "none" | "text";
   message?: string;
+  stage?: string;
+  current?: number;
+  total?: number;
+}
+
+export interface OcrProgress {
+  message?: string;
+  stage?: string;
+  current?: number;
+  total?: number;
 }
 
 interface ResetUiMessage {
@@ -54,7 +64,7 @@ export function registerUiResetHandler(handler: () => void): void {
 
 export function initHostBridge(
   onFilesLoaded: (folders: FolderEntry[], files: FileEntry[]) => void,
-  onOcrStatus?: (pdfId: string, status: string, message: string | undefined) => void
+  onOcrStatus?: (pdfId: string, status: string, progress: OcrProgress) => void
 ): void {
   const webview = getWebView();
   if (!webview) return;
@@ -75,7 +85,12 @@ export function initHostBridge(
       console.log(`[DocuLink] files-loaded received: ${msg.files.length} files`);
       onFilesLoaded(msg.folders, msg.files);
     } else if (msg.type === "ocr-status" && onOcrStatus) {
-      onOcrStatus(msg.pdfId, msg.status, msg.message);
+      onOcrStatus(msg.pdfId, msg.status, {
+        message: msg.message,
+        stage: msg.stage,
+        current: msg.current,
+        total: msg.total,
+      });
     } else if (msg.type === "reset-ui") {
       _onResetUi?.();
     }
