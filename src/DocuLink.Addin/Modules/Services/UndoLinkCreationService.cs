@@ -23,9 +23,9 @@ namespace DocuLink.Addin.Modules.Services
     internal sealed class UndoLinkCreationService
     {
         /// <summary>
-        /// Pops entries until one applies cleanly, discarding any whose rectangle or cell has
-        /// since changed. Returns the id of the rectangle removed, or <c>null</c> when nothing
-        /// was undone.
+        /// Attempts only the newest entry. If its rectangle or cell has changed, the entry is
+        /// discarded and undo stops rather than reaching backward to an older creation the user
+        /// did not ask to reverse. Returns the id removed, or <c>null</c> when nothing was undone.
         /// </summary>
         public string UndoLast(Excel.Workbook workbook)
         {
@@ -38,23 +38,23 @@ namespace DocuLink.Addin.Modules.Services
 
             WorkbookStorageSession session = Globals.ThisAddIn.GetStorageSession(workbook);
 
-            while (stack.TryPop(out LinkCreationUndoEntry entry))
-            {
-                if (!TryResolveTarget(workbook, session, entry, out LinkedRectangle rect, out Excel.Range cell))
-                    continue;
+            if (!stack.TryPop(out LinkCreationUndoEntry entry))
+                return null;
 
-                if (UndoEntry(workbook, session, entry, rect, cell))
-                    return entry.RectId;
-            }
+            if (!TryResolveTarget(
+                workbook, session, entry, out LinkedRectangle rect, out Excel.Range cell))
+                return null;
 
-            return null;
+            return UndoEntry(workbook, session, entry, rect, cell)
+                ? entry.RectId
+                : null;
         }
 
         /// <summary>
         /// Validates an entry against the live workbook. Anything that no longer lines up —
         /// a rectangle already deleted, a cell whose row was removed, a value the user has
-        /// since edited — is treated as stale and skipped without comment, per the rule that
-        /// undo must never overwrite a change the user made after the fact.
+        /// since edited — is treated as stale and ends this undo attempt, per the rule that
+        /// undo must never overwrite a later change or reach backward to an older creation.
         /// </summary>
         private static bool TryResolveTarget(
             Excel.Workbook workbook,
@@ -71,14 +71,14 @@ namespace DocuLink.Addin.Modules.Services
 
             if (!session.TryGetLink(entry.RectId, out rect) || rect == null)
             {
-                DocuLinkLog.Trace($"undo: rect {entry.RectId} already gone – skipping");
+                DocuLinkLog.Trace($"undo: rect {entry.RectId} already gone – stopping");
                 return false;
             }
 
             cell = LinkCellResolver.TryResolveCell(workbook, rect);
             if (cell == null)
             {
-                DocuLinkLog.Trace($"undo: cell for rect {entry.RectId} no longer resolves – skipping");
+                DocuLinkLog.Trace($"undo: cell for rect {entry.RectId} no longer resolves – stopping");
                 return false;
             }
 
@@ -89,13 +89,13 @@ namespace DocuLink.Addin.Modules.Services
                 {
                     DocuLinkLog.Trace(
                         $"undo: cell {cell.Address} changed since creation " +
-                        $"(expected '{entry.ExpectedFormula}', found '{current}') – skipping");
+                        $"(expected '{entry.ExpectedFormula}', found '{current}') – stopping");
                     return false;
                 }
             }
             catch (COMException ex)
             {
-                DocuLinkLog.Trace($"undo: cell read failed – skipping: {ex.Message}");
+                DocuLinkLog.Trace($"undo: cell read failed – stopping: {ex.Message}");
                 return false;
             }
 

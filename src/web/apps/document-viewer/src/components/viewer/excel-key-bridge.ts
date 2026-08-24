@@ -40,8 +40,9 @@ export function attachExcelKeyBridge(): () => void {
     if (e.defaultPrevented) return;
     if (isTextEntryTarget(e.target)) return;
 
-    // Ctrl+Z / Cmd+Z — undo the last rectangle creation. Shift is excluded so
-    // Ctrl+Shift+Z stays free; redo is deliberately out of scope.
+    // Ctrl+Z / Cmd+Z — ask the host to undo the true latest action. The host gives
+    // Excel's native stack priority over its rectangle-creation history. Shift is
+    // excluded so Ctrl+Shift+Z stays free; redo is deliberately out of scope.
     if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === "z") {
       e.preventDefault();
       e.stopPropagation();

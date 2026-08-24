@@ -458,7 +458,7 @@ export function sendExcelNavigate(motion: "tab" | "enter", reverse: boolean): vo
   postToHost({ type: "excel-navigate", motion, reverse });
 }
 
-/** Asks the host to undo the most recent link-rectangle creation. */
+/** Asks the host to undo Excel's latest native action or eligible link creation. */
 export function sendUndoLinkCreation(): void {
   postToHost({ type: "undo-link-creation" });
 }

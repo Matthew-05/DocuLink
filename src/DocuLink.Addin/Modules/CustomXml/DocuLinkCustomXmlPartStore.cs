@@ -370,6 +370,11 @@ namespace DocuLink.Addin.Modules.CustomXml
             object missing = Type.Missing;
             Office.CustomXMLPart added = _workbook.CustomXMLParts.Add(xml, missing);
 
+            // Every persisted DocuLink write makes any earlier rectangle creation cease to
+            // be the latest DocuLink action. Interactive creation and successful creation
+            // undo explicitly re-arm after their full operation completes.
+            NotifyPersistedMutation();
+
             if (existing == null)
                 return;
 
@@ -399,7 +404,24 @@ namespace DocuLink.Addin.Modules.CustomXml
         {
             Office.CustomXMLPart part = FindPartByNamespace(namespaceUri);
             if (part != null)
+            {
                 part.Delete();
+                NotifyPersistedMutation();
+            }
+        }
+
+        private void NotifyPersistedMutation()
+        {
+            try
+            {
+                Globals.ThisAddIn?.DisarmLinkCreationUndo(_workbook);
+            }
+            catch (Exception ex)
+            {
+                // Storage already changed, so notification failure cannot be rolled back.
+                // The undo service still validates its top entry before touching workbook data.
+                DocuLinkLog.Trace($"NotifyPersistedMutation failed: {ex.Message}");
+            }
         }
     }
 }

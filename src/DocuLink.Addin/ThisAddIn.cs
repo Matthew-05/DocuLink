@@ -219,6 +219,26 @@ namespace DocuLink.Addin
         internal void ArmExcelUndoForLinkCreation() => RefreshExcelUndoArmedState();
 
         /// <summary>
+        /// Invalidates link-creation undo after a persisted DocuLink mutation. Creation and
+        /// successful undo call this indirectly while writing storage, then explicitly re-arm
+        /// only after their complete operation has succeeded.
+        /// </summary>
+        internal void DisarmLinkCreationUndo(Excel.Workbook workbook)
+        {
+            try
+            {
+                TryGetLinkUndoStack(workbook)?.Disarm();
+            }
+            catch (Exception ex)
+            {
+                Modules.DocuLinkLog.Trace(
+                    $"DisarmLinkCreationUndo failed: {ex.Message}");
+            }
+
+            RefreshExcelUndoArmedState();
+        }
+
+        /// <summary>
         /// Points the grid's Ctrl+Z at DocuLink only when the workbook the user is actually
         /// looking at has undoable history that is still the most recent thing to happen in it.
         /// </summary>
@@ -259,14 +279,90 @@ namespace DocuLink.Addin
         }
 
         /// <summary>
-        /// Runs one step of link-creation undo and re-arms the grid keystroke when more history
-        /// remains, so repeated Ctrl+Z in Excel walks back through the stack the way it does in
-        /// the viewer.
+        /// Routes Ctrl+Z to the actual most recent undo target. Excel's native stack has
+        /// priority because it contains any worksheet action performed after DocuLink's
+        /// programmatic link write, including actions such as row/column sizing that raise no
+        /// SheetChange event. Link creation is reversed only when Excel has nothing newer.
+        /// </summary>
+        internal void UndoMostRecentAction()
+        {
+            if (!TryGetNativeExcelUndoState(
+                out Office.CommandBars commandBars,
+                out bool nativeUndoAvailable))
+            {
+                // Uncertainty must never cost the user a rectangle. Leave both histories
+                // untouched so a later Ctrl+Z can retry when Excel is responsive.
+                Modules.DocuLinkLog.Trace(
+                    "UndoMostRecentAction: native Excel undo state unavailable – doing nothing");
+                return;
+            }
+
+            if (nativeUndoAvailable)
+            {
+                try
+                {
+                    // Execute the built-in control rather than Application.Undo(), whose
+                    // contract requires it to be the first operation in a macro. We already
+                    // queried the command state to decide which undo history owns Ctrl+Z.
+                    commandBars.ExecuteMso("Undo");
+                }
+                catch (Exception ex)
+                {
+                    // Never fall through to rectangle undo after Excel said it owned the
+                    // keystroke. A failed native undo is safer than undoing the wrong action.
+                    Modules.DocuLinkLog.Trace(
+                        $"UndoMostRecentAction: Excel undo failed: {ex.Message}");
+                }
+
+                RefreshExcelUndoArmedState();
+                return;
+            }
+
+            UndoLastLinkCreation();
+        }
+
+        /// <summary>
+        /// Reads the live state of Excel's Undo command. Unlike worksheet events, the command
+        /// covers every native undoable action, including formatting and dimension changes.
+        /// </summary>
+        private bool TryGetNativeExcelUndoState(
+            out Office.CommandBars commandBars,
+            out bool available)
+        {
+            commandBars = null;
+            available = false;
+
+            try
+            {
+                commandBars = Application?.CommandBars as Office.CommandBars;
+                if (commandBars == null) return false;
+
+                available = commandBars.GetEnabledMso("Undo");
+                return true;
+            }
+            catch (Exception ex)
+            {
+                Modules.DocuLinkLog.Trace(
+                    $"TryGetNativeExcelUndoState failed: {ex.Message}");
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Runs one eligible step of link-creation undo and re-arms the grid keystroke when
+        /// more history remains, so repeated Ctrl+Z can walk back through consecutive creates.
         /// </summary>
         internal string UndoLastLinkCreation()
         {
             Excel.Workbook wb = Application?.ActiveWorkbook;
             if (wb == null) return null;
+
+            Modules.Services.LinkCreationUndoStack stack = TryGetLinkUndoStack(wb);
+            if (stack == null || !stack.IsArmed || stack.IsEmpty)
+            {
+                RefreshExcelUndoArmedState();
+                return null;
+            }
 
             string removedId = null;
 
@@ -282,7 +378,6 @@ namespace DocuLink.Addin
             // Undoing is itself a DocuLink action, so re-arm explicitly rather than relying on the
             // flag having survived: the reversal's own cell writes, and the pop that consumed the
             // entry, both leave it stale. Without this the chain stops after one Ctrl+Z.
-            Modules.Services.LinkCreationUndoStack stack = TryGetLinkUndoStack(wb);
             if (removedId != null)
                 stack?.Arm();
             else
@@ -885,7 +980,7 @@ namespace DocuLink.Addin
             EnsureLinkTracking(Application.ActiveWorkbook);
 
             _excelUndoKeyHook = new Modules.Infrastructure.ExcelUndoKeyHook(
-                () => UndoLastLinkCreation());
+                () => UndoMostRecentAction());
 
             _ = CheckForUpdateOnOpenAsync();
 

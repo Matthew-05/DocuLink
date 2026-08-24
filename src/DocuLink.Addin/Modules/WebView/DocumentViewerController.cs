@@ -271,12 +271,12 @@ namespace DocuLink.Addin.Modules.WebView
         }
 
         /// <summary>
-        /// Undoes the most recent link-rectangle creation. The add-in owns the stack so the
-        /// keystroke and Excel's own grid Ctrl+Z walk the same history.
+        /// Routes undo through the add-in so Excel's native undo stack keeps priority over
+        /// DocuLink's link-creation history.
         /// </summary>
         private void HandleUndoLinkCreation()
         {
-            _invokeTarget.BeginInvoke(new Action(() => Globals.ThisAddIn.UndoLastLinkCreation()));
+            _invokeTarget.BeginInvoke(new Action(() => Globals.ThisAddIn.UndoMostRecentAction()));
         }
 
         private void HandleLinkRectangleCreated(string json)

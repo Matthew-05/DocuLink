@@ -701,7 +701,7 @@
     },
 
     "UndoLinkCreationMessage": {
-      "description": "Sent by the document-viewer when the user presses Ctrl+Z (or Cmd+Z) while the viewer has focus. The host pops its in-memory per-workbook rectangle-creation stack, discarding stale entries, removes the rectangle, clears or rebuilds the linked cell, and selects that cell. Undo covers rectangle creation only — edits, deletions and rotations are not undoable, and there is no redo.",
+      "description": "Sent by the document-viewer when the user presses Ctrl+Z (or Cmd+Z) while the viewer has focus. The host first delegates to Excel when its native Undo command has an available action. Only when Excel has nothing newer may the host pop the newest eligible entry from its in-memory per-workbook rectangle-creation stack, remove the rectangle, clear or rebuild the linked cell, and select that cell. If that newest entry is stale, undo stops instead of reaching backward to an older creation. Any persisted non-creation DocuLink mutation disarms creation undo. DocuLink undo covers rectangle creation only — edits, deletions and rotations are not undoable, and there is no redo.",
       "type": "object",
       "required": ["type"],
       "additionalProperties": false,

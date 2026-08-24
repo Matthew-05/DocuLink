@@ -6,8 +6,8 @@ using System.Windows.Forms;
 namespace DocuLink.Addin.Modules.Infrastructure
 {
     /// <summary>
-    /// Routes Ctrl+Z pressed on the Excel worksheet grid to DocuLink's own undo, but only
-    /// while the most recent action was a link-rectangle creation.
+    /// Routes Ctrl+Z pressed on the Excel worksheet grid through DocuLink's undo coordinator
+    /// while link-creation history is eligible.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -18,10 +18,10 @@ namespace DocuLink.Addin.Modules.Infrastructure
     /// mouse hook <c>ExcelGridFocusRestoreService</c> already installs on this thread.
     /// </para>
     /// <para>
-    /// Two conditions gate every keystroke, so Excel's native undo is never quietly stolen:
-    /// the hook must be armed — set when a rectangle is created, cleared by any subsequent
-    /// worksheet edit — and the focused window must be the grid itself, which keeps Ctrl+Z
-    /// working normally in the formula bar, dialogs and the WebView.
+    /// Two conditions gate every keystroke: the hook must be armed and the focused window must
+    /// be the grid itself, which keeps Ctrl+Z working normally in the formula bar, dialogs and
+    /// the WebView. The UI-thread callback then checks Excel's live Undo command and delegates
+    /// to it whenever a native action is newer than DocuLink's link creation.
     /// </para>
     /// </remarks>
     internal sealed class ExcelUndoKeyHook : IDisposable
@@ -66,8 +66,7 @@ namespace DocuLink.Addin.Modules.Infrastructure
         }
 
         /// <summary>
-        /// Whether the next Ctrl+Z on the grid belongs to DocuLink. Set after a rectangle is
-        /// created or undone; cleared by any worksheet edit the user makes in between.
+        /// Whether Ctrl+Z needs routing because eligible link-creation history exists.
         /// </summary>
         internal bool IsArmed => _armed;
 
