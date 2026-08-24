@@ -15,6 +15,8 @@ Protocol is defined in contracts/python-worker-v1.json.
 from __future__ import annotations
 
 import base64
+from collections import OrderedDict
+import hashlib
 import json
 import os
 import sys
@@ -22,7 +24,7 @@ import time
 
 from engines.conversion_engine import ConversionError, convert_to_pdf
 from engines.geometry_engine import extract_text_geometry, geometry_to_base64
-from engines.table_cell_engine import recover_table_cells
+from engines.table_cell_engine import has_recoverable_ruled_table, recover_table_cells
 from engines.ocr_engine import (
     MODE_FORCE,
     MODE_REDO,
@@ -30,6 +32,8 @@ from engines.ocr_engine import (
     active_ocr_engine,
     active_rasterizer,
     evaluate_adaptive_profiles,
+    extract_direct_text_geometry,
+    merge_geometry_pages,
     needs_adaptive_retry,
     needs_garbled_text_retry,
     needs_high_resolution_retry,
@@ -37,6 +41,7 @@ from engines.ocr_engine import (
     ocr_pdf_bytes,
     profile_ocr_options,
     resolve_use_threads,
+    select_pages_requiring_ocr,
     select_best_adaptive_profile,
     summarize_geometry_quality,
 )
@@ -71,6 +76,11 @@ def _claim_protocol_stream():
 
 _PROTOCOL_OUT = _claim_protocol_stream()
 from schemas.models import ConvertJob, ConvertResult, OcrJob, OcrProgress, OcrResult
+
+
+_GEOMETRY_CACHE_VERSION = "direct-hocr-v1"
+_GEOMETRY_CACHE_MAX_ENTRIES = 16
+_GEOMETRY_CACHE: OrderedDict[str, dict] = OrderedDict()
 
 
 def _write(obj: dict) -> None:
@@ -181,6 +191,15 @@ def _handle_job(job: OcrJob) -> None:
     table_text_recovery_error = ""
     page_text_regions_detected = 0
     page_text_words_resolved = 0
+    native_pages_reused = 0
+    direct_ocr_page_numbers: list[int] = []
+    direct_retry_page_numbers: list[int] = []
+    direct_400_selected_page_numbers: list[int] = []
+    direct_mean_confidence: float | None = None
+    direct_ocr_error = ""
+    table_detection_ms = 0
+    geometry_cache_key = ""
+    geometry_cache_hit = False
 
     def _elapsed_ms(since: float) -> int:
         return int((time.perf_counter() - since) * 1000)
@@ -188,7 +207,11 @@ def _handle_job(job: OcrJob) -> None:
     def _diagnostics(page_count: int) -> dict:
         d = {
             "ocr_engine": active_ocr_engine() if ocr_ran else "none",
-            "rasterizer": active_rasterizer() if ocr_ran else "none",
+            "rasterizer": (
+                "pymupdf"
+                if ocr_mode == "direct"
+                else active_rasterizer() if ocr_ran else "none"
+            ),
             "page_count": page_count,
             "input_bytes": input_bytes,
             "output_bytes": output_bytes,
@@ -239,14 +262,28 @@ def _handle_job(job: OcrJob) -> None:
             "table_text_recovery_ms": table_text_recovery_ms,
             "page_text_regions_detected": page_text_regions_detected,
             "page_text_words_resolved": page_text_words_resolved,
+            "native_pages_reused": native_pages_reused,
+            "direct_ocr_page_count": len(direct_ocr_page_numbers),
+            "direct_ocr_page_numbers": direct_ocr_page_numbers,
+            "direct_retry_page_count": len(direct_retry_page_numbers),
+            "direct_retry_page_numbers": direct_retry_page_numbers,
+            "direct_400_selected_page_numbers": direct_400_selected_page_numbers,
+            "table_detection_ms": table_detection_ms,
+            "geometry_cache_hit": geometry_cache_hit,
+            "geometry_cache_version": _GEOMETRY_CACHE_VERSION,
         }
         if ocr_ran:
             d["ocr_ms"] = ocr_ms
-            d["use_threads"] = resolve_use_threads()
+            if ocr_mode != "direct":
+                d["use_threads"] = resolve_use_threads()
         if escalation_reason:
             d["escalation_reason"] = escalation_reason
         if profile_mean_confidence is not None:
             d["profile_mean_confidence"] = profile_mean_confidence
+        if direct_mean_confidence is not None:
+            d["direct_mean_confidence"] = direct_mean_confidence
+        if direct_ocr_error:
+            d["direct_ocr_error"] = direct_ocr_error
         if profile_retry_error:
             d["profile_retry_error"] = profile_retry_error
         if date_recovery_error:
@@ -254,6 +291,57 @@ def _handle_job(job: OcrJob) -> None:
         if table_text_recovery_error:
             d["table_text_recovery_error"] = table_text_recovery_error
         return d
+
+    def _emit_success(geometry: dict, result_bytes: bytes | None = None) -> None:
+        nonlocal final_characters
+        nonlocal final_non_whitespace_characters
+        nonlocal final_alphanumeric_ratio
+        nonlocal final_garbled_page_numbers
+        nonlocal quality_warning
+        nonlocal output_bytes
+        nonlocal geometry_encode_ms
+        nonlocal pdf_encode_ms
+
+        final_summary = summarize_geometry_quality(geometry)
+        final_characters = final_summary["total_characters"]
+        final_non_whitespace_characters = final_summary[
+            "non_whitespace_characters"
+        ]
+        final_alphanumeric_ratio = final_summary["alphanumeric_ratio"]
+        final_garbled_page_numbers = list(
+            final_summary["garbled_page_numbers"]
+        )
+        quality_warning = needs_adaptive_retry(
+            final_summary
+        ) or needs_garbled_text_retry(final_summary)
+
+        output_bytes = len(result_bytes) if result_bytes is not None else 0
+        geometry_encode_started = time.perf_counter()
+        geometry_b64 = geometry_to_base64(geometry)
+        geometry_encode_ms = _elapsed_ms(geometry_encode_started)
+        result_b64 = ""
+        if result_bytes is not None and not job.preserve_source_pdf:
+            pdf_encode_started = time.perf_counter()
+            result_b64 = base64.b64encode(result_bytes).decode("ascii")
+            pdf_encode_ms = _elapsed_ms(pdf_encode_started)
+        _write(
+            OcrResult(
+                job_id=job.job_id,
+                status="success",
+                pdf_base64=result_b64,
+                geometry_base64=geometry_b64,
+                diagnostics=_diagnostics(len(geometry["pages"])),
+            ).to_dict()
+        )
+        if geometry_cache_key and job.preserve_source_pdf and job.mode == "full":
+            _GEOMETRY_CACHE[geometry_cache_key] = {
+                "geometry_base64": geometry_b64,
+                "summary": final_summary,
+                "quality_warning": quality_warning,
+            }
+            _GEOMETRY_CACHE.move_to_end(geometry_cache_key)
+            while len(_GEOMETRY_CACHE) > _GEOMETRY_CACHE_MAX_ENTRIES:
+                _GEOMETRY_CACHE.popitem(last=False)
 
     try:
         decode_started = time.perf_counter()
@@ -270,6 +358,46 @@ def _handle_job(job: OcrJob) -> None:
         finally:
             inspected_doc.close()
         inspect_ms = _elapsed_ms(inspect_started)
+
+        if job.mode == "full" and job.preserve_source_pdf:
+            geometry_cache_key = hashlib.sha256(
+                (_GEOMETRY_CACHE_VERSION + ":").encode("ascii") + pdf_bytes
+            ).hexdigest()
+            cached = _GEOMETRY_CACHE.get(geometry_cache_key)
+            if cached is not None:
+                _GEOMETRY_CACHE.move_to_end(geometry_cache_key)
+                geometry_cache_hit = True
+                cached_summary = cached["summary"]
+                initial_characters = int(cached_summary["total_characters"])
+                initial_non_whitespace_characters = int(
+                    cached_summary["non_whitespace_characters"]
+                )
+                initial_alphanumeric_ratio = float(
+                    cached_summary["alphanumeric_ratio"]
+                )
+                initial_garbled_page_numbers = list(
+                    cached_summary["garbled_page_numbers"]
+                )
+                final_characters = initial_characters
+                final_non_whitespace_characters = (
+                    initial_non_whitespace_characters
+                )
+                final_alphanumeric_ratio = initial_alphanumeric_ratio
+                final_garbled_page_numbers = initial_garbled_page_numbers
+                quality_warning = bool(cached["quality_warning"])
+                ocr_mode = "none"
+                selected_profile = "none"
+                evaluated_profiles = []
+                on_progress("Identical PDF already processed; reusing geometry…")
+                _write(
+                    OcrResult(
+                        job_id=job.job_id,
+                        status="success",
+                        geometry_base64=cached["geometry_base64"],
+                        diagnostics=_diagnostics(page_count),
+                    ).to_dict()
+                )
+                return
 
         if job.mode == "geometry-only":
             geometry_started = time.perf_counter()
@@ -359,6 +487,151 @@ def _handle_job(job: OcrJob) -> None:
         preflight_geometry_ms = _elapsed_ms(preflight_started)
         preflight_summary = summarize_geometry_quality(preflight_geometry)
         preflight_garbled = needs_garbled_text_retry(preflight_summary)
+
+        initial_summary = preflight_summary
+        initial_characters = initial_summary["total_characters"]
+        initial_non_whitespace_characters = initial_summary[
+            "non_whitespace_characters"
+        ]
+        initial_alphanumeric_ratio = initial_summary["alphanumeric_ratio"]
+        initial_garbled_page_numbers = list(
+            initial_summary["garbled_page_numbers"]
+        )
+
+        # The viewer retains the source PDF, so most jobs no longer need an OCR
+        # PDF at all. Reuse trustworthy native geometry and send only suspicious
+        # pages through Tesseract hOCR, which already includes character boxes.
+        if job.preserve_source_pdf:
+            direct_ocr_page_numbers = select_pages_requiring_ocr(
+                pdf_bytes,
+                preflight_summary,
+            )
+            native_pages_reused = page_count - len(direct_ocr_page_numbers)
+            if not direct_ocr_page_numbers:
+                ocr_mode = "none"
+                selected_profile = "none"
+                evaluated_profiles = []
+                ocr_ran = False
+                on_progress("Source text geometry is trustworthy; skipping OCR…")
+                _emit_success(preflight_geometry)
+                return
+
+            table_detection_started = time.perf_counter()
+            try:
+                legacy_table_required, table_scan_stats = (
+                    has_recoverable_ruled_table(pdf_bytes)
+                )
+                table_images_examined = int(
+                    table_scan_stats["table_images_examined"]
+                )
+                table_images_skipped_small = int(
+                    table_scan_stats["table_images_skipped_small"]
+                )
+                table_grid_candidates = int(
+                    table_scan_stats["table_grid_candidates"]
+                )
+            except Exception as exc:  # noqa: BLE001 — compatibility fallback
+                legacy_table_required = True
+                direct_ocr_error = "Table compatibility check failed: " + str(exc)
+            finally:
+                table_detection_ms = _elapsed_ms(table_detection_started)
+
+            if not legacy_table_required:
+                try:
+                    ocr_mode = "direct"
+                    selected_profile = "direct-hocr"
+                    evaluated_profiles = ["direct-hocr-300"]
+                    forced_page_numbers = direct_ocr_page_numbers
+                    escalation_reason = (
+                        "text-garbled-preflight"
+                        if preflight_garbled
+                        else "page-needs-ocr"
+                    )
+                    ocr_ran = True
+                    on_progress(
+                        f"Direct OCR on {len(direct_ocr_page_numbers)} page(s) "
+                        "at 300 DPI…"
+                    )
+                    direct_started = time.perf_counter()
+                    direct_pages, direct_stats = extract_direct_text_geometry(
+                        pdf_bytes,
+                        direct_ocr_page_numbers,
+                        dpi=300,
+                        progress_callback=on_progress,
+                    )
+                    primary_ocr_ms = _elapsed_ms(direct_started)
+
+                    direct_retry_page_numbers = [
+                        page_number
+                        for page_number, stats in direct_stats.items()
+                        if float(stats["mean_confidence"]) < 75.0
+                        or int(stats["character_count"]) < 40
+                    ]
+                    if direct_retry_page_numbers:
+                        evaluated_profiles.append("direct-hocr-400")
+                        on_progress(
+                            f"Retrying {len(direct_retry_page_numbers)} weak "
+                            "page(s) at 400 DPI…"
+                        )
+                        retry_started = time.perf_counter()
+                        retry_pages, retry_stats = extract_direct_text_geometry(
+                            pdf_bytes,
+                            direct_retry_page_numbers,
+                            dpi=400,
+                            progress_callback=on_progress,
+                        )
+                        adaptive_ocr_ms = _elapsed_ms(retry_started)
+                        for page_number in direct_retry_page_numbers:
+                            first = direct_stats[page_number]
+                            retry = retry_stats[page_number]
+                            first_characters = int(first["character_count"])
+                            retry_characters = int(retry["character_count"])
+                            first_confidence = float(first["mean_confidence"])
+                            retry_confidence = float(retry["mean_confidence"])
+                            if (
+                                retry_characters > first_characters * 1.05
+                                or retry_confidence > first_confidence + 2.0
+                            ):
+                                direct_pages[page_number] = retry_pages[page_number]
+                                direct_stats[page_number] = retry
+                                direct_400_selected_page_numbers.append(page_number)
+
+                    confidences = [
+                        float(stats["mean_confidence"])
+                        for stats in direct_stats.values()
+                        if int(stats["word_count"]) > 0
+                    ]
+                    direct_mean_confidence = (
+                        round(sum(confidences) / len(confidences), 2)
+                        if confidences
+                        else 0.0
+                    )
+                    ocr_ms = primary_ocr_ms + adaptive_ocr_ms
+                    geometry = merge_geometry_pages(
+                        preflight_geometry,
+                        direct_pages,
+                    )
+                    direct_summary = summarize_geometry_quality(geometry)
+                    unresolved_direct_pages = sorted(
+                        set(direct_ocr_page_numbers)
+                        & set(direct_summary["garbled_page_numbers"])
+                    )
+                    if unresolved_direct_pages:
+                        raise RuntimeError(
+                            "Direct OCR remained garbled on page(s) "
+                            + ",".join(map(str, unresolved_direct_pages))
+                        )
+                    _emit_success(geometry)
+                    return
+                except Exception as exc:  # noqa: BLE001 — preserve legacy path
+                    direct_ocr_error = str(exc)
+                    on_progress(
+                        "Direct OCR unavailable; using compatibility pipeline…"
+                    )
+            else:
+                on_progress(
+                    "Ruled table detected; using compatibility OCR pipeline…"
+                )
 
         selected_profile = PROFILE_DEFAULT
         evaluated_profiles = [PROFILE_DEFAULT]
@@ -654,36 +927,7 @@ def _handle_job(job: OcrJob) -> None:
             if table_text_recovery_ms == 0:
                 table_text_recovery_ms = date_recovery_ms
 
-        final_characters = current_summary["total_characters"]
-        final_non_whitespace_characters = current_summary[
-            "non_whitespace_characters"
-        ]
-        final_alphanumeric_ratio = current_summary["alphanumeric_ratio"]
-        final_garbled_page_numbers = list(
-            current_summary["garbled_page_numbers"]
-        )
-        quality_warning = needs_adaptive_retry(
-            current_summary
-        ) or needs_garbled_text_retry(current_summary)
-
-        output_bytes = len(result_bytes)
-        geometry_encode_started = time.perf_counter()
-        geometry_b64 = geometry_to_base64(geometry)
-        geometry_encode_ms = _elapsed_ms(geometry_encode_started)
-        result_b64 = ""
-        if not job.preserve_source_pdf:
-            pdf_encode_started = time.perf_counter()
-            result_b64 = base64.b64encode(result_bytes).decode("ascii")
-            pdf_encode_ms = _elapsed_ms(pdf_encode_started)
-        _write(
-            OcrResult(
-                job_id=job.job_id,
-                status="success",
-                pdf_base64=result_b64,
-                geometry_base64=geometry_b64,
-                diagnostics=_diagnostics(len(geometry["pages"])),
-            ).to_dict()
-        )
+        _emit_success(geometry, result_bytes)
     except Exception as exc:  # noqa: BLE001
         _write(
             OcrResult(

@@ -2,10 +2,13 @@
 from __future__ import annotations
 
 import os
+import re
 import statistics
 import sys
 import tempfile
 import unicodedata
+import xml.etree.ElementTree as ET
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 
@@ -176,6 +179,10 @@ _ADAPTIVE_PROFILE_PSMS = {
 }
 _LOW_RESOLUTION_SCAN_DPI = 225.0
 _MINIMUM_SCAN_IMAGE_COVERAGE = 0.05
+_HOCR_BBOX_PATTERN = re.compile(
+    r"(?:x_bboxes|bbox)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)"
+)
+_HOCR_CONFIDENCE_PATTERN = re.compile(r"x_wconf\s+(-?\d+(?:\.\d+)?)")
 
 
 def summarize_geometry_quality(geometry: dict) -> dict:
@@ -325,6 +332,339 @@ def needs_garbled_text_retry(summary: dict) -> bool:
     page independently. A retry is needed when any page is classified as garbled.
     """
     return bool(summary.get("garbled_page_numbers", []))
+
+
+def select_pages_requiring_ocr(pdf_bytes: bytes, summary: dict) -> list[int]:
+    """Return one-based pages whose source geometry is not trustworthy.
+
+    Dense, plausible native text is reused directly. Sparse or garbled text is
+    OCR'd, while truly blank pages are skipped unless they contain a substantial
+    image or enough vector drawing content to plausibly represent outlined text.
+    """
+    import pymupdf as fitz
+
+    page_summaries = {
+        int(page["page_number"]): page
+        for page in summary.get("page_summaries", [])
+    }
+    selected: list[int] = []
+    doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+    try:
+        for page_index in range(doc.page_count):
+            page_number = page_index + 1
+            page_summary = page_summaries.get(page_number, {})
+            non_whitespace = int(
+                page_summary.get("non_whitespace_characters", 0)
+            )
+            alphanumeric_ratio = float(
+                page_summary.get("alphanumeric_ratio", 0.0)
+            )
+            invalid_unicode_ratio = float(
+                page_summary.get("invalid_unicode_ratio", 0.0)
+            )
+            if bool(page_summary.get("is_garbled", False)):
+                selected.append(page_number)
+                continue
+            if (
+                non_whitespace >= 80
+                and alphanumeric_ratio >= 0.30
+                and invalid_unicode_ratio < 0.02
+            ):
+                continue
+            if non_whitespace > 0:
+                selected.append(page_number)
+                continue
+
+            page = doc.load_page(page_index)
+            page_area = page.rect.get_area()
+            has_substantial_image = any(
+                fitz.Rect(image.get("bbox", (0, 0, 0, 0))).get_area()
+                / max(1.0, page_area)
+                >= _MINIMUM_SCAN_IMAGE_COVERAGE
+                for image in page.get_image_info()
+            )
+            has_vector_content = len(page.get_drawings()) >= 3
+            if has_substantial_image or has_vector_content:
+                selected.append(page_number)
+    finally:
+        doc.close()
+    return selected
+
+
+def _hocr_classes(element: ET.Element) -> set[str]:
+    return set(element.attrib.get("class", "").split())
+
+
+def _hocr_bbox(element: ET.Element) -> tuple[int, int, int, int] | None:
+    match = _HOCR_BBOX_PATTERN.search(element.attrib.get("title", ""))
+    if not match:
+        return None
+    x0, y0, x1, y1 = (int(value) for value in match.groups())
+    if x1 <= x0 or y1 <= y0:
+        return None
+    return x0, y0, x1, y1
+
+
+def _append_hocr_character(
+    characters: list[dict],
+    char: str,
+    bbox: tuple[float, float, float, float],
+    image_size: tuple[int, int],
+    line_index: int,
+) -> None:
+    image_width, image_height = image_size
+    x0, y0, x1, y1 = bbox
+    if not char or image_width <= 0 or image_height <= 0 or x1 <= x0 or y1 <= y0:
+        return
+    characters.append(
+        {
+            "char": char,
+            "x": x0 / image_width,
+            "y": y0 / image_height,
+            "width": (x1 - x0) / image_width,
+            "height": (y1 - y0) / image_height,
+            "lineIndex": line_index,
+        }
+    )
+
+
+def _geometry_page_from_hocr(
+    hocr_bytes: bytes,
+    page_index: int,
+    image_size: tuple[int, int],
+) -> tuple[dict, dict]:
+    """Convert Tesseract hOCR character boxes into one geometry page."""
+    root = ET.fromstring(hocr_bytes)
+    characters: list[dict] = []
+    confidences: list[float] = []
+    word_count = 0
+    line_index = 0
+
+    line_classes = {"ocr_line", "ocr_header", "ocr_caption", "ocr_textfloat"}
+    for line in root.iter():
+        if not (_hocr_classes(line) & line_classes):
+            continue
+        previous_bbox: tuple[int, int, int, int] | None = None
+        words = [
+            element
+            for element in line.iter()
+            if "ocrx_word" in _hocr_classes(element)
+        ]
+        for word in words:
+            word_bbox = _hocr_bbox(word)
+            if word_bbox is None:
+                continue
+            confidence_match = _HOCR_CONFIDENCE_PATTERN.search(
+                word.attrib.get("title", "")
+            )
+            if confidence_match:
+                confidences.append(float(confidence_match.group(1)))
+
+            all_char_elements = [
+                element
+                for element in word.iter()
+                if "ocrx_cinfo" in _hocr_classes(element)
+                and "".join(element.itertext())
+            ]
+            if not all_char_elements or any(
+                _hocr_bbox(element) is None for element in all_char_elements
+            ):
+                text = (
+                    "".join(
+                        "".join(element.itertext()).strip()
+                        for element in all_char_elements
+                    )
+                    if all_char_elements
+                    else "".join(word.itertext()).strip()
+                )
+                if not text:
+                    continue
+                x0, y0, x1, y1 = word_bbox
+                width = (x1 - x0) / len(text)
+                char_items = [
+                    (char, (x0 + index * width, y0, x0 + (index + 1) * width, y1))
+                    for index, char in enumerate(text)
+                ]
+            else:
+                char_items = []
+                for element in all_char_elements:
+                    text = "".join(element.itertext()).strip()
+                    bbox = _hocr_bbox(element)
+                    if bbox is None or not text:
+                        continue
+                    x0, y0, x1, y1 = bbox
+                    width = (x1 - x0) / len(text)
+                    char_items.extend(
+                        (
+                            char,
+                            (
+                                x0 + index * width,
+                                y0,
+                                x0 + (index + 1) * width,
+                                y1,
+                            ),
+                        )
+                        for index, char in enumerate(text)
+                    )
+            if not char_items:
+                continue
+
+            first_bbox = char_items[0][1]
+            if previous_bbox is not None:
+                gap_left = float(previous_bbox[2])
+                gap_right = float(first_bbox[0])
+                line_height = max(float(first_bbox[3] - first_bbox[1]), 1.0)
+                if gap_right <= gap_left:
+                    gap_left = max(0.0, gap_right - line_height * 0.22)
+                _append_hocr_character(
+                    characters,
+                    " ",
+                    (gap_left, first_bbox[1], gap_right, first_bbox[3]),
+                    image_size,
+                    line_index,
+                )
+
+            for char, bbox in char_items:
+                _append_hocr_character(
+                    characters,
+                    char,
+                    bbox,
+                    image_size,
+                    line_index,
+                )
+            previous_bbox = (
+                int(char_items[-1][1][0]),
+                int(char_items[-1][1][1]),
+                int(char_items[-1][1][2]),
+                int(char_items[-1][1][3]),
+            )
+            word_count += 1
+        line_index += 1
+
+    return (
+        {"pageIndex": page_index, "characters": characters},
+        {
+            "page_number": page_index + 1,
+            "word_count": word_count,
+            "character_count": sum(
+                not str(character["char"]).isspace() for character in characters
+            ),
+            "mean_confidence": round(statistics.fmean(confidences), 2)
+            if confidences
+            else 0.0,
+        },
+    )
+
+
+def _direct_ocr_page(
+    pdf_bytes: bytes,
+    page_number: int,
+    dpi: int,
+    language: str,
+) -> tuple[dict, dict]:
+    configure_tesseract()
+
+    import pymupdf as fitz
+    import pytesseract
+    from PIL import Image
+
+    doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+    try:
+        page = doc.load_page(page_number - 1)
+        pixmap = page.get_pixmap(dpi=dpi, alpha=False)
+        image = Image.frombytes(
+            "RGB",
+            (pixmap.width, pixmap.height),
+            pixmap.samples,
+        )
+    finally:
+        doc.close()
+
+    hocr_bytes = pytesseract.image_to_pdf_or_hocr(
+        image,
+        lang=language,
+        extension="hocr",
+        config="--psm 3 -c hocr_char_boxes=1",
+    )
+    page_geometry, stats = _geometry_page_from_hocr(
+        hocr_bytes,
+        page_number - 1,
+        image.size,
+    )
+    stats["dpi"] = dpi
+    return page_geometry, stats
+
+
+def extract_direct_text_geometry(
+    pdf_bytes: bytes,
+    page_numbers: list[int],
+    *,
+    dpi: int = 300,
+    language: str = "eng",
+    progress_callback: "callable[[str], None] | None" = None,
+) -> tuple[dict[int, dict], dict[int, dict]]:
+    """OCR selected pages directly to geometry without constructing a PDF."""
+    if not page_numbers:
+        return {}, {}
+
+    unique_pages = sorted(set(page_numbers))
+    threads_per_tesseract = 3
+    previous_thread_limit = os.environ.get("OMP_THREAD_LIMIT")
+    os.environ["OMP_THREAD_LIMIT"] = str(threads_per_tesseract)
+    worker_count = min(
+        len(unique_pages),
+        max(1, (os.cpu_count() or 1) // threads_per_tesseract),
+    )
+    pages: dict[int, dict] = {}
+    stats: dict[int, dict] = {}
+    try:
+        with ThreadPoolExecutor(max_workers=worker_count) as executor:
+            futures = {
+                executor.submit(
+                    _direct_ocr_page,
+                    pdf_bytes,
+                    page_number,
+                    dpi,
+                    language,
+                ): page_number
+                for page_number in unique_pages
+            }
+            completed = 0
+            for future in as_completed(futures):
+                page_number = futures[future]
+                page_geometry, page_stats = future.result()
+                pages[page_number] = page_geometry
+                stats[page_number] = page_stats
+                completed += 1
+                if progress_callback:
+                    progress_callback(
+                        f"Direct OCR page {page_number} at {dpi} DPI "
+                        f"({completed} of {len(unique_pages)})…"
+                    )
+    finally:
+        if previous_thread_limit is None:
+            os.environ.pop("OMP_THREAD_LIMIT", None)
+        else:
+            os.environ["OMP_THREAD_LIMIT"] = previous_thread_limit
+    return pages, stats
+
+
+def merge_geometry_pages(
+    source_geometry: dict,
+    replacement_pages: dict[int, dict],
+) -> dict:
+    """Replace selected one-based pages while retaining trusted source geometry."""
+    return {
+        "version": source_geometry.get("version", 1),
+        "coordinateSpace": source_geometry.get("coordinateSpace", "normalized"),
+        "pages": [
+            replacement_pages.get(
+                int(page.get("pageIndex", index)) + 1,
+                page,
+            )
+            for index, page in enumerate(source_geometry.get("pages", []))
+        ],
+    }
 
 
 def needs_high_resolution_retry(pdf_bytes: bytes) -> bool:

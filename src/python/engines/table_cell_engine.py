@@ -528,6 +528,56 @@ def _insert_invisible_cell(page: fitz.Page, rect: fitz.Rect, text: str) -> None:
     )
 
 
+def has_recoverable_ruled_table(
+    pdf_bytes: bytes,
+    language: str = "eng",
+) -> tuple[bool, dict]:
+    """Cheaply detect a ruled table that requires the legacy cell-recovery path."""
+    stats = {
+        "table_images_examined": 0,
+        "table_images_skipped_small": 0,
+        "table_grid_candidates": 0,
+    }
+    configure_tesseract()
+    doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+    try:
+        for page in doc:
+            seen_xrefs: set[int] = set()
+            for image_info in page.get_images(full=True):
+                xref = int(image_info[0])
+                if xref in seen_xrefs:
+                    continue
+                seen_xrefs.add(xref)
+                stats["table_images_examined"] += 1
+                placement = _largest_table_placement(
+                    page.rect,
+                    page.get_image_rects(xref),
+                )
+                if placement is None:
+                    stats["table_images_skipped_small"] += 1
+                    continue
+                try:
+                    image = Image.open(
+                        io.BytesIO(doc.extract_image(xref)["image"])
+                    ).convert("RGB")
+                except (KeyError, OSError):
+                    continue
+                x_lines, y_lines = detect_ruled_grid(image)
+                if not x_lines or not y_lines:
+                    continue
+                stats["table_grid_candidates"] += 1
+                if _date_columns(
+                    ImageOps.grayscale(image),
+                    x_lines,
+                    y_lines,
+                    language,
+                ):
+                    return True, stats
+        return False, stats
+    finally:
+        doc.close()
+
+
 def recover_table_cells(
     source_pdf_bytes: bytes,
     ocr_pdf_bytes: bytes,

@@ -11,12 +11,15 @@ from engines.ocr_engine import (
     PROFILE_HIGH_RESOLUTION_AUTO,
     PROFILE_TABLE_SINGLE_BLOCK,
     PROFILE_TABLE_SPARSE,
+    _geometry_page_from_hocr,
+    merge_geometry_pages,
     needs_adaptive_retry,
     needs_garbled_text_retry,
     needs_high_resolution_retry,
     needs_low_resolution_quality_retry,
     ocr_pdf_bytes,
     profile_ocr_options,
+    select_pages_requiring_ocr,
     select_best_adaptive_profile,
     summarize_geometry_quality,
 )
@@ -132,6 +135,84 @@ class GeometryQualityTests(unittest.TestCase):
         summary = summarize_geometry_quality(_geometry("* $ # ?"))
 
         self.assertFalse(needs_garbled_text_retry(summary))
+
+
+class DirectGeometryTests(unittest.TestCase):
+    def test_hocr_character_boxes_preserve_text_spaces_and_coordinates(self) -> None:
+        hocr = b"""<?xml version='1.0' encoding='UTF-8'?>
+        <html xmlns='http://www.w3.org/1999/xhtml'><body>
+          <span class='ocr_line' title='bbox 10 20 100 40'>
+            <span class='ocrx_word' title='bbox 10 20 40 40; x_wconf 91'>
+              <span class='ocrx_cinfo' title='x_bboxes 10 20 20 40'>H</span>
+              <span class='ocrx_cinfo' title='x_bboxes 20 20 30 40'>i</span>
+            </span>
+            <span class='ocrx_word' title='bbox 50 20 80 40; x_wconf 95'>
+              <span class='ocrx_cinfo' title='x_bboxes 50 20 60 40'>4</span>
+              <span class='ocrx_cinfo' title='x_bboxes 60 20 70 40'>2</span>
+            </span>
+          </span>
+          <span class='ocr_header' title='bbox 10 60 40 80'>
+            <span class='ocrx_word' title='bbox 10 60 30 80; x_wconf 88'>
+              <span class='ocrx_cinfo' title='x_bboxes 10 80 20 80'>O</span>
+              <span class='ocrx_cinfo' title='x_bboxes 20 80 30 80'>K</span>
+            </span>
+          </span>
+        </body></html>"""
+
+        page, stats = _geometry_page_from_hocr(hocr, 2, (100, 200))
+
+        self.assertEqual("".join(c["char"] for c in page["characters"]), "Hi 42OK")
+        self.assertEqual(page["pageIndex"], 2)
+        self.assertAlmostEqual(page["characters"][0]["x"], 0.1)
+        self.assertAlmostEqual(page["characters"][0]["y"], 0.1)
+        self.assertEqual(stats["word_count"], 3)
+        self.assertEqual(stats["character_count"], 6)
+        self.assertEqual(stats["mean_confidence"], 91.33)
+
+    def test_merge_replaces_only_selected_pages(self) -> None:
+        source = _geometry_pages(("native one",), ("native two",))
+        replacement = _geometry("ocr two")["pages"][0]
+        replacement["pageIndex"] = 1
+
+        merged = merge_geometry_pages(source, {2: replacement})
+
+        self.assertEqual(
+            "".join(c["char"] for c in merged["pages"][0]["characters"]),
+            "native one",
+        )
+        self.assertEqual(
+            "".join(c["char"] for c in merged["pages"][1]["characters"]),
+            "ocr two",
+        )
+
+    def test_dense_native_page_is_not_selected_for_ocr(self) -> None:
+        doc = fitz.open()
+        try:
+            page = doc.new_page(width=600, height=800)
+            page.insert_text(
+                (40, 60),
+                "Transaction description reference 123456 amount 1,234.56 " * 5,
+            )
+            pdf_bytes = doc.tobytes()
+        finally:
+            doc.close()
+        summary = summarize_geometry_quality(
+            _geometry("Transaction description reference 123456 amount 1,234.56 " * 5)
+        )
+
+        self.assertEqual(select_pages_requiring_ocr(pdf_bytes, summary), [])
+
+    def test_substantial_image_without_text_is_selected_for_ocr(self) -> None:
+        pdf_bytes = _pdf_with_image((800, 800), fitz.Rect(50, 100, 550, 600))
+        summary = summarize_geometry_quality(
+            {
+                "version": 1,
+                "coordinateSpace": "normalized",
+                "pages": [{"pageIndex": 0, "characters": []}],
+            }
+        )
+
+        self.assertEqual(select_pages_requiring_ocr(pdf_bytes, summary), [1])
 
 
 class ScanResolutionTests(unittest.TestCase):
