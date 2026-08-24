@@ -18,6 +18,12 @@ _MIN_IMAGE_HEIGHT = 200
 _DATE_PATTERN = re.compile(r"\d{2}/\d{2}/\d{4}")
 
 
+def _pixel_values(image: Image.Image) -> list[int]:
+    """Read a one-band image across supported Pillow versions without warnings."""
+    flattened = getattr(image, "get_flattened_data", None)
+    return list(flattened() if flattened is not None else image.getdata())
+
+
 def _line_centers(counts: list[int], minimum: int) -> list[int]:
     """Collapse adjacent qualifying pixels into one grid-line coordinate."""
     runs: list[list[int]] = []
@@ -38,17 +44,19 @@ def detect_ruled_grid(image: Image.Image) -> tuple[list[int], list[int]]:
     if width < _MIN_IMAGE_WIDTH or height < _MIN_IMAGE_HEIGHT:
         return [], []
 
-    pixels = gray.load()
-    vertical_counts = [
-        sum(pixels[x, y] < _GRID_DARKNESS for y in range(height))
-        for x in range(width)
-    ]
-    horizontal_counts = [
-        sum(pixels[x, y] < _GRID_DARKNESS for x in range(width))
-        for y in range(height)
-    ]
-    x_lines = _line_centers(vertical_counts, round(height * 0.70))
-    y_lines = _line_centers(horizontal_counts, round(width * 0.50))
+    # Project a binary dark-pixel mask down to one row / column. Pillow's BOX
+    # resampler performs the averaging in native code; the former nested Python
+    # pixel loops took several seconds per high-resolution scan and hundreds of
+    # seconds across a long document even when no grid existed.
+    dark = gray.point(lambda value: 255 if value < _GRID_DARKNESS else 0)
+    vertical_density = _pixel_values(
+        dark.resize((width, 1), Image.Resampling.BOX)
+    )
+    horizontal_density = _pixel_values(
+        dark.resize((1, height), Image.Resampling.BOX)
+    )
+    x_lines = _line_centers(vertical_density, round(255 * 0.70))
+    y_lines = _line_centers(horizontal_density, round(255 * 0.50))
     if len(x_lines) < 3 or len(y_lines) < 3:
         return [], []
     return x_lines, y_lines

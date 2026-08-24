@@ -34,6 +34,22 @@ _HEADER_LINE_LAYOUTS = {
     "No. Of Employees": ("No. Of", "Employees"),
 }
 
+_MIN_TABLE_IMAGE_PAGE_COVERAGE = 0.05
+
+
+def _largest_table_placement(
+    page_rect: fitz.Rect,
+    placements: list[fitz.Rect],
+) -> fitz.Rect | None:
+    """Return the largest placement only when it could plausibly hold a table."""
+    page_area = page_rect.get_area()
+    if page_area <= 0 or not placements:
+        return None
+    placement = max(placements, key=lambda rect: rect.get_area())
+    if placement.get_area() / page_area < _MIN_TABLE_IMAGE_PAGE_COVERAGE:
+        return None
+    return placement
+
 
 def _clean_grid(image: Image.Image, x_lines: list[int], y_lines: list[int]) -> Image.Image:
     clean = ImageOps.grayscale(image).copy()
@@ -527,6 +543,9 @@ def recover_table_cells(
         "table_cells_detected": 0,
         "table_cells_resolved": 0,
         "table_cells_unresolved": 0,
+        "table_images_examined": 0,
+        "table_images_skipped_small": 0,
+        "table_grid_candidates": 0,
         "page_text_regions_detected": 0,
         "page_text_words_resolved": 0,
         "changed": False,
@@ -544,6 +563,12 @@ def recover_table_cells(
                 if xref in seen_xrefs:
                     continue
                 seen_xrefs.add(xref)
+                stats["table_images_examined"] += 1
+                placements = source_page.get_image_rects(xref)
+                placement = _largest_table_placement(source_page.rect, placements)
+                if placement is None:
+                    stats["table_images_skipped_small"] += 1
+                    continue
                 try:
                     image = Image.open(
                         io.BytesIO(source_doc.extract_image(xref)["image"])
@@ -553,15 +578,12 @@ def recover_table_cells(
                 x_lines, y_lines = detect_ruled_grid(image)
                 if not x_lines or not y_lines:
                     continue
+                stats["table_grid_candidates"] += 1
                 gray = ImageOps.grayscale(image)
                 date_header = _date_columns(gray, x_lines, y_lines, language)
                 if not date_header:
                     continue
                 header_row, date_columns = date_header
-                placements = source_page.get_image_rects(xref)
-                if not placements:
-                    continue
-                placement = placements[0]
                 clean = _clean_grid(gray, x_lines, y_lines)
                 first_data_row = header_row + 1
                 column_count = len(x_lines) - 1

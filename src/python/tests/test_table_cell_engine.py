@@ -1,5 +1,6 @@
 import unittest
 
+import pymupdf as fitz
 from PIL import Image, ImageDraw
 
 from engines.table_cell_engine import (
@@ -9,10 +10,26 @@ from engines.table_cell_engine import (
     _header_line_texts,
     _ink_box,
     _ink_line_boxes,
+    _largest_table_placement,
     _select_city,
     _select_number,
     _select_status,
 )
+
+
+class TablePlacementTests(unittest.TestCase):
+    def test_rejects_barcode_sized_page_placement(self) -> None:
+        page = fitz.Rect(0, 0, 600, 800)
+        barcode = fitz.Rect(30, 700, 75, 745)
+
+        self.assertIsNone(_largest_table_placement(page, [barcode]))
+
+    def test_chooses_largest_significant_placement(self) -> None:
+        page = fitz.Rect(0, 0, 600, 800)
+        small = fitz.Rect(10, 10, 60, 60)
+        table = fitz.Rect(100, 150, 500, 650)
+
+        self.assertEqual(_largest_table_placement(page, [small, table]), table)
 
 
 class TextCleanupTests(unittest.TestCase):

@@ -5,6 +5,7 @@ import os
 import statistics
 import sys
 import tempfile
+import unicodedata
 from pathlib import Path
 
 
@@ -181,34 +182,121 @@ def summarize_geometry_quality(geometry: dict) -> dict:
     """Return cheap text-coverage signals from text-geometry-v1 data."""
     pages = geometry.get("pages", [])
     total_characters = 0
+    non_whitespace_characters = 0
     alphanumeric_characters = 0
     word_count = 0
     populated_lines = 0
+    page_summaries: list[dict] = []
 
     for page in pages:
         lines: dict[int, list[str]] = {}
+        page_total_characters = 0
+        page_non_whitespace_characters = 0
+        page_alphanumeric_characters = 0
+        page_invalid_unicode_characters = 0
         for character in page.get("characters", []):
             char = str(character.get("char", ""))
             if not char:
                 continue
-            total_characters += 1
-            alphanumeric_characters += sum(part.isalnum() for part in char)
+            page_total_characters += 1
+            page_non_whitespace_characters += sum(
+                not part.isspace() for part in char
+            )
+            page_alphanumeric_characters += sum(part.isalnum() for part in char)
+            page_invalid_unicode_characters += sum(
+                not part.isspace()
+                and (
+                    part == "\ufffd"
+                    or unicodedata.category(part) in ("Cc", "Cs", "Co", "Cn")
+                )
+                for part in char
+            )
             line_index = int(character.get("lineIndex", 0))
             lines.setdefault(line_index, []).append(char)
 
+        page_word_count = 0
+        page_populated_lines = 0
+        garbled_line_count = 0
         for chars in lines.values():
             text = "".join(chars).strip()
+            line_non_whitespace = sum(not char.isspace() for char in text)
+            line_alphanumeric = sum(char.isalnum() for char in text)
+            if (
+                line_non_whitespace >= 20
+                and line_alphanumeric / line_non_whitespace < 0.20
+            ):
+                garbled_line_count += 1
             if not any(char.isalnum() for char in text):
                 continue
-            populated_lines += 1
-            word_count += len(text.split())
+            page_populated_lines += 1
+            page_word_count += len(text.split())
+
+        page_alphanumeric_ratio = round(
+            page_alphanumeric_characters
+            / max(1, page_non_whitespace_characters),
+            4,
+        )
+        page_invalid_unicode_ratio = round(
+            page_invalid_unicode_characters
+            / max(1, page_non_whitespace_characters),
+            4,
+        )
+        page_number = int(page.get("pageIndex", len(page_summaries))) + 1
+        is_garbled = (
+            page_non_whitespace_characters >= 80
+            and (
+                page_alphanumeric_ratio < 0.30
+                or page_invalid_unicode_ratio >= 0.02
+                or garbled_line_count >= 3
+            )
+        )
+        page_summaries.append(
+            {
+                "page_number": page_number,
+                "total_characters": page_total_characters,
+                "non_whitespace_characters": page_non_whitespace_characters,
+                "alphanumeric_characters": page_alphanumeric_characters,
+                "alphanumeric_ratio": page_alphanumeric_ratio,
+                "invalid_unicode_characters": page_invalid_unicode_characters,
+                "invalid_unicode_ratio": page_invalid_unicode_ratio,
+                "word_count": page_word_count,
+                "populated_lines": page_populated_lines,
+                "garbled_line_count": garbled_line_count,
+                "is_garbled": is_garbled,
+            }
+        )
+        total_characters += page_total_characters
+        non_whitespace_characters += page_non_whitespace_characters
+        alphanumeric_characters += page_alphanumeric_characters
+        populated_lines += page_populated_lines
+        word_count += page_word_count
+
+    garbled_page_numbers = [
+        int(page["page_number"])
+        for page in page_summaries
+        if page["is_garbled"]
+    ]
+    populated_page_ratios = [
+        float(page["alphanumeric_ratio"])
+        for page in page_summaries
+        if int(page["non_whitespace_characters"]) >= 80
+    ]
 
     return {
         "page_count": len(pages),
         "total_characters": total_characters,
+        "non_whitespace_characters": non_whitespace_characters,
         "alphanumeric_characters": alphanumeric_characters,
+        "alphanumeric_ratio": round(
+            alphanumeric_characters / max(1, non_whitespace_characters),
+            4,
+        ),
         "word_count": word_count,
         "populated_lines": populated_lines,
+        "garbled_page_numbers": garbled_page_numbers,
+        "garbled_page_count": len(garbled_page_numbers),
+        "worst_page_alphanumeric_ratio": min(populated_page_ratios, default=1.0),
+        "page_summaries": page_summaries,
     }
 
 
@@ -226,6 +314,17 @@ def needs_adaptive_retry(summary: dict) -> bool:
         or int(summary.get("word_count", 0)) < minimum_words
         or int(summary.get("populated_lines", 0)) < minimum_lines
     )
+
+
+def needs_garbled_text_retry(summary: dict) -> bool:
+    """Detect page-local garbage produced by a broken PDF character map.
+
+    Some Type0/Identity-H PDFs render perfectly but map visible glyphs to symbols
+    such as ``*``, ``$`` and ``#``. Document-wide averages let healthy pages hide
+    corrupt pages, so ``summarize_geometry_quality`` classifies every populated
+    page independently. A retry is needed when any page is classified as garbled.
+    """
+    return bool(summary.get("garbled_page_numbers", []))
 
 
 def needs_high_resolution_retry(pdf_bytes: bytes) -> bool:
@@ -255,6 +354,21 @@ def needs_high_resolution_retry(pdf_bytes: bytes) -> bool:
         return False
     finally:
         doc.close()
+
+
+def needs_low_resolution_quality_retry(
+    summary: dict,
+    low_resolution_scan: bool,
+) -> bool:
+    """Spend on high-resolution profiles only when low DPI also yielded weak text."""
+    if not low_resolution_scan:
+        return False
+
+    page_count = max(1, int(summary.get("page_count", 0)))
+    return (
+        int(summary.get("alphanumeric_characters", 0)) < page_count * 600
+        or int(summary.get("word_count", 0)) < page_count * 80
+    )
 
 
 def profile_ocr_options(profile: str) -> dict:
@@ -381,6 +495,7 @@ def ocr_pdf_bytes(
     mode: str = MODE_REDO,
     tesseract_pagesegmode: int | None = None,
     oversample: int = 0,
+    pages: str | None = None,
     progress_callback: "callable[[str], None] | None" = None,
 ) -> bytes:
     """
@@ -420,7 +535,6 @@ def ocr_pdf_bytes(
             "language": language,
             "mode": mode,
             "rotate_pages": auto_rotate_pages,
-            "rotate_pages_threshold": rotate_pages_threshold,
             "progress_bar": False,
             # See the tuning knobs above. Both are environment-overridable so the
             # rasterizer/concurrency matrix can be benchmarked without a rebuild.
@@ -428,10 +542,14 @@ def ocr_pdf_bytes(
             "use_threads": resolve_use_threads(),
             "output_type": "pdf",
         }
+        if auto_rotate_pages:
+            options["rotate_pages_threshold"] = rotate_pages_threshold
         if tesseract_pagesegmode is not None:
             options["tesseract_pagesegmode"] = tesseract_pagesegmode
         if oversample > 0:
             options["oversample"] = oversample
+        if pages:
+            options["pages"] = pages
 
         ocrmypdf.ocr(src_path, dst_path, **options)
 

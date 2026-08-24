@@ -31,7 +31,9 @@ from engines.ocr_engine import (
     active_rasterizer,
     evaluate_adaptive_profiles,
     needs_adaptive_retry,
+    needs_garbled_text_retry,
     needs_high_resolution_retry,
+    needs_low_resolution_quality_retry,
     ocr_pdf_bytes,
     profile_ocr_options,
     resolve_use_threads,
@@ -127,16 +129,40 @@ def _handle_job(job: OcrJob) -> None:
     # the job progresses so the host debug log records what actually ran, not
     # what we intended to run. ocr_ms stays absent unless OCRmyPDF is invoked.
     started_at = time.perf_counter()
+    input_bytes = 0
+    output_bytes = 0
+    page_count = 0
+    decode_ms = 0
+    inspect_ms = 0
+    preflight_geometry_ms = 0
     ocr_ms = 0
     ocr_ran = False
     geometry_ms = 0
+    primary_ocr_ms = 0
+    fallback_ocr_ms = 0
+    adaptive_detection_ms = 0
+    adaptive_evaluation_ms = 0
+    adaptive_ocr_ms = 0
+    primary_geometry_ms = 0
+    fallback_geometry_ms = 0
+    adaptive_geometry_ms = 0
+    table_geometry_ms = 0
+    geometry_encode_ms = 0
+    pdf_encode_ms = 0
     ocr_mode = "none"
     escalation_reason = ""
     selected_profile = "none"
     evaluated_profiles: list[str] = []
     profile_mean_confidence: float | None = None
     initial_characters = 0
+    initial_non_whitespace_characters = 0
+    initial_alphanumeric_ratio = 0.0
+    initial_garbled_page_numbers: list[int] = []
     final_characters = 0
+    final_non_whitespace_characters = 0
+    final_alphanumeric_ratio = 0.0
+    final_garbled_page_numbers: list[int] = []
+    forced_page_numbers: list[int] = []
     quality_warning = False
     profile_retry_error = ""
     date_tables_detected = 0
@@ -148,6 +174,9 @@ def _handle_job(job: OcrJob) -> None:
     table_cells_detected = 0
     table_cells_resolved = 0
     table_cells_unresolved = 0
+    table_images_examined = 0
+    table_images_skipped_small = 0
+    table_grid_candidates = 0
     table_text_recovery_ms = 0
     table_text_recovery_error = ""
     page_text_regions_detected = 0
@@ -161,13 +190,40 @@ def _handle_job(job: OcrJob) -> None:
             "ocr_engine": active_ocr_engine() if ocr_ran else "none",
             "rasterizer": active_rasterizer() if ocr_ran else "none",
             "page_count": page_count,
+            "input_bytes": input_bytes,
+            "output_bytes": output_bytes,
+            "decode_ms": decode_ms,
+            "inspect_ms": inspect_ms,
+            "preflight_geometry_ms": preflight_geometry_ms,
+            "primary_ocr_ms": primary_ocr_ms,
+            "fallback_ocr_ms": fallback_ocr_ms,
+            "adaptive_detection_ms": adaptive_detection_ms,
+            "adaptive_evaluation_ms": adaptive_evaluation_ms,
+            "adaptive_ocr_ms": adaptive_ocr_ms,
+            "primary_geometry_ms": primary_geometry_ms,
+            "fallback_geometry_ms": fallback_geometry_ms,
+            "adaptive_geometry_ms": adaptive_geometry_ms,
+            "table_geometry_ms": table_geometry_ms,
+            "geometry_encode_ms": geometry_encode_ms,
+            "pdf_encode_ms": pdf_encode_ms,
+            "source_pdf_preserved": job.preserve_source_pdf,
             "geometry_ms": geometry_ms,
             "total_ms": _elapsed_ms(started_at),
             "mode": ocr_mode,
             "selected_profile": selected_profile,
             "evaluated_profiles": evaluated_profiles,
             "initial_characters": initial_characters,
+            "initial_non_whitespace_characters": initial_non_whitespace_characters,
+            "initial_alphanumeric_ratio": initial_alphanumeric_ratio,
+            "initial_garbled_page_count": len(initial_garbled_page_numbers),
+            "initial_garbled_page_numbers": initial_garbled_page_numbers,
             "final_characters": final_characters,
+            "final_non_whitespace_characters": final_non_whitespace_characters,
+            "final_alphanumeric_ratio": final_alphanumeric_ratio,
+            "final_garbled_page_count": len(final_garbled_page_numbers),
+            "final_garbled_page_numbers": final_garbled_page_numbers,
+            "forced_page_count": len(forced_page_numbers),
+            "forced_page_numbers": forced_page_numbers,
             "quality_warning": quality_warning,
             "date_tables_detected": date_tables_detected,
             "date_cells_detected": date_cells_detected,
@@ -177,6 +233,9 @@ def _handle_job(job: OcrJob) -> None:
             "table_cells_detected": table_cells_detected,
             "table_cells_resolved": table_cells_resolved,
             "table_cells_unresolved": table_cells_unresolved,
+            "table_images_examined": table_images_examined,
+            "table_images_skipped_small": table_images_skipped_small,
+            "table_grid_candidates": table_grid_candidates,
             "table_text_recovery_ms": table_text_recovery_ms,
             "page_text_regions_detected": page_text_regions_detected,
             "page_text_words_resolved": page_text_words_resolved,
@@ -197,44 +256,90 @@ def _handle_job(job: OcrJob) -> None:
         return d
 
     try:
+        decode_started = time.perf_counter()
         pdf_bytes = base64.b64decode(job.pdf_base64)
+        decode_ms = _elapsed_ms(decode_started)
+        input_bytes = len(pdf_bytes)
+
+        inspect_started = time.perf_counter()
+        import pymupdf as fitz
+
+        inspected_doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+        try:
+            page_count = inspected_doc.page_count
+        finally:
+            inspected_doc.close()
+        inspect_ms = _elapsed_ms(inspect_started)
 
         if job.mode == "geometry-only":
             geometry_started = time.perf_counter()
             geometry = extract_text_geometry(pdf_bytes, progress_callback=on_progress)
-            geometry_ms = _elapsed_ms(geometry_started)
+            primary_geometry_ms = _elapsed_ms(geometry_started)
+            geometry_ms = primary_geometry_ms
 
-            total_chars = sum(len(p["characters"]) for p in geometry["pages"])
-            initial_characters = total_chars
-            final_characters = total_chars
-            if total_chars == 0 and geometry["pages"]:
+            initial_summary = summarize_geometry_quality(geometry)
+            initial_characters = initial_summary["total_characters"]
+            initial_non_whitespace_characters = initial_summary[
+                "non_whitespace_characters"
+            ]
+            initial_alphanumeric_ratio = initial_summary["alphanumeric_ratio"]
+            initial_garbled_page_numbers = list(
+                initial_summary["garbled_page_numbers"]
+            )
+            garbled_text = needs_garbled_text_retry(initial_summary)
+            if (initial_characters == 0 or garbled_text) and geometry["pages"]:
                 # Pre-detector found text markers but PyMuPDF cannot extract chars
-                # (e.g. CID font with no ToUnicode map). Fall back to forced OCR.
-                # The text is present but unmappable, so redo would preserve the
-                # same unusable glyphs. Rasterizing is the only way to recover
-                # characters here, and this job discards the PDF bytes anyway.
-                on_progress("Text layer unextractable, falling back to OCR…")
+                # or extracted dense punctuation garbage from a broken character
+                # map. Redo would preserve those unusable glyphs, so rasterize.
+                if garbled_text:
+                    forced_page_numbers = initial_garbled_page_numbers
+                    on_progress(
+                        "Text layer appears garbled on page(s) "
+                        f"{','.join(map(str, forced_page_numbers))}; "
+                        "rasterizing only those pages…"
+                    )
+                    escalation_reason = "text-garbled"
+                else:
+                    forced_page_numbers = list(range(1, page_count + 1))
+                    on_progress("Text layer unextractable, falling back to OCR…")
+                    escalation_reason = "text-unextractable"
                 ocr_started = time.perf_counter()
-                result_bytes = ocr_pdf_bytes(
-                    pdf_bytes, mode=MODE_FORCE, progress_callback=on_progress
-                )
-                ocr_ms = _elapsed_ms(ocr_started)
                 ocr_ran = True
                 ocr_mode = MODE_FORCE
-                escalation_reason = "text-unextractable"
                 selected_profile = PROFILE_DEFAULT
                 evaluated_profiles = [PROFILE_DEFAULT]
+                try:
+                    result_bytes = ocr_pdf_bytes(
+                        pdf_bytes,
+                        mode=MODE_FORCE,
+                        auto_rotate_pages=not job.preserve_source_pdf,
+                        pages=",".join(map(str, forced_page_numbers)) or None,
+                        progress_callback=on_progress,
+                    )
+                finally:
+                    fallback_ocr_ms = _elapsed_ms(ocr_started)
+                    ocr_ms = fallback_ocr_ms
 
                 geometry_started = time.perf_counter()
                 geometry = extract_text_geometry(result_bytes, progress_callback=on_progress)
-                geometry_ms += _elapsed_ms(geometry_started)
-                final_characters = sum(
-                    len(page["characters"]) for page in geometry["pages"]
-                )
+                fallback_geometry_ms = _elapsed_ms(geometry_started)
+                geometry_ms += fallback_geometry_ms
+            final_summary = summarize_geometry_quality(geometry)
+            final_characters = final_summary["total_characters"]
+            final_non_whitespace_characters = final_summary[
+                "non_whitespace_characters"
+            ]
+            final_alphanumeric_ratio = final_summary["alphanumeric_ratio"]
+            final_garbled_page_numbers = list(
+                final_summary["garbled_page_numbers"]
+            )
+            quality_warning = needs_adaptive_retry(
+                final_summary
+            ) or needs_garbled_text_retry(final_summary)
 
-            quality_warning = needs_adaptive_retry(summarize_geometry_quality(geometry))
-
+            geometry_encode_started = time.perf_counter()
             geometry_b64 = geometry_to_base64(geometry)
+            geometry_encode_ms = _elapsed_ms(geometry_encode_started)
             _write(
                 OcrResult(
                     job_id=job.job_id,
@@ -246,78 +351,164 @@ def _handle_job(job: OcrJob) -> None:
             return
 
         # ── Mode escalation ladder ────────────────────────────────────────────
-        # Rung 1 is redo: it replaces the invisible text layer and leaves page
-        # content alone, so vector pages stay sharp at any zoom and the stored
-        # PDF stays small. Rung 2 is force, which rasterizes every page and
-        # permanently discards that fidelity — only taken when redo cannot
-        # deliver a usable text layer.
-        on_progress("Starting OCR…")
-        ocr_started = time.perf_counter()
-        ocr_mode = MODE_REDO
+        # Validate the source geometry first. This is cheap compared with OCR and
+        # lets a provably broken character map bypass redo entirely. Clean pages
+        # are left untouched while only the corrupt page numbers are force-OCR'd.
+        preflight_started = time.perf_counter()
+        preflight_geometry = extract_text_geometry(pdf_bytes)
+        preflight_geometry_ms = _elapsed_ms(preflight_started)
+        preflight_summary = summarize_geometry_quality(preflight_geometry)
+        preflight_garbled = needs_garbled_text_retry(preflight_summary)
+
         selected_profile = PROFILE_DEFAULT
         evaluated_profiles = [PROFILE_DEFAULT]
-        try:
-            result_bytes = ocr_pdf_bytes(
-                pdf_bytes,
-                mode=MODE_REDO,
-                progress_callback=on_progress,
-            )
-        except DigitalSignatureError:
-            # Raised before the mode is consulted, so force cannot help either.
-            raise
-        except InputFileError as exc:
-            # redo refuses some inputs outright — notably AcroForm PDFs. Force
-            # rewrites the page content and accepts them. Inputs that neither
-            # mode can handle (e.g. dynamic XFA) fail again below, and that
-            # second failure is the one reported.
-            on_progress(f"Redo mode rejected this PDF ({exc}); rasterizing instead…")
-            escalation_reason = "input-rejected"
-            ocr_mode = MODE_FORCE
-            result_bytes = ocr_pdf_bytes(
-                pdf_bytes,
-                mode=MODE_FORCE,
-                progress_callback=on_progress,
-            )
-        ocr_ms = _elapsed_ms(ocr_started)
         ocr_ran = True
+        if preflight_garbled:
+            initial_summary = preflight_summary
+            initial_characters = initial_summary["total_characters"]
+            initial_non_whitespace_characters = initial_summary[
+                "non_whitespace_characters"
+            ]
+            initial_alphanumeric_ratio = initial_summary["alphanumeric_ratio"]
+            initial_garbled_page_numbers = list(
+                initial_summary["garbled_page_numbers"]
+            )
+            forced_page_numbers = initial_garbled_page_numbers
+            escalation_reason = "text-garbled-preflight"
+            ocr_mode = MODE_FORCE
+            on_progress(
+                "Source text mapping is garbled on page(s) "
+                f"{','.join(map(str, forced_page_numbers))}; "
+                "skipping redo and rasterizing only those pages…"
+            )
+            ocr_started = time.perf_counter()
+            try:
+                result_bytes = ocr_pdf_bytes(
+                    pdf_bytes,
+                    mode=MODE_FORCE,
+                    auto_rotate_pages=not job.preserve_source_pdf,
+                    pages=",".join(map(str, forced_page_numbers)),
+                    progress_callback=on_progress,
+                )
+            finally:
+                primary_ocr_ms = _elapsed_ms(ocr_started)
+        else:
+            # Rung 1 is redo: it replaces the invisible text layer and leaves
+            # page content alone. Rung 2 force is used only if redo reveals an
+            # unusable layer or rejects the input.
+            on_progress("Starting OCR…")
+            ocr_started = time.perf_counter()
+            ocr_mode = MODE_REDO
+            try:
+                result_bytes = ocr_pdf_bytes(
+                    pdf_bytes,
+                    mode=MODE_REDO,
+                    auto_rotate_pages=not job.preserve_source_pdf,
+                    progress_callback=on_progress,
+                )
+                primary_ocr_ms = _elapsed_ms(ocr_started)
+            except DigitalSignatureError:
+                primary_ocr_ms = _elapsed_ms(ocr_started)
+                # Raised before the mode is consulted, so force cannot help either.
+                raise
+            except InputFileError as exc:
+                primary_ocr_ms = _elapsed_ms(ocr_started)
+                # redo refuses some inputs outright — notably AcroForm PDFs.
+                on_progress(
+                    f"Redo mode rejected this PDF ({exc}); rasterizing instead…"
+                )
+                escalation_reason = "input-rejected"
+                ocr_mode = MODE_FORCE
+                forced_page_numbers = list(range(1, page_count + 1))
+                fallback_started = time.perf_counter()
+                try:
+                    result_bytes = ocr_pdf_bytes(
+                        pdf_bytes,
+                        mode=MODE_FORCE,
+                        auto_rotate_pages=not job.preserve_source_pdf,
+                        progress_callback=on_progress,
+                    )
+                finally:
+                    fallback_ocr_ms = _elapsed_ms(fallback_started)
+                    ocr_ms = primary_ocr_ms + fallback_ocr_ms
+            except Exception:
+                primary_ocr_ms = _elapsed_ms(ocr_started)
+                ocr_ms = primary_ocr_ms
+                raise
+        ocr_ms = primary_ocr_ms + fallback_ocr_ms
 
         geometry_started = time.perf_counter()
         geometry = extract_text_geometry(result_bytes, progress_callback=on_progress)
-        geometry_ms = _elapsed_ms(geometry_started)
-        initial_summary = summarize_geometry_quality(geometry)
-        initial_characters = initial_summary["total_characters"]
+        primary_geometry_ms = _elapsed_ms(geometry_started)
+        geometry_ms = primary_geometry_ms
+        if not preflight_garbled:
+            initial_summary = summarize_geometry_quality(geometry)
+            initial_characters = initial_summary["total_characters"]
+            initial_non_whitespace_characters = initial_summary[
+                "non_whitespace_characters"
+            ]
+            initial_alphanumeric_ratio = initial_summary["alphanumeric_ratio"]
+            initial_garbled_page_numbers = list(
+                initial_summary["garbled_page_numbers"]
+            )
 
-        # Rung 2, second trigger: redo succeeded but left us with no characters
-        # to link against — the CID-font-without-ToUnicode case. Escalate once.
-        total_chars = sum(len(p["characters"]) for p in geometry["pages"])
-        if total_chars == 0 and geometry["pages"] and ocr_mode == MODE_REDO:
-            on_progress("Redo produced no extractable text; rasterizing instead…")
-            escalation_reason = "text-unextractable"
+        # Rung 2: redo either left us no characters or dense punctuation garbage
+        # from a broken Type0/Identity-H character map. Both require rendering
+        # visible glyphs and recognizing their appearance rather than trusting
+        # the PDF's unusable text mapping.
+        garbled_text = needs_garbled_text_retry(initial_summary)
+        if (
+            (initial_characters == 0 or garbled_text)
+            and geometry["pages"]
+            and ocr_mode == MODE_REDO
+        ):
+            if garbled_text:
+                forced_page_numbers = initial_garbled_page_numbers
+                on_progress(
+                    "Redo text appears garbled on page(s) "
+                    f"{','.join(map(str, forced_page_numbers))}; "
+                    "rasterizing only those pages…"
+                )
+                escalation_reason = "text-garbled"
+            else:
+                forced_page_numbers = list(range(1, page_count + 1))
+                on_progress("Redo produced no extractable text; rasterizing instead…")
+                escalation_reason = "text-unextractable"
             ocr_mode = MODE_FORCE
 
             ocr_started = time.perf_counter()
-            result_bytes = ocr_pdf_bytes(
-                pdf_bytes,
-                mode=MODE_FORCE,
-                progress_callback=on_progress,
-            )
-            ocr_ms += _elapsed_ms(ocr_started)
+            try:
+                result_bytes = ocr_pdf_bytes(
+                    result_bytes,
+                    mode=MODE_FORCE,
+                    auto_rotate_pages=not job.preserve_source_pdf,
+                    pages=",".join(map(str, forced_page_numbers)) or None,
+                    progress_callback=on_progress,
+                )
+            finally:
+                fallback_ocr_ms += _elapsed_ms(ocr_started)
+                ocr_ms = primary_ocr_ms + fallback_ocr_ms + adaptive_ocr_ms
 
             geometry_started = time.perf_counter()
             geometry = extract_text_geometry(result_bytes, progress_callback=on_progress)
-            geometry_ms += _elapsed_ms(geometry_started)
+            fallback_geometry_ms += _elapsed_ms(geometry_started)
+            geometry_ms = primary_geometry_ms + fallback_geometry_ms
 
         current_summary = summarize_geometry_quality(geometry)
 
         # ── Adaptive layout retry ─────────────────────────────────────────────
-        # A non-empty text layer can still be catastrophically sparse or densely
-        # garbled when a scan is embedded below a reliable OCR resolution. In
-        # either case, confidence-score high-resolution layout profiles, rerun
-        # only the best candidate, and keep it only when extractable coverage
-        # materially improves.
+        # A low-DPI image is only a reason to spend on adaptive OCR when the
+        # resulting text is also weak. Previously, one low-resolution image
+        # triggered three profile evaluations even for dense, high-quality text.
+        adaptive_detection_started = time.perf_counter()
         sparse_result = needs_adaptive_retry(current_summary)
         low_resolution_scan = needs_high_resolution_retry(pdf_bytes)
-        if (sparse_result or low_resolution_scan) and geometry["pages"]:
+        low_resolution_quality_risk = needs_low_resolution_quality_retry(
+            current_summary,
+            low_resolution_scan,
+        )
+        adaptive_detection_ms = _elapsed_ms(adaptive_detection_started)
+        if (sparse_result or low_resolution_quality_risk) and geometry["pages"]:
             try:
                 if sparse_result:
                     on_progress("OCR coverage low; evaluating high-resolution layouts…")
@@ -325,7 +516,11 @@ def _handle_job(job: OcrJob) -> None:
                     on_progress(
                         "Low-resolution scan detected; evaluating high-resolution layouts…"
                     )
-                evaluations = evaluate_adaptive_profiles(pdf_bytes)
+                evaluation_started = time.perf_counter()
+                try:
+                    evaluations = evaluate_adaptive_profiles(pdf_bytes)
+                finally:
+                    adaptive_evaluation_ms = _elapsed_ms(evaluation_started)
                 chosen = select_best_adaptive_profile(evaluations)
                 evaluated_profiles = [PROFILE_DEFAULT] + [
                     evaluation["profile"] for evaluation in evaluations
@@ -339,22 +534,44 @@ def _handle_job(job: OcrJob) -> None:
                 )
 
                 retry_started = time.perf_counter()
-                retry_bytes = ocr_pdf_bytes(
-                    pdf_bytes,
-                    mode=ocr_mode,
-                    tesseract_pagesegmode=candidate_options[
-                        "tesseract_pagesegmode"
-                    ],
-                    oversample=candidate_options["oversample"],
-                    progress_callback=on_progress,
-                )
-                ocr_ms += _elapsed_ms(retry_started)
+                try:
+                    retry_page_numbers = (
+                        forced_page_numbers
+                        if 0 < len(forced_page_numbers) < page_count
+                        else []
+                    )
+                    retry_source_bytes = (
+                        result_bytes if retry_page_numbers else pdf_bytes
+                    )
+                    retry_bytes = ocr_pdf_bytes(
+                        retry_source_bytes,
+                        mode=ocr_mode,
+                        auto_rotate_pages=not job.preserve_source_pdf,
+                        tesseract_pagesegmode=candidate_options[
+                            "tesseract_pagesegmode"
+                        ],
+                        oversample=candidate_options["oversample"],
+                        pages=(
+                            ",".join(map(str, retry_page_numbers))
+                            if retry_page_numbers
+                            else None
+                        ),
+                        progress_callback=on_progress,
+                    )
+                finally:
+                    adaptive_ocr_ms = _elapsed_ms(retry_started)
+                    ocr_ms = primary_ocr_ms + fallback_ocr_ms + adaptive_ocr_ms
 
                 retry_geometry_started = time.perf_counter()
                 retry_geometry = extract_text_geometry(
                     retry_bytes, progress_callback=on_progress
                 )
-                geometry_ms += _elapsed_ms(retry_geometry_started)
+                adaptive_geometry_ms = _elapsed_ms(retry_geometry_started)
+                geometry_ms = (
+                    primary_geometry_ms
+                    + fallback_geometry_ms
+                    + adaptive_geometry_ms
+                )
                 retry_summary = summarize_geometry_quality(retry_geometry)
 
                 def coverage_score(summary: dict) -> int:
@@ -370,7 +587,7 @@ def _handle_job(job: OcrJob) -> None:
                     current_summary = retry_summary
                     selected_profile = candidate_profile
                     profile_mean_confidence = chosen["mean_confidence"]
-                    if low_resolution_scan and not escalation_reason:
+                    if low_resolution_quality_risk and not escalation_reason:
                         escalation_reason = "low-effective-dpi"
                     on_progress(f"Selected improved OCR profile: {candidate_profile}")
                 else:
@@ -398,6 +615,11 @@ def _handle_job(job: OcrJob) -> None:
             table_cells_detected = int(date_stats["table_cells_detected"])
             table_cells_resolved = int(date_stats["table_cells_resolved"])
             table_cells_unresolved = int(date_stats["table_cells_unresolved"])
+            table_images_examined = int(date_stats["table_images_examined"])
+            table_images_skipped_small = int(
+                date_stats["table_images_skipped_small"]
+            )
+            table_grid_candidates = int(date_stats["table_grid_candidates"])
             page_text_regions_detected = int(date_stats["page_text_regions_detected"])
             page_text_words_resolved = int(date_stats["page_text_words_resolved"])
             date_recovery_ms = _elapsed_ms(date_recovery_started)
@@ -410,7 +632,13 @@ def _handle_job(job: OcrJob) -> None:
                     result_bytes,
                     progress_callback=on_progress,
                 )
-                geometry_ms += _elapsed_ms(corrected_geometry_started)
+                table_geometry_ms = _elapsed_ms(corrected_geometry_started)
+                geometry_ms = (
+                    primary_geometry_ms
+                    + fallback_geometry_ms
+                    + adaptive_geometry_ms
+                    + table_geometry_ms
+                )
                 current_summary = summarize_geometry_quality(geometry)
                 on_progress(
                     f"Recovered {table_cells_resolved} of "
@@ -427,10 +655,26 @@ def _handle_job(job: OcrJob) -> None:
                 table_text_recovery_ms = date_recovery_ms
 
         final_characters = current_summary["total_characters"]
-        quality_warning = needs_adaptive_retry(current_summary)
+        final_non_whitespace_characters = current_summary[
+            "non_whitespace_characters"
+        ]
+        final_alphanumeric_ratio = current_summary["alphanumeric_ratio"]
+        final_garbled_page_numbers = list(
+            current_summary["garbled_page_numbers"]
+        )
+        quality_warning = needs_adaptive_retry(
+            current_summary
+        ) or needs_garbled_text_retry(current_summary)
 
+        output_bytes = len(result_bytes)
+        geometry_encode_started = time.perf_counter()
         geometry_b64 = geometry_to_base64(geometry)
-        result_b64 = base64.b64encode(result_bytes).decode("ascii")
+        geometry_encode_ms = _elapsed_ms(geometry_encode_started)
+        result_b64 = ""
+        if not job.preserve_source_pdf:
+            pdf_encode_started = time.perf_counter()
+            result_b64 = base64.b64encode(result_bytes).decode("ascii")
+            pdf_encode_ms = _elapsed_ms(pdf_encode_started)
         _write(
             OcrResult(
                 job_id=job.job_id,
@@ -441,7 +685,14 @@ def _handle_job(job: OcrJob) -> None:
             ).to_dict()
         )
     except Exception as exc:  # noqa: BLE001
-        _write(OcrResult(job_id=job.job_id, status="error", error=str(exc)).to_dict())
+        _write(
+            OcrResult(
+                job_id=job.job_id,
+                status="error",
+                error=str(exc),
+                diagnostics=_diagnostics(page_count),
+            ).to_dict()
+        )
 
 
 def main() -> None:

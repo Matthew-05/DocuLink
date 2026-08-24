@@ -9,7 +9,7 @@
     "OcrMode": {
       "type": "string",
       "enum": ["full", "geometry-only"],
-      "description": "full: OCR all pages, replacing any existing text layer, then return PDF bytes + geometry. geometry-only: extract geometry without replacing PDF bytes."
+      "description": "full: OCR pages and return geometry, optionally returning the rewritten PDF bytes. geometry-only: extract geometry without replacing PDF bytes."
     },
 
     "OcrJob": {
@@ -21,10 +21,11 @@
         "job_id":     { "type": "string", "description": "Opaque identifier echoed back in all responses for this job." },
         "command":    { "const": "ocr",   "description": "Operation to perform." },
         "pdf_base64": { "type": "string", "description": "Base-64 encoded input PDF bytes." },
-        "mode":       { "$ref": "#/definitions/OcrMode", "default": "full" }
+        "mode":       { "$ref": "#/definitions/OcrMode", "default": "full" },
+        "preserve_source_pdf": { "type": "boolean", "default": false, "description": "When true, the host keeps the input PDF as the viewer/display binary and the worker returns only OCR geometry. Page auto-rotation is disabled so normalized geometry remains aligned with the source page." }
       },
       "examples": [
-        { "job_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6", "command": "ocr", "pdf_base64": "JVBERi0xLjQ=", "mode": "full" },
+        { "job_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6", "command": "ocr", "pdf_base64": "JVBERi0xLjQ=", "mode": "full", "preserve_source_pdf": true },
         { "job_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6", "command": "ocr", "pdf_base64": "JVBERi0xLjQ=", "mode": "geometry-only" }
       ]
     },
@@ -95,13 +96,23 @@
         "rasterizer":  { "type": "string", "enum": ["pypdfium2", "ghostscript", "none"], "description": "Page rasterizer OCRmyPDF selected under rasterizer='auto'. 'none' when the job performed no rasterization, i.e. a geometry-only job served from an existing text layer." },
         "page_count":  { "type": "integer", "minimum": 0, "description": "Pages in the document." },
         "use_threads": { "type": "boolean", "description": "True when OCRmyPDF ran page tasks in threads, false when it used worker processes. Recorded because the pypdfium2 rasterizer serializes behind a process-global lock under threading." },
-        "mode":        { "type": "string", "enum": ["redo", "force", "none"], "description": "OCRmyPDF processing mode the document was finally produced with. 'redo' replaces the invisible text layer and preserves original page content. 'force' rasterizes every page, discarding vector fidelity, and is only reached by escalation. 'none' when the job performed no OCR." },
-        "escalation_reason": { "type": "string", "description": "Present only when the ladder escalated from 'redo' to 'force'. Names the condition that forced it, e.g. 'input-rejected' for a PDF redo cannot process, or 'text-unextractable' when the redo output produced no character geometry." },
+        "mode":        { "type": "string", "enum": ["redo", "force", "none"], "description": "OCRmyPDF processing mode the document was finally produced with. 'redo' replaces the invisible text layer and preserves original page content. 'force' means escalation rasterized either all pages or only the pages listed by forced_page_numbers. 'none' means the job performed no OCR." },
+        "escalation_reason": { "type": "string", "description": "Present only when the ladder escalated from 'redo' to 'force'. Names the condition that forced it, e.g. 'input-rejected' for a PDF redo cannot process, 'text-unextractable' when redo produced no character geometry, or 'text-garbled' when dense but overwhelmingly non-alphanumeric extracted text indicates a broken character map." },
         "selected_profile": { "type": "string", "enum": ["default", "high-resolution-auto", "table-single-block", "table-sparse", "none"], "description": "OCR layout profile whose PDF and geometry were returned. Adaptive profiles use 300 DPI oversampling and an explicit Tesseract page segmentation mode." },
         "evaluated_profiles": { "type": "array", "items": { "type": "string", "enum": ["default", "high-resolution-auto", "table-single-block", "table-sparse"] }, "uniqueItems": true, "description": "OCR layout profiles executed or confidence-scored while selecting the returned result." },
         "profile_mean_confidence": { "type": "number", "minimum": 0, "maximum": 100, "description": "Mean Tesseract word confidence for the selected adaptive profile. Omitted when the default profile was retained without an adaptive retry." },
         "initial_characters": { "type": "integer", "minimum": 0, "description": "Extractable characters produced by the first OCR pass before any adaptive retry." },
+        "initial_non_whitespace_characters": { "type": "integer", "minimum": 0, "description": "Non-whitespace characters produced by the first OCR pass." },
+        "initial_alphanumeric_ratio": { "type": "number", "minimum": 0, "maximum": 1, "description": "Document-wide fraction of initial non-whitespace characters that are letters or digits. Page-local fields are authoritative for detecting corruption because healthy pages can conceal broken pages in this aggregate." },
+        "initial_garbled_page_count": { "type": "integer", "minimum": 0, "description": "Number of pages whose initial text geometry contained a meaningful sample dominated by punctuation, invalid Unicode, or multiple garbage lines." },
+        "initial_garbled_page_numbers": { "type": "array", "items": { "type": "integer", "minimum": 1 }, "uniqueItems": true, "description": "One-based page numbers classified as garbled after the first pass." },
         "final_characters": { "type": "integer", "minimum": 0, "description": "Extractable characters in the PDF and geometry returned to the host." },
+        "final_non_whitespace_characters": { "type": "integer", "minimum": 0, "description": "Non-whitespace characters in the returned geometry." },
+        "final_alphanumeric_ratio": { "type": "number", "minimum": 0, "maximum": 1, "description": "Fraction of final non-whitespace characters that are letters or digits." },
+        "final_garbled_page_count": { "type": "integer", "minimum": 0, "description": "Number of pages still classified as garbled in the returned geometry." },
+        "final_garbled_page_numbers": { "type": "array", "items": { "type": "integer", "minimum": 1 }, "uniqueItems": true, "description": "One-based page numbers still classified as garbled after all retries." },
+        "forced_page_count": { "type": "integer", "minimum": 0, "description": "Number of pages rasterized by force-mode escalation." },
+        "forced_page_numbers": { "type": "array", "items": { "type": "integer", "minimum": 1 }, "uniqueItems": true, "description": "One-based page numbers rasterized by force-mode escalation. Empty when no force escalation occurred." },
         "quality_warning": { "type": "boolean", "description": "True when the returned OCR result still has implausibly sparse text coverage after all safe retries. Telemetry only; the host continues to treat the message as a successful result." },
         "profile_retry_error": { "type": "string", "description": "Present when optional adaptive profile evaluation or retry failed and the worker safely retained the preceding OCR result." },
         "date_tables_detected": { "type": "integer", "minimum": 0, "description": "Ruled tables whose OCR-visible header identified at least one date column for cell-level recovery." },
@@ -113,13 +124,33 @@
         "table_cells_detected": { "type": "integer", "minimum": 0, "description": "Header and data cells examined by ruled-table cell recovery, including date cells." },
         "table_cells_resolved": { "type": "integer", "minimum": 0, "description": "Ruled-table cells rebuilt as validated dates, numbers, or non-empty text in the returned PDF text layer." },
         "table_cells_unresolved": { "type": "integer", "minimum": 0, "description": "Ruled-table cells that remained blank after the bounded column-aware OCR ladder." },
+        "table_images_examined": { "type": "integer", "minimum": 0, "description": "Unique source PDF images considered by ruled-table recovery." },
+        "table_images_skipped_small": { "type": "integer", "minimum": 0, "description": "Source images rejected before decoding because their largest page placement was too small to contain a recoverable table." },
+        "table_grid_candidates": { "type": "integer", "minimum": 0, "description": "Images whose dark-pixel projections contained a strong ruled grid and therefore reached header evaluation." },
         "table_text_recovery_ms": { "type": "integer", "minimum": 0, "description": "Milliseconds spent removing detected rulings, recognizing cells with column-aware profiles, and rebuilding the table text layer." },
         "table_text_recovery_error": { "type": "string", "description": "Present when optional full-table cell recovery failed and the worker safely retained the selected OCR result." },
         "page_text_regions_detected": { "type": "integer", "minimum": 0, "description": "Non-table scan regions recovered with sparse-layout word OCR while rebuilding a detected table page." },
         "page_text_words_resolved": { "type": "integer", "minimum": 0, "description": "Positioned words embedded from recovered non-table scan regions." },
+        "input_bytes": { "type": "integer", "minimum": 0, "description": "Decoded input PDF size in bytes." },
+        "output_bytes": { "type": "integer", "minimum": 0, "description": "Returned OCR PDF size in bytes. Zero for geometry-only jobs and jobs that fail before producing output." },
+        "decode_ms": { "type": "integer", "minimum": 0, "description": "Milliseconds spent base64-decoding the inbound PDF." },
+        "inspect_ms": { "type": "integer", "minimum": 0, "description": "Milliseconds spent opening the input PDF to determine its page count for diagnostics." },
+        "primary_ocr_ms": { "type": "integer", "minimum": 0, "description": "Milliseconds spent in the initial OCRmyPDF pass, including a failed redo attempt when escalation is required." },
+        "fallback_ocr_ms": { "type": "integer", "minimum": 0, "description": "Milliseconds spent in a forced-rasterization OCR pass after the initial path was rejected or yielded unextractable text." },
+        "adaptive_detection_ms": { "type": "integer", "minimum": 0, "description": "Milliseconds spent deciding whether sparse coverage or low effective image DPI requires adaptive profile evaluation." },
+        "adaptive_evaluation_ms": { "type": "integer", "minimum": 0, "description": "Milliseconds spent rendering pages and confidence-scoring the adaptive Tesseract profiles." },
+        "adaptive_ocr_ms": { "type": "integer", "minimum": 0, "description": "Milliseconds spent rerunning OCRmyPDF with the selected adaptive profile." },
+        "primary_geometry_ms": { "type": "integer", "minimum": 0, "description": "Milliseconds spent on the first character-geometry extraction." },
+        "fallback_geometry_ms": { "type": "integer", "minimum": 0, "description": "Milliseconds spent extracting geometry after a forced-rasterization fallback." },
+        "adaptive_geometry_ms": { "type": "integer", "minimum": 0, "description": "Milliseconds spent extracting geometry from the adaptive OCR candidate." },
+        "table_geometry_ms": { "type": "integer", "minimum": 0, "description": "Milliseconds spent re-extracting geometry after table-cell recovery changed the PDF." },
+        "geometry_encode_ms": { "type": "integer", "minimum": 0, "description": "Milliseconds spent serializing, compressing, and base64-encoding text geometry." },
+        "pdf_encode_ms": { "type": "integer", "minimum": 0, "description": "Milliseconds spent base64-encoding the returned OCR PDF." },
+        "source_pdf_preserved": { "type": "boolean", "description": "True when OCR geometry was returned while the host intentionally retained the original PDF bytes for display fidelity." },
+        "preflight_geometry_ms": { "type": "integer", "minimum": 0, "description": "Milliseconds spent validating the source PDF text geometry before OCR. A garbled preflight can bypass the otherwise redundant redo pass." },
         "ocr_ms":      { "type": "integer", "minimum": 0, "description": "Milliseconds spent inside OCRmyPDF. Omitted when no OCR ran." },
         "geometry_ms": { "type": "integer", "minimum": 0, "description": "Milliseconds spent extracting character geometry." },
-        "total_ms":    { "type": "integer", "minimum": 0, "description": "Milliseconds from job decode to result serialization, measured inside the worker. Excludes host-side base64 transfer and workbook storage." }
+        "total_ms":    { "type": "integer", "minimum": 0, "description": "Milliseconds from the start of inbound base64 decoding through response payload preparation, measured inside the worker. Excludes final JSON serialization, stdout transfer, and host-side workbook storage." }
       }
     },
 
@@ -131,7 +162,7 @@
       "properties": {
         "job_id":           { "type": "string" },
         "status":           { "const": "success" },
-        "pdf_base64":       { "type": "string", "description": "Base-64 encoded output PDF bytes with text layer added. Omitted for geometry-only jobs." },
+        "pdf_base64":       { "type": "string", "description": "Base-64 encoded output PDF bytes with text layer added. Omitted for geometry-only jobs and when preserve_source_pdf is true." },
         "geometry_base64":  { "type": "string", "description": "Gzip-compressed text-geometry-v1 JSON, base64-encoded." },
         "diagnostics":      { "$ref": "#/definitions/OcrDiagnostics" }
       },
@@ -145,27 +176,49 @@
             "ocr_engine": "tesseract 5.5.0",
             "rasterizer": "pypdfium2",
             "page_count": 12,
+            "input_bytes": 1458230,
+            "output_bytes": 1724412,
+            "decode_ms": 5,
+            "inspect_ms": 2,
             "use_threads": false,
             "mode": "redo",
             "selected_profile": "default",
             "evaluated_profiles": ["default"],
             "initial_characters": 4210,
+            "initial_non_whitespace_characters": 3514,
+            "initial_alphanumeric_ratio": 0.91,
             "final_characters": 4210,
+            "final_non_whitespace_characters": 3514,
+            "final_alphanumeric_ratio": 0.91,
             "quality_warning": false,
             "date_tables_detected": 1,
             "date_cells_detected": 96,
             "date_cells_resolved": 96,
             "date_cells_unresolved": 0,
-            "date_recovery_ms": 12104,
+            "date_recovery_ms": 19872,
             "table_cells_detected": 231,
             "table_cells_resolved": 231,
             "table_cells_unresolved": 0,
+            "table_images_examined": 12,
+            "table_images_skipped_small": 2,
+            "table_grid_candidates": 1,
             "table_text_recovery_ms": 19872,
             "page_text_regions_detected": 1,
             "page_text_words_resolved": 50,
+            "primary_ocr_ms": 8421,
+            "fallback_ocr_ms": 0,
+            "adaptive_detection_ms": 3,
+            "adaptive_evaluation_ms": 0,
+            "adaptive_ocr_ms": 0,
+            "primary_geometry_ms": 96,
+            "fallback_geometry_ms": 0,
+            "adaptive_geometry_ms": 0,
+            "table_geometry_ms": 18,
+            "geometry_encode_ms": 9,
+            "pdf_encode_ms": 4,
             "ocr_ms": 8421,
-            "geometry_ms": 96,
-            "total_ms": 8604
+            "geometry_ms": 114,
+            "total_ms": 28472
           }
         },
         {
@@ -198,7 +251,8 @@
       "properties": {
         "job_id": { "type": "string" },
         "status": { "const": "error" },
-        "error":  { "type": "string", "description": "Human-readable error description." }
+        "error":  { "type": "string", "description": "Human-readable error description." },
+        "diagnostics": { "$ref": "#/definitions/OcrDiagnostics", "description": "Best-effort partial telemetry collected before the failure." }
       },
       "examples": [
         { "job_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6", "status": "error", "error": "Tesseract not found" }

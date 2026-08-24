@@ -5,6 +5,7 @@ using System.Linq;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Web.Script.Serialization;
 using System.Windows.Forms;
 using DocuLink.Addin.Modules.CustomXml.Models;
 using DocuLink.Addin.Modules.Infrastructure;
@@ -79,15 +80,58 @@ namespace DocuLink.Addin.Modules.Services
             if (workbook == null) throw new ArgumentNullException(nameof(workbook));
             WorkbookProtectionGuard.ThrowIfStructureProtected(workbook);
 
+            string runId = Guid.NewGuid().ToString("N");
+            var batchClock = Stopwatch.StartNew();
+            LogPerf(new Dictionary<string, object>
+            {
+                ["event"] = "batch_requested",
+                ["run_id"] = runId,
+                ["requested_files"] = pdfIds.Count,
+            });
+
             if (!PythonWorkerSession.IsAvailable)
             {
+                LogPerf(new Dictionary<string, object>
+                {
+                    ["event"] = "batch_end",
+                    ["run_id"] = runId,
+                    ["outcome"] = "worker-unavailable",
+                    ["requested_files"] = pdfIds.Count,
+                    ["total_ms"] = batchClock.ElapsedMilliseconds,
+                });
                 foreach (string id in pdfIds)
                     onStatusUpdate(id, "error", PythonWorkerSession.NotBuiltMessage);
                 return;
             }
 
+            var loadClock = Stopwatch.StartNew();
             var jobs = LoadJobData(pdfIds, workbook);
-            if (jobs.Count == 0) return;
+            loadClock.Stop();
+            if (jobs.Count == 0)
+            {
+                LogPerf(new Dictionary<string, object>
+                {
+                    ["event"] = "batch_end",
+                    ["run_id"] = runId,
+                    ["outcome"] = "no-files-loaded",
+                    ["requested_files"] = pdfIds.Count,
+                    ["loaded_files"] = 0,
+                    ["workbook_load_ms"] = loadClock.ElapsedMilliseconds,
+                    ["total_ms"] = batchClock.ElapsedMilliseconds,
+                });
+                return;
+            }
+
+            var metrics = new OcrBatchMetrics(runId, pdfIds.Count, jobs.Count);
+            LogPerf(new Dictionary<string, object>
+            {
+                ["event"] = "batch_start",
+                ["run_id"] = runId,
+                ["requested_files"] = pdfIds.Count,
+                ["loaded_files"] = jobs.Count,
+                ["input_bytes"] = jobs.Sum(job => job.InputBytes),
+                ["workbook_load_ms"] = loadClock.ElapsedMilliseconds,
+            });
 
             foreach (var job in jobs)
                 onStatusUpdate(job.PdfId, "queued", null);
@@ -96,10 +140,39 @@ namespace DocuLink.Addin.Modules.Services
             IsRunning = true;
             try
             {
-                await Task.Run(() => RunWorker(jobs, workbook, onStatusUpdate, _cts.Token));
+                await Task.Run(() => RunWorker(
+                    jobs, workbook, onStatusUpdate, _cts.Token, metrics));
+            }
+            catch (Exception ex)
+            {
+                metrics.UnhandledError = ex.GetType().Name + ": " + ex.Message;
+                throw;
             }
             finally
             {
+                batchClock.Stop();
+                var batchEnd = new Dictionary<string, object>
+                {
+                    ["event"] = "batch_end",
+                    ["run_id"] = runId,
+                    ["outcome"] = string.IsNullOrEmpty(metrics.UnhandledError)
+                        ? (metrics.Cancelled > 0 ? "cancelled" : "complete")
+                        : "error",
+                    ["requested_files"] = metrics.Requested,
+                    ["loaded_files"] = metrics.Loaded,
+                    ["succeeded"] = metrics.Succeeded,
+                    ["failed"] = metrics.Failed,
+                    ["cancelled"] = metrics.Cancelled,
+                    ["skipped"] = metrics.Skipped,
+                    ["input_bytes"] = jobs.Sum(job => job.InputBytes),
+                    ["workbook_load_ms"] = loadClock.ElapsedMilliseconds,
+                    ["worker_start_ms"] = metrics.WorkerStartMs,
+                    ["total_ms"] = batchClock.ElapsedMilliseconds,
+                };
+                if (!string.IsNullOrEmpty(metrics.UnhandledError))
+                    batchEnd["error"] = metrics.UnhandledError;
+                LogPerf(batchEnd);
+
                 IsRunning = false;
                 _cts.Dispose();
                 _cts = null;
@@ -110,66 +183,139 @@ namespace DocuLink.Addin.Modules.Services
             IList<OcrJobEntry> jobs,
             Excel.Workbook workbook,
             Action<string, string, string> onStatusUpdate,
-            CancellationToken token)
+            CancellationToken token,
+            OcrBatchMetrics metrics)
         {
             using (var session = new PythonWorkerSession())
             {
+                var startClock = Stopwatch.StartNew();
                 session.Start();
+                startClock.Stop();
+                metrics.WorkerStartMs = startClock.ElapsedMilliseconds;
+                LogPerf(new Dictionary<string, object>
+                {
+                    ["event"] = "worker_started",
+                    ["run_id"] = metrics.RunId,
+                    ["startup_ms"] = metrics.WorkerStartMs,
+                });
                 _runningSession = session;
 
                 try
                 {
-                    foreach (var job in jobs)
+                    for (int jobIndex = 0; jobIndex < jobs.Count; jobIndex++)
                     {
+                        OcrJobEntry job = jobs[jobIndex];
+                        var jobClock = Stopwatch.StartNew();
+
                         // Cancelled or worker already gone — revert remaining to original status
                         if (token.IsCancellationRequested || session.IsDead)
                         {
+                            bool cancelled = token.IsCancellationRequested;
+                            var callbackClock = Stopwatch.StartNew();
                             Invoke(() => onStatusUpdate(job.PdfId, job.OriginalStatus, null));
+                            callbackClock.Stop();
+                            if (cancelled) metrics.Cancelled++;
+                            else metrics.Skipped++;
+                            LogJobOutcome(
+                                metrics.RunId, jobIndex, jobs.Count, job,
+                                cancelled ? "cancelled" : "skipped-worker-dead",
+                                cancelled ? null : "Worker was unavailable after a prior job.",
+                                null, 0, 0, 0, 0, 0,
+                                callbackClock.ElapsedMilliseconds,
+                                jobClock.ElapsedMilliseconds);
                             continue;
                         }
 
+                        var processingCallbackClock = Stopwatch.StartNew();
                         Invoke(() => onStatusUpdate(job.PdfId, "processing", null));
+                        processingCallbackClock.Stop();
 
-                        // Round-trip clock: covers base64 transfer both ways plus the
-                        // worker's own processing, so it is always >= diagnostics.total_ms.
-                        var roundTrip = Stopwatch.StartNew();
+                        var buildClock = Stopwatch.StartNew();
+                        string jobJson = BuildJobJson(job);
+                        buildClock.Stop();
 
-                        session.SendJob(BuildJobJson(job));
+                        var sendClock = Stopwatch.StartNew();
+                        session.SendJob(jobJson);
+                        sendClock.Stop();
 
                         // Read lines until we get a terminal result for this job_id
-                        string resultLine = session.ReadResultLine(job.PdfId);
+                        var waitClock = Stopwatch.StartNew();
+                        string lastProgressStage = null;
+                        var progressLogClock = Stopwatch.StartNew();
+                        string resultLine = session.ReadResultLine(
+                            job.PdfId,
+                            message =>
+                            {
+                                string stage = ProgressStage(message);
+                                if (string.Equals(stage, lastProgressStage, StringComparison.Ordinal)
+                                    && progressLogClock.ElapsedMilliseconds < 5000)
+                                    return;
 
-                        roundTrip.Stop();
+                                lastProgressStage = stage;
+                                progressLogClock.Restart();
+                                LogPerf(new Dictionary<string, object>
+                                {
+                                    ["event"] = "progress",
+                                    ["run_id"] = metrics.RunId,
+                                    ["job_index"] = jobIndex + 1,
+                                    ["job_count"] = jobs.Count,
+                                    ["pdf_id"] = job.PdfId,
+                                    ["name"] = job.Name,
+                                    ["stage"] = stage,
+                                    ["message"] = message,
+                                    ["elapsed_ms"] = jobClock.ElapsedMilliseconds,
+                                });
+                            });
+                        waitClock.Stop();
 
                         if (resultLine == null)
                         {
                             // Stream closed — either we killed the process (cancellation) or it crashed
                             bool cancelled = token.IsCancellationRequested;
-                            DocuLinkLog.Trace(
-                                $"OCR pdf={job.PdfId} mode={job.Mode} " +
-                                $"outcome={(cancelled ? "cancelled" : "worker-died")} " +
-                                $"roundTrip={roundTrip.ElapsedMilliseconds}ms");
+                            var callbackClock = Stopwatch.StartNew();
                             Invoke(() => onStatusUpdate(
                                 job.PdfId,
                                 cancelled ? job.OriginalStatus : "error",
                                 cancelled ? null : "Worker closed unexpectedly."));
+                            callbackClock.Stop();
+                            if (cancelled) metrics.Cancelled++;
+                            else metrics.Failed++;
+                            LogJobOutcome(
+                                metrics.RunId, jobIndex, jobs.Count, job,
+                                cancelled ? "cancelled" : "worker-died",
+                                cancelled ? null : "Worker closed unexpectedly.",
+                                null,
+                                buildClock.ElapsedMilliseconds,
+                                sendClock.ElapsedMilliseconds,
+                                waitClock.ElapsedMilliseconds,
+                                0, 0,
+                                processingCallbackClock.ElapsedMilliseconds
+                                    + callbackClock.ElapsedMilliseconds,
+                                jobClock.ElapsedMilliseconds);
                             continue;
                         }
 
+                        var parseClock = Stopwatch.StartNew();
                         var parsed = ParseResultLine(resultLine);
-                        LogJobOutcome(job, parsed, roundTrip.ElapsedMilliseconds);
+                        parseClock.Stop();
+
+                        long storageMs = 0;
+                        long callbackMs = processingCallbackClock.ElapsedMilliseconds;
+                        string outcome = parsed.Status;
+                        string error = parsed.Error;
 
                         if (parsed.Status == "success")
                         {
                             Invoke(() =>
                             {
+                                var storageClock = Stopwatch.StartNew();
                                 try
                                 {
-                                    if (string.Equals(job.Mode, "geometry-only", StringComparison.Ordinal))
+                                    if (string.Equals(job.Mode, "geometry-only", StringComparison.Ordinal)
+                                        || job.PreserveSourcePdf)
                                     {
                                         _manageService.UpdatePdfGeometry(
                                             workbook, job.PdfId, parsed.GeometryBase64 ?? string.Empty);
-                                        onStatusUpdate(job.PdfId, PdfStatus.Ocr, null);
                                     }
                                     else
                                     {
@@ -178,19 +324,54 @@ namespace DocuLink.Addin.Modules.Services
                                             job.PdfId,
                                             parsed.PdfBase64 ?? string.Empty,
                                             parsed.GeometryBase64 ?? string.Empty);
-                                        onStatusUpdate(job.PdfId, PdfStatus.Ocr, null);
                                     }
+                                    storageClock.Stop();
+                                    storageMs = storageClock.ElapsedMilliseconds;
+
+                                    var callbackClock = Stopwatch.StartNew();
+                                    onStatusUpdate(job.PdfId, PdfStatus.Ocr, null);
+                                    callbackClock.Stop();
+                                    callbackMs += callbackClock.ElapsedMilliseconds;
                                 }
                                 catch (Exception ex)
                                 {
+                                    storageClock.Stop();
+                                    storageMs = storageClock.ElapsedMilliseconds;
+                                    outcome = "storage-error";
+                                    error = ex.Message;
+                                    var callbackClock = Stopwatch.StartNew();
                                     onStatusUpdate(job.PdfId, "error", ex.Message);
+                                    callbackClock.Stop();
+                                    callbackMs += callbackClock.ElapsedMilliseconds;
                                 }
                             });
                         }
                         else
                         {
+                            var callbackClock = Stopwatch.StartNew();
                             Invoke(() => onStatusUpdate(job.PdfId, "error", parsed.Error));
+                            callbackClock.Stop();
+                            callbackMs += callbackClock.ElapsedMilliseconds;
                         }
+
+                        jobClock.Stop();
+                        if (string.Equals(outcome, "success", StringComparison.Ordinal))
+                            metrics.Succeeded++;
+                        else
+                            metrics.Failed++;
+
+                        LogJobOutcome(
+                            metrics.RunId, jobIndex, jobs.Count, job, outcome, error,
+                            parsed.Diagnostics,
+                            buildClock.ElapsedMilliseconds,
+                            sendClock.ElapsedMilliseconds,
+                            waitClock.ElapsedMilliseconds,
+                            parseClock.ElapsedMilliseconds,
+                            storageMs,
+                            callbackMs,
+                            jobClock.ElapsedMilliseconds,
+                            parsed.PdfBase64,
+                            parsed.GeometryBase64);
                     }
                 }
                 finally
@@ -201,65 +382,100 @@ namespace DocuLink.Addin.Modules.Services
         }
 
         /// <summary>
-        /// Writes one debug-log line per document recording which engine ran and how long
-        /// it took. Worker diagnostics are optional by contract, so a missing or partial
-        /// diagnostics object degrades the line rather than suppressing it.
+        /// Writes a machine-readable, single-line performance record. The OCR_PERF
+        /// prefix makes a large mixed debug log easy to filter before analysis.
         /// </summary>
-        private static void LogJobOutcome(OcrJobEntry job, OcrWorkerResult parsed, long roundTripMs)
+        private static void LogJobOutcome(
+            string runId,
+            int jobIndex,
+            int jobCount,
+            OcrJobEntry job,
+            string outcome,
+            string error,
+            Dictionary<string, object> diagnostics,
+            long buildJsonMs,
+            long sendMs,
+            long waitMs,
+            long parseMs,
+            long storageMs,
+            long callbackMs,
+            long totalMs,
+            string outputPdfBase64 = null,
+            string geometryBase64 = null)
         {
-            var sb = new StringBuilder();
-            sb.Append("OCR pdf=").Append(job.PdfId)
-              .Append(" mode=").Append(job.Mode)
-              .Append(" outcome=").Append(parsed.Status);
-
-            var diag = parsed.Diagnostics;
-            if (diag != null)
+            var record = new Dictionary<string, object>
             {
-                sb.Append(" ocrMode=").Append(Field(diag, "mode"))
-                  .Append(" profile=").Append(Field(diag, "selected_profile"))
-                  .Append(" engine=").Append(Field(diag, "ocr_engine"))
-                  .Append(" rasterizer=").Append(Field(diag, "rasterizer"))
-                  .Append(" threads=").Append(Field(diag, "use_threads"))
-                  .Append(" pages=").Append(Field(diag, "page_count"))
-                  .Append(" chars=").Append(Field(diag, "initial_characters"))
-                  .Append("->").Append(Field(diag, "final_characters"))
-                  .Append(" qualityWarning=").Append(Field(diag, "quality_warning"))
-                  .Append(" dates=").Append(Field(diag, "date_cells_resolved"))
-                  .Append("/").Append(Field(diag, "date_cells_detected"))
-                  .Append(" dateTables=").Append(Field(diag, "date_tables_detected"))
-                  .Append(" dateRecovery=").Append(Field(diag, "date_recovery_ms")).Append("ms")
-                  .Append(" tableCells=").Append(Field(diag, "table_cells_resolved"))
-                  .Append("/").Append(Field(diag, "table_cells_detected"))
-                  .Append(" tableRecovery=").Append(Field(diag, "table_text_recovery_ms")).Append("ms")
-                  .Append(" pageWords=").Append(Field(diag, "page_text_words_resolved"))
-                  .Append(" ocr=").Append(Field(diag, "ocr_ms")).Append("ms")
-                  .Append(" geometry=").Append(Field(diag, "geometry_ms")).Append("ms")
-                  .Append(" worker=").Append(Field(diag, "total_ms")).Append("ms");
-
-                // Only present when the ladder fell back to rasterizing, which
-                // permanently costs vector fidelity — worth being loud about.
-                string escalation = PythonWorkerSession.GetString(diag, "escalation_reason");
-                if (!string.IsNullOrEmpty(escalation))
-                    sb.Append(" ESCALATED=").Append(escalation);
-            }
-            else
-            {
-                sb.Append(" diagnostics=absent");
-            }
-
-            sb.Append(" roundTrip=").Append(roundTripMs).Append("ms");
-
-            if (parsed.Status != "success")
-                sb.Append(" error=").Append(parsed.Error);
-
-            DocuLinkLog.Trace(sb.ToString());
+                ["event"] = "job_end",
+                ["run_id"] = runId,
+                ["job_index"] = jobIndex + 1,
+                ["job_count"] = jobCount,
+                ["pdf_id"] = job.PdfId,
+                ["name"] = job.Name,
+                ["mode"] = job.Mode,
+                ["outcome"] = outcome,
+                ["input_bytes"] = job.InputBytes,
+                ["output_pdf_bytes"] = Base64DecodedLength(outputPdfBase64),
+                ["geometry_bytes"] = Base64DecodedLength(geometryBase64),
+                ["workbook_binary_load_ms"] = job.LoadMs,
+                ["host"] = new Dictionary<string, object>
+                {
+                    ["build_json_ms"] = buildJsonMs,
+                    ["send_ms"] = sendMs,
+                    ["wait_ms"] = waitMs,
+                    ["parse_ms"] = parseMs,
+                    ["workbook_storage_ms"] = storageMs,
+                    ["ui_callback_ms"] = callbackMs,
+                    ["total_ms"] = totalMs,
+                },
+            };
+            if (diagnostics != null)
+                record["worker"] = diagnostics;
+            if (!string.IsNullOrEmpty(error))
+                record["error"] = error;
+            LogPerf(record);
         }
 
-        /// <summary>Reads a diagnostics field, rendering an absent one as "n/a".</summary>
-        private static string Field(Dictionary<string, object> diag, string key)
+        private static void LogPerf(Dictionary<string, object> record)
         {
-            string value = PythonWorkerSession.GetString(diag, key);
-            return string.IsNullOrEmpty(value) ? "n/a" : value;
+            try
+            {
+                string json = new JavaScriptSerializer
+                {
+                    MaxJsonLength = int.MaxValue,
+                }.Serialize(record);
+                DocuLinkLog.Trace("OCR_PERF " + json);
+            }
+            catch (Exception ex)
+            {
+                DocuLinkLog.Trace("OCR_PERF serialization-error=" + ex.Message);
+            }
+        }
+
+        private static string ProgressStage(string message)
+        {
+            string value = message ?? string.Empty;
+            if (value.StartsWith("Extracting geometry", StringComparison.OrdinalIgnoreCase))
+                return "geometry";
+            if (value.IndexOf("high-resolution layout", StringComparison.OrdinalIgnoreCase) >= 0)
+                return "adaptive-evaluation";
+            if (value.StartsWith("Retrying OCR", StringComparison.OrdinalIgnoreCase))
+                return "adaptive-ocr";
+            if (value.IndexOf("table", StringComparison.OrdinalIgnoreCase) >= 0
+                || value.StartsWith("Recovering", StringComparison.OrdinalIgnoreCase))
+                return "table-recovery";
+            if (value.IndexOf("rasterizing", StringComparison.OrdinalIgnoreCase) >= 0)
+                return "forced-ocr";
+            if (value.IndexOf("OCR", StringComparison.OrdinalIgnoreCase) >= 0)
+                return "ocr";
+            return "worker";
+        }
+
+        private static long Base64DecodedLength(string value)
+        {
+            if (string.IsNullOrEmpty(value)) return 0;
+            long padding = value.EndsWith("==", StringComparison.Ordinal) ? 2
+                : value.EndsWith("=", StringComparison.Ordinal) ? 1 : 0;
+            return (value.Length / 4L) * 3L - padding;
         }
 
         private static OcrWorkerResult ParseResultLine(string line)
@@ -285,6 +501,7 @@ namespace DocuLink.Addin.Modules.Services
                 {
                     Status = "error",
                     Error = string.IsNullOrEmpty(err) ? "Unknown error" : err,
+                    Diagnostics = PythonWorkerSession.GetDictionary(obj, "diagnostics"),
                 };
             }
             catch (Exception ex)
@@ -306,6 +523,8 @@ namespace DocuLink.Addin.Modules.Services
             PythonWorkerSession.AppendJsonString(sb, job.Base64);
             sb.Append(",\"mode\":");
             PythonWorkerSession.AppendJsonString(sb, job.Mode ?? "full");
+            sb.Append(",\"preserve_source_pdf\":");
+            sb.Append(job.PreserveSourcePdf ? "true" : "false");
             sb.Append('}');
             return sb.ToString();
         }
@@ -327,12 +546,18 @@ namespace DocuLink.Addin.Modules.Services
                 if (metadata == null) continue;
 
                 string status = metadata.OcrStatus ?? PdfStatus.None;
+                var loadClock = Stopwatch.StartNew();
                 store.TryLoadPdfBinary(id, out string base64, out _);
+                loadClock.Stop();
                 result.Add(new OcrJobEntry
                 {
                     PdfId = id,
+                    Name = metadata.Name ?? string.Empty,
                     Base64 = base64 ?? string.Empty,
+                    InputBytes = Base64DecodedLength(base64),
+                    LoadMs = loadClock.ElapsedMilliseconds,
                     Mode = "full",
+                    PreserveSourcePdf = true,
                     OriginalStatus = status,
                 });
             }
@@ -350,9 +575,33 @@ namespace DocuLink.Addin.Modules.Services
         private sealed class OcrJobEntry
         {
             public string PdfId { get; set; }
+            public string Name { get; set; }
             public string Base64 { get; set; }
+            public long InputBytes { get; set; }
+            public long LoadMs { get; set; }
             public string Mode { get; set; }
+            public bool PreserveSourcePdf { get; set; }
             public string OriginalStatus { get; set; }
+        }
+
+        private sealed class OcrBatchMetrics
+        {
+            public OcrBatchMetrics(string runId, int requested, int loaded)
+            {
+                RunId = runId;
+                Requested = requested;
+                Loaded = loaded;
+            }
+
+            public string RunId { get; }
+            public int Requested { get; }
+            public int Loaded { get; }
+            public int Succeeded { get; set; }
+            public int Failed { get; set; }
+            public int Cancelled { get; set; }
+            public int Skipped { get; set; }
+            public long WorkerStartMs { get; set; }
+            public string UnhandledError { get; set; }
         }
 
         private sealed class OcrWorkerResult
