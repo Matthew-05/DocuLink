@@ -10,7 +10,6 @@ using System.Windows.Forms;
 using DocuLink.Addin.Modules.Services;
 using DocuLink.Addin.Modules.Services.Conversion;
 using DocuLink.Addin.Modules.UI;
-using DocuLink.Addin.Properties;
 using Excel = Microsoft.Office.Interop.Excel;
 using Microsoft.Office.Core;
 
@@ -47,13 +46,12 @@ namespace DocuLink.Addin.Ribbon
 
         public bool GetAutoOpenViewerOnCellClick(IRibbonControl control)
         {
-            return Settings.Default.AutoOpenViewerOnCellClick;
+            return Globals.ThisAddIn.AutoOpenViewerOnCellClick;
         }
 
         public void OnToggleAutoOpenViewerOnCellClick(IRibbonControl control, bool pressed)
         {
-            Settings.Default.AutoOpenViewerOnCellClick = pressed;
-            Settings.Default.Save();
+            Globals.ThisAddIn.AutoOpenViewerOnCellClick = pressed;
             _ribbonUi?.InvalidateControl(control.Id);
         }
 
