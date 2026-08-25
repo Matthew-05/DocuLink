@@ -49,6 +49,13 @@ namespace DocuLink.Addin.Ribbon
             return Globals.ThisAddIn.AutoOpenViewerOnCellClick;
         }
 
+        public string GetAutoOpenViewerLabel(IRibbonControl control)
+        {
+            return Globals.ThisAddIn.AutoOpenViewerOnCellClick
+                ? "Auto-open Viewer (enabled)"
+                : "Auto-open Viewer (disabled)";
+        }
+
         public void OnToggleAutoOpenViewerOnCellClick(IRibbonControl control, bool pressed)
         {
             Globals.ThisAddIn.AutoOpenViewerOnCellClick = pressed;
@@ -266,6 +273,21 @@ namespace DocuLink.Addin.Ribbon
         public System.Drawing.Bitmap GetViewerMenuImage(IRibbonControl control)
         {
             return LoadEmbeddedSvgAsIcon("icon-viewer.svg");
+        }
+
+        public System.Drawing.Bitmap GetTaskPaneImage(IRibbonControl control)
+        {
+            return LoadEmbeddedSvgAsIcon("icon-viewer-task-pane.svg");
+        }
+
+        public System.Drawing.Bitmap GetViewerWindowImage(IRibbonControl control)
+        {
+            return LoadEmbeddedSvgAsIcon("icon-viewer-window.svg");
+        }
+
+        public System.Drawing.Bitmap GetAutoOpenViewerImage(IRibbonControl control)
+        {
+            return LoadEmbeddedSvgAsIcon("icon-viewer-auto-open.svg");
         }
 
         public System.Drawing.Bitmap GetAddPdfImage(IRibbonControl control)

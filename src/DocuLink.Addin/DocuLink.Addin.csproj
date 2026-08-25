@@ -313,6 +313,9 @@
     <EmbeddedResource Include="..\resources\icons\icon-match-documents.svg" />
     <EmbeddedResource Include="..\resources\icons\icon-settings.svg" />
     <EmbeddedResource Include="..\resources\icons\icon-viewer.svg" />
+    <EmbeddedResource Include="..\resources\icons\icon-viewer-auto-open.svg" />
+    <EmbeddedResource Include="..\resources\icons\icon-viewer-task-pane.svg" />
+    <EmbeddedResource Include="..\resources\icons\icon-viewer-window.svg" />
     <AppDesigner Include="Properties\" />
   </ItemGroup>
   <PropertyGroup>

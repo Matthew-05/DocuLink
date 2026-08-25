@@ -7,15 +7,25 @@
           <menu id="DocuLink.MenuViewer"
                 label="Viewer"
                 size="large"
+                itemSize="large"
                 getImage="GetViewerMenuImage">
             <button id="DocuLink.BtnTaskPane"
                     label="Open in Task Pane"
+                    screentip="Open Viewer in Task Pane"
+                    supertip="Keep the document viewer docked beside your worksheet."
+                    getImage="GetTaskPaneImage"
                     onAction="OnShowTaskPane" />
             <button id="DocuLink.BtnViewerWindow"
                     label="Open in Separate Window"
+                    screentip="Open Viewer in Separate Window"
+                    supertip="Open the document viewer in its own resizable window."
+                    getImage="GetViewerWindowImage"
                     onAction="OnShowViewerWindow" />
             <toggleButton id="DocuLink.ToggleAutoOpenViewer"
-                          label="Automatically Open Viewer"
+                          getLabel="GetAutoOpenViewerLabel"
+                          screentip="Auto-open Viewer for Linked Cells"
+                          supertip="During this Excel session, automatically show the viewer when you select a cell linked to a document."
+                          getImage="GetAutoOpenViewerImage"
                           getPressed="GetAutoOpenViewerOnCellClick"
                           onAction="OnToggleAutoOpenViewerOnCellClick" />
           </menu>

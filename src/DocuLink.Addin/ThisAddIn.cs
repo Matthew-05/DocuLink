@@ -122,7 +122,8 @@ namespace DocuLink.Addin
 
         /// <summary>
         /// Controls whether linked-cell selection opens the task-pane viewer. This is
-        /// intentionally session-only and resets to enabled each time the add-in starts.
+        /// intentionally session-only and resets to enabled each time the add-in starts;
+        /// do not load it from or save it to application settings.
         /// </summary>
         internal bool AutoOpenViewerOnCellClick { get; set; } = true;
 
