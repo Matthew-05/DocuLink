@@ -1113,7 +1113,7 @@
       "additionalProperties": false,
       "properties": {
         "type": { "const": "matcher-data-loaded" },
-        "rows": { "type": "array", "items": { "type": "object", "required": ["rowIndex", "keyValues"], "properties": { "rowIndex": { "type": "integer" }, "keyValues": { "type": "array", "items": { "type": "string" } } } } },
+        "rows": { "type": "array", "items": { "type": "object", "required": ["rowIndex", "keyValues"], "properties": { "rowIndex": { "type": "integer" }, "keyValues": { "type": "array", "description": "Semantic Excel cell values used for matching. Date-formatted cells are rendered with their Excel number format instead of being sent as OA serial numbers.", "items": { "type": "string" } } } } },
         "pdfs": { "type": "array", "items": { "type": "object", "required": ["id", "name", "folderId"], "properties": { "id": { "type": "string" }, "name": { "type": "string" }, "folderId": { "type": "string" }, "geometryBase64": { "type": ["string", "null"], "description": "Stored OCR/Enhance geometry or transient session-cached geometry." }, "base64": { "type": ["string", "null"], "description": "PDF bytes as base64, present only when geometryBase64 is unavailable and the web matcher must prepare transient text-layer geometry." } } } }
       }
     },

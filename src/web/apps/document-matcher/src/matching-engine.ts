@@ -1,19 +1,25 @@
 import {
   buildCharEntriesFromGeometry,
+  buildSearchPageIndexFromEntries,
   decodeTextGeometry,
   encodeTextGeometry,
   extractText,
   extractTextGeometryFromPdfBase64,
-  normalizeSearchQuery,
-  searchPage,
+  normalizeMatcherQuery,
+  searchPageWithIndex,
 } from "@doculink/shared";
-import type { CharacterEntry } from "@doculink/shared";
+import type { CharacterEntry, SearchPageIndex } from "@doculink/shared";
 import type { LinkCreationRequest, MatcherPdf, MatcherRow, RowResult } from "./types/index.js";
 
 interface PdfCache {
   id: string;
   name: string;
-  pages: Map<number, CharacterEntry[]>;
+  pages: Map<number, MatcherPageCache>;
+}
+
+interface MatcherPageCache {
+  entries: CharacterEntry[];
+  searchIndex: SearchPageIndex;
 }
 
 function hasFiniteRect(rect: LinkCreationRequest["rect"]): boolean {
@@ -21,6 +27,18 @@ function hasFiniteRect(rect: LinkCreationRequest["rect"]): boolean {
     && Number.isFinite(rect.y)
     && Number.isFinite(rect.width)
     && Number.isFinite(rect.height);
+}
+
+function buildMatcherPageCache(
+  pages: Map<number, CharacterEntry[]>,
+): Map<number, MatcherPageCache> {
+  return new Map(Array.from(pages, ([pageIndex, entries]) => [
+    pageIndex,
+    {
+      entries,
+      searchIndex: buildSearchPageIndexFromEntries(entries, { normalizeDates: true }),
+    },
+  ]));
 }
 
 async function buildPdfCache(
@@ -32,7 +50,11 @@ async function buildPdfCache(
     try {
       if (pdf.geometryBase64) {
         const geometry = await decodeTextGeometry(pdf.geometryBase64);
-        result.push({ id: pdf.id, name: pdf.name, pages: buildCharEntriesFromGeometry(geometry) });
+        result.push({
+          id: pdf.id,
+          name: pdf.name,
+          pages: buildMatcherPageCache(buildCharEntriesFromGeometry(geometry)),
+        });
         continue;
       }
 
@@ -40,7 +62,11 @@ async function buildPdfCache(
         const geometry = await extractTextGeometryFromPdfBase64(pdf.base64);
         const geometryBase64 = await encodeTextGeometry(geometry);
         onGeometryPrepared?.(pdf.id, geometryBase64);
-        result.push({ id: pdf.id, name: pdf.name, pages: buildCharEntriesFromGeometry(geometry) });
+        result.push({
+          id: pdf.id,
+          name: pdf.name,
+          pages: buildMatcherPageCache(buildCharEntriesFromGeometry(geometry)),
+        });
       }
     } catch (error) {
       console.warn("[DocuLink] Skipping PDF with unreadable text content", pdf.name, error);
@@ -53,8 +79,15 @@ function countMatchesInPdf(cache: PdfCache, normalizedTerms: string[]): number {
   let matched = 0;
   for (const term of normalizedTerms) {
     let found = false;
-    for (const [pageIndex, entries] of cache.pages) {
-      if (searchPage(cache.id, cache.name, pageIndex, entries, term).length > 0) {
+    for (const [pageIndex, page] of cache.pages) {
+      if (searchPageWithIndex(
+        cache.id,
+        cache.name,
+        pageIndex,
+        page.entries,
+        page.searchIndex,
+        term,
+      ).length > 0) {
         found = true;
         break;
       }
@@ -69,10 +102,19 @@ function countMatchesOnPage(
   pageIndex: number,
   normalizedTerms: string[],
 ): number {
-  const entries = cache.pages.get(pageIndex) ?? [];
+  const page = cache.pages.get(pageIndex);
+  if (!page) return 0;
+
   let count = 0;
   for (const term of normalizedTerms) {
-    if (searchPage(cache.id, cache.name, pageIndex, entries, term).length > 0) count++;
+    if (searchPageWithIndex(
+      cache.id,
+      cache.name,
+      pageIndex,
+      page.entries,
+      page.searchIndex,
+      term,
+    ).length > 0) count++;
   }
   return count;
 }
@@ -98,7 +140,7 @@ export async function runMatching(
   for (const row of rows) {
     await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
 
-    const normalizedTerms = row.keyValues.map((v) => normalizeSearchQuery(v ?? "")).filter((t) => t.length > 0);
+    const normalizedTerms = row.keyValues.map((v) => normalizeMatcherQuery(v ?? "")).filter((t) => t.length > 0);
 
     if (normalizedTerms.length === 0) {
       onRowComplete({ rowIndex: row.rowIndex, status: "skipped", linkCount: 0 });
@@ -133,7 +175,13 @@ export async function runMatching(
     }
 
     // Build one link creation request per key column that has a match on the best page
-    const pageEntries = bestPdf.pages.get(bestPageIndex) ?? [];
+    const bestPage = bestPdf.pages.get(bestPageIndex);
+    if (!bestPage) {
+      onRowComplete({ rowIndex: row.rowIndex, status: "unmatched", linkCount: 0 });
+      continue;
+    }
+
+    const pageEntries = bestPage.entries;
     let linkCount = 0;
 
     for (let i = 0; i < row.keyValues.length; i++) {
@@ -143,10 +191,17 @@ export async function runMatching(
       const rawValue = row.keyValues[i] ?? "";
       if (!rawValue) continue;
 
-      const normalized = normalizeSearchQuery(rawValue);
+      const normalized = normalizeMatcherQuery(rawValue);
       if (!normalized) continue;
 
-      const matches = searchPage(bestPdf.id, bestPdf.name, bestPageIndex, pageEntries, normalized);
+      const matches = searchPageWithIndex(
+        bestPdf.id,
+        bestPdf.name,
+        bestPageIndex,
+        pageEntries,
+        bestPage.searchIndex,
+        normalized,
+      );
       if (matches.length === 0) continue;
 
       const match = matches[0]!;

@@ -24,6 +24,7 @@ await writeFile(outfile, transpiled.outputText, "utf8");
 
 const {
   buildSearchPageIndexFromEntries,
+  normalizeMatcherQuery,
   normalizeSearchQuery,
   searchPage,
   searchPageWithIndex,
@@ -47,6 +48,14 @@ function entriesFromText(text, lineBreaks = new Set()) {
 
 assert.equal(normalizeSearchQuery(" 1,000 "), "1000");
 assert.equal(normalizeSearchQuery(" (1,000) "), "-1000");
+assert.equal(normalizeSearchQuery("08/07/26"), "08/07/26");
+assert.equal(normalizeMatcherQuery(" 03/05/2026 "), "3/5/2026");
+assert.equal(normalizeMatcherQuery("2026-03-05"), "3/5/2026");
+assert.equal(normalizeMatcherQuery("March 5th, 2026"), "3/5/2026");
+assert.equal(normalizeMatcherQuery("5 Mar 2026"), "3/5/2026");
+assert.equal(normalizeMatcherQuery("03/05/26"), "3/5/2026");
+assert.equal(normalizeMatcherQuery("03/05/30"), "3/5/2030");
+assert.equal(normalizeMatcherQuery("02/30/2026"), "02/30/2026");
 
 {
   const entries = entriesFromText("total 1,000 due");
@@ -63,6 +72,57 @@ assert.equal(normalizeSearchQuery(" (1,000) "), "-1000");
   assert.equal(matches[0].id, "pdf-1:0:9");
   assert.equal(matches[0].contextText, "(1,000)");
   assert.deepEqual(matches[0].matchInContext, { start: 0, end: 7 });
+}
+
+for (const sourceDate of ["03/05/2026", "2026-03-05", "March 5th, 2026", "5 Mar 2026", "03/05/26"]) {
+  const entries = entriesFromText(`dated ${sourceDate} due`);
+  const index = buildSearchPageIndexFromEntries(entries, { normalizeDates: true });
+  const matches = searchPageWithIndex(
+    "pdf-1",
+    "Invoice",
+    0,
+    entries,
+    index,
+    normalizeMatcherQuery("3/5/2026"),
+  );
+  assert.equal(matches.length, 1, `expected formatted date to match ${sourceDate}`);
+  assert.equal(matches[0].contextText, sourceDate);
+  assert.deepEqual(matches[0].matchInContext, { start: 0, end: sourceDate.length });
+}
+
+{
+  const entries = entriesFromText("dated 12/31/2025 due");
+  const index = buildSearchPageIndexFromEntries(entries, { normalizeDates: true });
+  const matches = searchPageWithIndex(
+    "pdf-1",
+    "Invoice",
+    0,
+    entries,
+    index,
+    normalizeMatcherQuery("12/31/2025"),
+  );
+  assert.equal(matches.length, 1, "matcher index should find an exact formatted date");
+}
+
+{
+  const entries = entriesFromText("Door Works08/07/26 A/R Aging Detail", new Set([10]));
+  const index = buildSearchPageIndexFromEntries(entries, { normalizeDates: true });
+  const matches = searchPageWithIndex(
+    "pdf-1",
+    "A/R Aging Detail",
+    0,
+    entries,
+    index,
+    normalizeMatcherQuery("8/7/2026"),
+  );
+  assert.equal(matches.length, 1, "matcher should respect a PDF line boundary before a date");
+  assert.equal(matches[0].contextText, "08/07/26");
+}
+
+{
+  const entries = entriesFromText("dated 08/07/26 due");
+  const matches = searchPage("pdf-1", "Invoice", 0, entries, normalizeSearchQuery("8/7/2026"));
+  assert.equal(matches.length, 0, "ordinary search should not expand date equivalents");
 }
 
 {

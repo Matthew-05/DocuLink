@@ -661,7 +661,7 @@ namespace DocuLink.Addin.Modules.WebView
                     foreach (var keyColumn in keyColumns)
                     {
                         var cell = (Excel.Range)worksheet.Cells[excelRow, keyColumn.ColNumber];
-                        string value = cell.Value2?.ToString() ?? string.Empty;
+                        string value = ReadMatcherKeyValue(cell);
                         if (!string.IsNullOrWhiteSpace(value))
                             hasKeyData = true;
                         keyValues.Add(value);
@@ -888,6 +888,31 @@ namespace DocuLink.Addin.Modules.WebView
         {
             if (value == null) return false;
             return !(value is string text && string.IsNullOrWhiteSpace(text));
+        }
+
+        /// <summary>
+        /// Returns the semantic text the matcher should look for. Excel stores dates as OA
+        /// serial numbers in Value2, so date-formatted cells must be rendered with their Excel
+        /// number format before crossing into the web matcher. Other values retain the existing
+        /// Value2 representation; number/accounting normalization is handled by the shared index.
+        /// </summary>
+        private static string ReadMatcherKeyValue(Excel.Range cell)
+        {
+            object value2 = cell?.Value2;
+            if (value2 == null) return string.Empty;
+
+            try
+            {
+                if (cell.Value is DateTime)
+                    return CellFormattingService.FormatLikeCell(cell, Convert.ToDouble(value2));
+            }
+            catch (Exception ex)
+            {
+                DocuLinkLog.Trace(
+                    $"matcher date formatting fallback {ex.GetType().FullName}: {ex.Message}");
+            }
+
+            return value2.ToString() ?? string.Empty;
         }
 
         private static string ColNumberToLetter(int colNumber)
