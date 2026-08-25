@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Runtime.InteropServices;
 using System.Windows.Forms;
 using DocuLink.Addin.Modules.CustomXml;
 using DocuLink.Addin.Modules.CustomXml.Models;
@@ -108,7 +107,9 @@ namespace DocuLink.Addin.Modules.Services
                         throw;
                     }
 
-                    BringIntoView(targetAnchor);
+                    // Preserve the copy flow's existing behavior of following each table,
+                    // even when its anchor was already inside the visible window.
+                    ExcelCellNavigationService.BringIntoView(targetAnchor, alignToTopLeft: true);
                     copiedLinks.Add(copiedLink);
                     onCopied?.Invoke(copiedLink);
                     rowOffset += target.Grid.RowCount;
@@ -125,22 +126,6 @@ namespace DocuLink.Addin.Modules.Services
             // every target page. The progress callback above remains page-by-page.
             session.AddLinks(copiedLinks);
             return session.GetLinks();
-        }
-
-        private static void BringIntoView(Excel.Range targetAnchor)
-        {
-            try
-            {
-                ((Excel.Worksheet)targetAnchor.Worksheet).Activate();
-                var app = targetAnchor.Application as Excel.Application;
-                app?.Goto(targetAnchor, true);
-            }
-            catch (COMException ex)
-            {
-                // View movement is best-effort and must never roll back a successful import.
-                System.Diagnostics.Debug.WriteLine(
-                    $"[DocuLink] CopyTableSelection BringIntoView failed: {ex.Message}");
-            }
         }
 
         private static TableGrid CloneGrid(TableGrid source)

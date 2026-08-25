@@ -27,6 +27,7 @@ namespace DocuLink.Addin.Modules.Services
     /// </remarks>
     internal sealed class ExcelCellNavigationService
     {
+        private const int RevealContextBoundaryOffset = 2;
         private const int XlDown    = -4121;
         private const int XlUp      = -4162;
         private const int XlToRight = -4161;
@@ -91,6 +92,165 @@ namespace DocuLink.Addin.Modules.Services
         {
             _tabRunActive = false;
             _expectedSheet = null;
+        }
+
+        /// <summary>
+        /// Ensures <paramref name="cell"/> is visible in the active worksheet window.
+        /// By default, moves each axis only far enough to reveal the complete cell.
+        /// </summary>
+        /// <remarks>
+        /// View movement is best-effort: failure to scroll must never fail an operation that
+        /// has already created or updated workbook data.
+        /// </remarks>
+        public static void BringIntoView(Excel.Range cell, bool alignToTopLeft = false)
+        {
+            if (cell == null) return;
+
+            try
+            {
+                var app = cell.Application as Excel.Application;
+                var worksheet = cell.Worksheet as Excel.Worksheet;
+                if (app == null || worksheet == null) return;
+
+                worksheet.Activate();
+
+                // The table-copy workflow intentionally keeps its established jump-to-cell
+                // behavior. Interactive rectangle creation takes the native-style path below.
+                if (alignToTopLeft)
+                {
+                    app.Goto(cell, true);
+                    return;
+                }
+
+                Excel.Window window = app.ActiveWindow;
+                if (window == null || IsVisibleInAnyPane(app, window, cell)) return;
+
+                Excel.Pane pane = window.ActivePane;
+                if (pane == null) return;
+
+                bool restoreScreenUpdating = app.ScreenUpdating;
+                try
+                {
+                    if (restoreScreenUpdating)
+                        app.ScreenUpdating = false;
+
+                    ScrollPaneMinimally(app, pane, cell);
+                }
+                finally
+                {
+                    if (restoreScreenUpdating)
+                        app.ScreenUpdating = true;
+                }
+            }
+            catch (COMException ex)
+            {
+                DocuLinkLog.Trace($"ExcelCellNavigationService.BringIntoView failed: {ex.Message}");
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine(
+                    $"[DocuLink] ExcelCellNavigationService.BringIntoView failed: {ex.Message}");
+            }
+        }
+
+        private static bool IsVisibleInAnyPane(
+            Excel.Application app, Excel.Window window, Excel.Range cell)
+        {
+            try
+            {
+                Excel.Panes panes = window.Panes;
+                int paneCount = panes?.Count ?? 0;
+                for (int index = 1; index <= paneCount; index++)
+                {
+                    Excel.Pane pane = panes[index];
+                    if (IsVisible(app, pane, cell))
+                        return true;
+                }
+
+                return paneCount == 0 && app.Intersect(cell, window.VisibleRange) != null;
+            }
+            catch (COMException)
+            {
+                return false;
+            }
+        }
+
+        private static void ScrollPaneMinimally(
+            Excel.Application app, Excel.Pane pane, Excel.Range cell)
+        {
+            Excel.Range visible = pane.VisibleRange;
+            if (visible == null) return;
+
+            var worksheet = cell.Worksheet as Excel.Worksheet;
+            if (worksheet == null) return;
+
+            int targetColumn = cell.Column;
+            int maxColumn = worksheet.Columns.Count;
+            int firstVisibleColumn = visible.Column;
+            int lastVisibleColumn = firstVisibleColumn + visible.Columns.Count - 1;
+
+            if (targetColumn < firstVisibleColumn)
+            {
+                pane.ScrollColumn = targetColumn;
+            }
+            else if (targetColumn > lastVisibleColumn)
+            {
+                // Advancing one column at a time finds the first scroll position that
+                // fully reveals the target, even when intervening columns have different
+                // widths. VisibleRange includes a partially clipped edge column; allowing
+                // the second following column to begin appearing doubles the small amount
+                // of context from the complete-cell reveal without repositioning the target.
+                int columnVisibilitySentinel = Math.Min(
+                    maxColumn, targetColumn + RevealContextBoundaryOffset);
+                while (!IsColumnVisible(pane, columnVisibilitySentinel)
+                    && pane.ScrollColumn < targetColumn)
+                    pane.ScrollColumn++;
+            }
+
+            visible = pane.VisibleRange;
+            int targetRow = cell.Row;
+            int maxRow = worksheet.Rows.Count;
+            int firstVisibleRow = visible.Row;
+            int lastVisibleRow = firstVisibleRow + visible.Rows.Count - 1;
+
+            if (targetRow < firstVisibleRow)
+            {
+                pane.ScrollRow = targetRow;
+            }
+            else if (targetRow > lastVisibleRow)
+            {
+                // Apply the same complete-cell rule vertically. The first glimpse of the
+                // second following row provides the same modest extra context at the bottom.
+                int rowVisibilitySentinel = Math.Min(
+                    maxRow, targetRow + RevealContextBoundaryOffset);
+                while (!IsRowVisible(pane, rowVisibilitySentinel) && pane.ScrollRow < targetRow)
+                    pane.ScrollRow++;
+            }
+        }
+
+        private static bool IsColumnVisible(Excel.Pane pane, int column)
+        {
+            Excel.Range visible = pane?.VisibleRange;
+            if (visible == null) return false;
+
+            int first = visible.Column;
+            return column >= first && column < first + visible.Columns.Count;
+        }
+
+        private static bool IsRowVisible(Excel.Pane pane, int row)
+        {
+            Excel.Range visible = pane?.VisibleRange;
+            if (visible == null) return false;
+
+            int first = visible.Row;
+            return row >= first && row < first + visible.Rows.Count;
+        }
+
+        private static bool IsVisible(
+            Excel.Application app, Excel.Pane pane, Excel.Range cell)
+        {
+            Excel.Range visible = pane?.VisibleRange;
+            return visible != null && app.Intersect(cell, visible) != null;
         }
 
         private void InvalidateAnchorIfCursorMoved(string sheetName, Excel.Range activeCell)

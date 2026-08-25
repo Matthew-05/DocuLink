@@ -334,6 +334,12 @@ namespace DocuLink.Addin.Modules.WebView
                         payload.TableCells,
                         owner,
                         wb);
+
+                    if (linkedRect != null)
+                    {
+                        Excel.Range linkedCell = LinkCellResolver.TryResolveCell(wb, linkedRect);
+                        ExcelCellNavigationService.BringIntoView(linkedCell);
+                    }
                 }
                 DocuLinkLog.Trace($"CreateLink returned id={linkedRect?.Id ?? "null"}");
 
