@@ -180,6 +180,9 @@
     </Reference>
   </ItemGroup>
   <ItemGroup>
+    <PackageReference Include="Markdig">
+      <Version>1.3.2</Version>
+    </PackageReference>
     <PackageReference Include="Microsoft.Web.WebView2">
       <Version>1.0.3912.50</Version>
     </PackageReference>
@@ -258,6 +261,9 @@
     </Compile>
     <Compile Include="Modules\UI\ProgressDialog.cs">
       <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="Modules\UI\ReleaseNotesControl.cs">
+      <SubType>UserControl</SubType>
     </Compile>
     <Compile Include="Modules\UI\UpdateDialog.cs">
       <SubType>Form</SubType>

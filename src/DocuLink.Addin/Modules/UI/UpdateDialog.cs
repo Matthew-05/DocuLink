@@ -24,6 +24,8 @@ namespace DocuLink.Addin.Modules.UI
         private readonly Button _actionButton;
         private readonly Button _closeButton;
         private readonly CheckBox _snoozeCheckBox;
+        private readonly Label _releaseNotesLabel;
+        private readonly ReleaseNotesControl _releaseNotes;
 
         internal UpdateDialog(UpdateCheckResult preChecked = null)
         {
@@ -101,7 +103,35 @@ namespace DocuLink.Addin.Modules.UI
                 Visible = false
             };
 
-            Controls.AddRange(new Control[] { _statusLabel, _versionLabel, _progressBar, _percentLabel, _actionButton, _closeButton, _snoozeCheckBox });
+            _releaseNotesLabel = new Label
+            {
+                AutoSize = false,
+                Size = new Size(600, 20),
+                Location = new Point(20, 78),
+                Font = new Font("Segoe UI", 9f, FontStyle.Bold),
+                Text = "What's new",
+                Visible = false
+            };
+
+            _releaseNotes = new ReleaseNotesControl
+            {
+                Size = new Size(600, 400),
+                Location = new Point(20, 100),
+                Visible = false
+            };
+
+            Controls.AddRange(new Control[]
+            {
+                _statusLabel,
+                _versionLabel,
+                _progressBar,
+                _percentLabel,
+                _releaseNotesLabel,
+                _releaseNotes,
+                _actionButton,
+                _closeButton,
+                _snoozeCheckBox
+            });
         }
 
         protected override async void OnShown(EventArgs e)
@@ -145,6 +175,8 @@ namespace DocuLink.Addin.Modules.UI
 
         private void SetState(State state, UpdateCheckResult result = null)
         {
+            SetReleaseNotesLayout(state == State.Found || state == State.Dev, result);
+
             switch (state)
             {
                 case State.Checking:
@@ -228,6 +260,43 @@ namespace DocuLink.Addin.Modules.UI
                     _closeButton.Text = "Close";
                     break;
             }
+        }
+
+        private void SetReleaseNotesLayout(bool visible, UpdateCheckResult result)
+        {
+            _releaseNotesLabel.Visible = visible;
+            _releaseNotes.Visible = visible;
+
+            if (visible)
+            {
+                ClientSize = new Size(640, 590);
+                _statusLabel.Width = 600;
+                _versionLabel.Width = 600;
+                _snoozeCheckBox.SetBounds(14, 516, 606, 20);
+                _actionButton.Location = new Point(390, 548);
+                _closeButton.Location = new Point(540, 548);
+                _releaseNotes.SetReleases(result?.ReleaseNotes);
+                RecenterIfVisible();
+                return;
+            }
+
+            ClientSize = new Size(400, 185);
+            _statusLabel.Width = 360;
+            _versionLabel.Width = 360;
+            _snoozeCheckBox.SetBounds(14, 74, 366, 20);
+            _actionButton.Location = new Point(160, 142);
+            _closeButton.Location = new Point(300, 142);
+            RecenterIfVisible();
+        }
+
+        private void RecenterIfVisible()
+        {
+            if (!Visible) return;
+
+            if (Owner == null)
+                CenterToScreen();
+            else
+                CenterToParent();
         }
 
         private async void ActionButton_Click(object sender, EventArgs e)
