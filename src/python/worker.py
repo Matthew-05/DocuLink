@@ -78,7 +78,7 @@ _PROTOCOL_OUT = _claim_protocol_stream()
 from schemas.models import ConvertJob, ConvertResult, OcrJob, OcrProgress, OcrResult
 
 
-_GEOMETRY_CACHE_VERSION = "direct-hocr-v1"
+_GEOMETRY_CACHE_VERSION = "direct-hocr-v2"
 _GEOMETRY_CACHE_MAX_ENTRIES = 16
 _GEOMETRY_CACHE: OrderedDict[str, dict] = OrderedDict()
 
@@ -595,6 +595,40 @@ def _handle_job(job: OcrJob) -> None:
                                 direct_pages[page_number] = retry_pages[page_number]
                                 direct_stats[page_number] = retry
                                 direct_400_selected_page_numbers.append(page_number)
+
+                    sparse_after_dpi_retry = [
+                        page_number
+                        for page_number in direct_ocr_page_numbers
+                        if int(direct_stats[page_number]["word_count"]) == 0
+                        or int(direct_stats[page_number]["character_count"]) < 40
+                    ]
+                    if sparse_after_dpi_retry:
+                        evaluated_profiles.append("direct-hocr-cropped-psm4-300")
+                        on_progress(
+                            f"Retrying {len(sparse_after_dpi_retry)} empty or sparse "
+                            "page(s) with cropped single-column OCR…"
+                        )
+                        crop_retry_started = time.perf_counter()
+                        cropped_pages, cropped_stats = extract_direct_text_geometry(
+                            pdf_bytes,
+                            sparse_after_dpi_retry,
+                            dpi=300,
+                            psm=4,
+                            crop_to_dominant_image=True,
+                            progress_callback=on_progress,
+                        )
+                        adaptive_ocr_ms += _elapsed_ms(crop_retry_started)
+                        for page_number in sparse_after_dpi_retry:
+                            first = direct_stats[page_number]
+                            retry = cropped_stats[page_number]
+                            if (
+                                int(retry["character_count"])
+                                > int(first["character_count"]) * 1.05
+                                or float(retry["mean_confidence"])
+                                > float(first["mean_confidence"]) + 2.0
+                            ):
+                                direct_pages[page_number] = cropped_pages[page_number]
+                                direct_stats[page_number] = retry
 
                     confidences = [
                         float(stats["mean_confidence"])

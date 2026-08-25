@@ -11,7 +11,9 @@ from engines.ocr_engine import (
     PROFILE_HIGH_RESOLUTION_AUTO,
     PROFILE_TABLE_SINGLE_BLOCK,
     PROFILE_TABLE_SPARSE,
+    _dominant_image_clip,
     _geometry_page_from_hocr,
+    _remap_cropped_page_geometry,
     merge_geometry_pages,
     needs_adaptive_retry,
     needs_garbled_text_retry,
@@ -184,6 +186,54 @@ class DirectGeometryTests(unittest.TestCase):
             "".join(c["char"] for c in merged["pages"][1]["characters"]),
             "ocr two",
         )
+
+    def test_cropped_geometry_maps_back_to_original_page(self) -> None:
+        page = {
+            "pageIndex": 0,
+            "characters": [
+                {
+                    "char": "A",
+                    "x": 0.25,
+                    "y": 0.50,
+                    "width": 0.10,
+                    "height": 0.20,
+                    "lineIndex": 0,
+                }
+            ],
+        }
+
+        _remap_cropped_page_geometry(
+            page,
+            fitz.Rect(100, 0, 500, 800),
+            fitz.Rect(0, 0, 600, 800),
+        )
+
+        character = page["characters"][0]
+        self.assertAlmostEqual(character["x"], 1 / 3)
+        self.assertAlmostEqual(character["y"], 0.50)
+        self.assertAlmostEqual(character["width"], 1 / 15)
+        self.assertAlmostEqual(character["height"], 0.20)
+
+    def test_dominant_inset_scan_is_selected_as_ocr_clip(self) -> None:
+        pdf_bytes = _pdf_with_image((600, 1600), fitz.Rect(150, 0, 450, 800))
+        doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+        try:
+            clip = _dominant_image_clip(doc[0])
+        finally:
+            doc.close()
+
+        self.assertIsNotNone(clip)
+        self.assertEqual(tuple(clip), (150.0, 0.0, 450.0, 800.0))
+
+    def test_full_page_scan_does_not_create_redundant_clip(self) -> None:
+        pdf_bytes = _pdf_with_image((1200, 1600), fitz.Rect(0, 0, 600, 800))
+        doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+        try:
+            clip = _dominant_image_clip(doc[0])
+        finally:
+            doc.close()
+
+        self.assertIsNone(clip)
 
     def test_dense_native_page_is_not_selected_for_ocr(self) -> None:
         doc = fitz.open()

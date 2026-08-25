@@ -561,6 +561,8 @@ def _direct_ocr_page(
     page_number: int,
     dpi: int,
     language: str,
+    psm: int,
+    crop_to_dominant_image: bool,
 ) -> tuple[dict, dict]:
     configure_tesseract()
 
@@ -571,7 +573,13 @@ def _direct_ocr_page(
     doc = fitz.open(stream=pdf_bytes, filetype="pdf")
     try:
         page = doc.load_page(page_number - 1)
-        pixmap = page.get_pixmap(dpi=dpi, alpha=False)
+        page_rect = fitz.Rect(page.rect)
+        clip = (
+            _dominant_image_clip(page)
+            if crop_to_dominant_image
+            else None
+        )
+        pixmap = page.get_pixmap(dpi=dpi, alpha=False, clip=clip)
         image = Image.frombytes(
             "RGB",
             (pixmap.width, pixmap.height),
@@ -584,15 +592,74 @@ def _direct_ocr_page(
         image,
         lang=language,
         extension="hocr",
-        config="--psm 3 -c hocr_char_boxes=1",
+        config=f"--psm {psm} -c hocr_char_boxes=1",
     )
     page_geometry, stats = _geometry_page_from_hocr(
         hocr_bytes,
         page_number - 1,
         image.size,
     )
+    if clip is not None:
+        _remap_cropped_page_geometry(page_geometry, clip, page_rect)
     stats["dpi"] = dpi
+    stats["psm"] = psm
+    stats["cropped"] = clip is not None
     return page_geometry, stats
+
+
+def _dominant_image_clip(page: "object") -> "object | None":
+    """Return an inset scan-image rectangle worth OCRing independently.
+
+    Tesseract's automatic layout analysis can reject a legible portrait receipt
+    when it is centered on a landscape PDF canvas. Cropping to the dominant scan
+    removes that misleading canvas while retaining the source image itself.
+    Full-page scans are left alone because clipping them cannot change layout.
+    """
+    import pymupdf as fitz
+
+    page_rect = fitz.Rect(page.rect)
+    page_area = page_rect.get_area()
+    if page_area <= 0:
+        return None
+
+    candidates: list[fitz.Rect] = []
+    for image in page.get_image_info():
+        rect = fitz.Rect(image.get("bbox", (0, 0, 0, 0))) & page_rect
+        if (
+            rect.is_empty
+            or rect.get_area() / page_area < _MINIMUM_SCAN_IMAGE_COVERAGE
+        ):
+            continue
+        candidates.append(rect)
+    if not candidates:
+        return None
+
+    dominant = max(candidates, key=lambda rect: rect.get_area())
+    width_ratio = dominant.width / max(1.0, page_rect.width)
+    height_ratio = dominant.height / max(1.0, page_rect.height)
+    if width_ratio >= 0.98 and height_ratio >= 0.98:
+        return None
+    return dominant
+
+
+def _remap_cropped_page_geometry(
+    page_geometry: dict,
+    clip: "object",
+    page_rect: "object",
+) -> None:
+    """Map crop-normalized character boxes into original page coordinates."""
+    if page_rect.width <= 0 or page_rect.height <= 0:
+        return
+
+    x_offset = (clip.x0 - page_rect.x0) / page_rect.width
+    y_offset = (clip.y0 - page_rect.y0) / page_rect.height
+    x_scale = clip.width / page_rect.width
+    y_scale = clip.height / page_rect.height
+    for character in page_geometry.get("characters", []):
+        character["x"] = x_offset + float(character["x"]) * x_scale
+        character["y"] = y_offset + float(character["y"]) * y_scale
+        character["width"] = float(character["width"]) * x_scale
+        character["height"] = float(character["height"]) * y_scale
 
 
 def extract_direct_text_geometry(
@@ -601,6 +668,8 @@ def extract_direct_text_geometry(
     *,
     dpi: int = 300,
     language: str = "eng",
+    psm: int = 3,
+    crop_to_dominant_image: bool = False,
     progress_callback: "callable[[str], None] | None" = None,
 ) -> tuple[dict[int, dict], dict[int, dict]]:
     """OCR selected pages directly to geometry without constructing a PDF."""
@@ -626,6 +695,8 @@ def extract_direct_text_geometry(
                     page_number,
                     dpi,
                     language,
+                    psm,
+                    crop_to_dominant_image,
                 ): page_number
                 for page_number in unique_pages
             }
