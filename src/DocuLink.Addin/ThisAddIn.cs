@@ -1471,9 +1471,17 @@ namespace DocuLink.Addin
 
                 Modules.DocuLinkLog.Trace("calling LinkCellTracker.SyncAllPositions");
 
-                LinkCellTracker.SyncAllPositions(wb);
+                IList<string> prunedIds = LinkCellTracker.SyncAllPositions(wb);
 
                 Modules.DocuLinkLog.Trace("LinkCellTracker.SyncAllPositions done");
+
+                if (prunedIds.Count > 0)
+                {
+                    Modules.DocuLinkLog.Trace(
+                        $"pruned stale linked rectangles count={prunedIds.Count}");
+                    GetActiveViewerHost()?.SendLinkRectanglesRemoved(prunedIds);
+                    NotifyFileManagerLinksChanged();
+                }
 
             }
 

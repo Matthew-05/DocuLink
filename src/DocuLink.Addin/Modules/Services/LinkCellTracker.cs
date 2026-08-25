@@ -257,15 +257,57 @@ namespace DocuLink.Addin.Modules.Services
             return ResolveReferenceFormula(workbook, formula);
         }
 
-        public static void SyncAllPositions(Excel.Workbook workbook)
+        /// <summary>
+        /// Returns the tracker indexes whose direct-reference formulas contain
+        /// <c>#REF!</c>. This is deliberately narrower than "could not resolve": a missing
+        /// tracker or a temporarily unavailable COM object is not proof that the user's cell
+        /// was deleted and must never cost them a persisted rectangle.
+        /// </summary>
+        internal static ISet<int> FindBrokenReferenceTrackIndexes(Excel.Workbook workbook)
+        {
+            var broken = new HashSet<int>();
+            if (workbook == null) return broken;
+
+            Excel.Worksheet trackerSheet = FindTrackingSheet(workbook);
+            if (trackerSheet == null) return broken;
+
+            foreach (int trackIndex in FindStoredTrackIndexes(trackerSheet))
+            {
+                try
+                {
+                    string formula = Convert.ToString(
+                        ((Excel.Range)trackerSheet.Cells[
+                            GetTrackerRow(trackIndex), FormulaColumn]).Formula,
+                        CultureInfo.InvariantCulture);
+
+                    if (formula.IndexOf("#REF!", StringComparison.OrdinalIgnoreCase) >= 0)
+                        broken.Add(trackIndex);
+                }
+                catch (COMException)
+                {
+                    // An unreadable tracker is uncertain, not stale. A later save can retry.
+                }
+            }
+
+            return broken;
+        }
+
+        /// <summary>
+        /// Synchronizes persisted cell addresses and prunes rectangles whose formula tracker
+        /// definitively became <c>#REF!</c> after a structural worksheet deletion.
+        /// </summary>
+        /// <returns>The ids of rectangles removed as stale.</returns>
+        public static IList<string> SyncAllPositions(Excel.Workbook workbook)
         {
             if (workbook == null)
             {
                 DocuLinkLog.Trace("ENTER workbook=(null) - return");
-                return;
+                return Array.Empty<string>();
             }
 
             DocuLinkLog.Trace($"ENTER workbook={GetWorkbookDebugName(workbook)}");
+
+            var prunedIds = new List<string>();
 
             using (DocuLinkLog.Time("SyncAllPositions total"))
             {
@@ -274,6 +316,7 @@ namespace DocuLink.Addin.Modules.Services
                 WorkbookStorageSession session = Globals.ThisAddIn.GetStorageSession(workbook);
                 IList<LinkedRectangle> links = session.GetLinks();
                 EnsureBindings(workbook, links);
+                ISet<int> brokenTrackIndexes = FindBrokenReferenceTrackIndexes(workbook);
 
                 bool anyChanged = false;
                 int scanned = 0;
@@ -284,14 +327,22 @@ namespace DocuLink.Addin.Modules.Services
                 foreach (LinkedRectangle linkedRectangle in links)
                 {
                     scanned++;
+                    if (brokenTrackIndexes.Contains(linkedRectangle.LinkedCell.TrackIndex))
+                    {
+                        brokenReferences++;
+                        prunedIds.Add(linkedRectangle.Id);
+                        continue;
+                    }
+
                     Excel.Range foundRange = TryResolveCell(
                         workbook,
                         linkedRectangle.LinkedCell.TrackIndex,
-                        out bool bindingExists);
+                        out _);
                     if (foundRange == null)
                     {
-                        if (bindingExists) brokenReferences++;
-                        else missingBindings++;
+                        // A formula that exists but cannot currently be resolved is not enough
+                        // evidence to delete user data. Only the explicit #REF! set above prunes.
+                        missingBindings++;
                         continue;
                     }
 
@@ -309,13 +360,35 @@ namespace DocuLink.Addin.Modules.Services
 
                 DocuLinkLog.Trace(
                     $"scan done scanned={scanned} changed={changed} "
-                    + $"missingBindings={missingBindings} brokenReferences={brokenReferences}");
+                    + $"missingOrUnresolvedBindings={missingBindings} "
+                    + $"prunedBrokenReferences={brokenReferences}");
 
-                if (anyChanged)
-                    session.SetLinks(links.ToList());
+                if (anyChanged || prunedIds.Count > 0)
+                {
+                    List<LinkedRectangle> remaining = links
+                        .Where(link => !brokenTrackIndexes.Contains(link.LinkedCell.TrackIndex))
+                        .ToList();
+                    session.SetLinks(remaining);
+
+                    if (prunedIds.Count > 0)
+                    {
+                        try
+                        {
+                            // The records are already safely persisted as removed. Tracker
+                            // cleanup is best-effort and will be retried by EnsureBindings.
+                            EnsureBindings(workbook, remaining);
+                        }
+                        catch (Exception ex)
+                        {
+                            DocuLinkLog.Trace(
+                                $"stale tracker cleanup deferred: {ex.GetType().FullName}: {ex.Message}");
+                        }
+                    }
+                }
             }
 
             DocuLinkLog.Trace("EXIT");
+            return prunedIds;
         }
 
         private static void ValidateBindingArguments(
