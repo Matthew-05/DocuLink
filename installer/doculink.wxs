@@ -98,7 +98,7 @@
         <RegistryValue Root="HKCU"
           Key="Software\Microsoft\Office\Excel\Addins\DocuLink.Addin"
           Name="Description"
-          Value="DocuLink - Embed and view PDFs in Excel"
+          Value="DocuLink - Embed and view documents in Excel"
           Type="string" KeyPath="yes" />
         <RegistryValue Root="HKCU"
           Key="Software\Microsoft\Office\Excel\Addins\DocuLink.Addin"

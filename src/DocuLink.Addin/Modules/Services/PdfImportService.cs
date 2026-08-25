@@ -37,7 +37,7 @@ namespace DocuLink.Addin.Modules.Services
 
                 try
                 {
-                    progress?.Report("Reading PDF", $"{fileName} ({current} of {total})", i, total);
+                    progress?.Report("Reading document", $"{fileName} ({current} of {total})", i, total);
                     PreparedPdf prepared = Task.Run(() => PrepareFromPath(request)).GetAwaiter().GetResult();
 
                     progress?.Report("Embedding in workbook", $"{prepared.Name} ({current} of {total})", i, total);
@@ -54,13 +54,13 @@ namespace DocuLink.Addin.Modules.Services
                         $"Embedded '{prepared.Name}' as {id} " +
                         $"({prepared.FileSizeBytes} bytes, OCR {prepared.OcrStatus}).");
 
-                    progress?.Report("Imported PDF", $"{prepared.Name} ({current} of {total})", current, total);
+                    progress?.Report("Imported document", $"{prepared.Name} ({current} of {total})", current, total);
                 }
                 catch (Exception ex)
                 {
                     result.Errors.Add($"{fileName}: {ex.Message}");
                     DocuLinkLog.Trace($"Could not import '{fileName}' from '{request.Path}': {ex}");
-                    progress?.Report("Could not import PDF", $"{fileName} ({current} of {total})", current, total);
+                    progress?.Report("Could not import document", $"{fileName} ({current} of {total})", current, total);
                 }
             }
 
@@ -89,7 +89,7 @@ namespace DocuLink.Addin.Modules.Services
 
                 try
                 {
-                    progress?.Report("Preparing PDF", $"{fileName} ({current} of {total})", i, total);
+                    progress?.Report("Preparing document", $"{fileName} ({current} of {total})", i, total);
                     PreparedPdf prepared = Task.Run(() => PrepareFromBase64(request)).GetAwaiter().GetResult();
 
                     progress?.Report("Embedding in workbook", $"{prepared.Name} ({current} of {total})", i, total);
@@ -106,13 +106,13 @@ namespace DocuLink.Addin.Modules.Services
                         $"Embedded '{prepared.Name}' as {id} " +
                         $"({prepared.FileSizeBytes} bytes, OCR {prepared.OcrStatus}).");
 
-                    progress?.Report("Imported PDF", $"{prepared.Name} ({current} of {total})", current, total);
+                    progress?.Report("Imported document", $"{prepared.Name} ({current} of {total})", current, total);
                 }
                 catch (Exception ex)
                 {
                     result.Errors.Add($"{fileName}: {ex.Message}");
                     DocuLinkLog.Trace($"Could not import '{fileName}' from base-64: {ex}");
-                    progress?.Report("Could not import PDF", $"{fileName} ({current} of {total})", current, total);
+                    progress?.Report("Could not import document", $"{fileName} ({current} of {total})", current, total);
                 }
             }
 

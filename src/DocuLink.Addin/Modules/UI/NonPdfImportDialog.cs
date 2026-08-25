@@ -174,8 +174,11 @@ namespace DocuLink.Addin.Modules.UI
             int nonPdfCount = convertibleCount + unsupportedCount;
 
             string text =
-                $"{Pluralise(nonPdfCount, "file is", "files are")} not a PDF. " +
-                "DocuLink stores PDFs, so these must be converted before they can be added.";
+                Pluralise(
+                    nonPdfCount,
+                    "selected document is not a PDF.",
+                    "selected documents are not PDFs.") +
+                " DocuLink converts supported documents to PDF for workbook storage.";
 
             if (pdfCount > 0)
                 text += $" {Pluralise(pdfCount, "PDF was", "PDFs were")} also selected and will be imported as-is.";

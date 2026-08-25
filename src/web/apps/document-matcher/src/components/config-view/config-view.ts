@@ -30,7 +30,7 @@ export class StepFolders {
 
     const instructions = document.createElement("p");
     instructions.className = "step-folders__instructions";
-    instructions.textContent = "Choose the folders DocuLink should search for matching PDFs.";
+    instructions.textContent = "Choose the folders DocuLink should search for matching documents.";
     body.appendChild(instructions);
 
     const folderSection = document.createElement("div");
@@ -55,7 +55,7 @@ export class StepFolders {
     if (this._folders.length === 0) {
       const empty = document.createElement("p");
       empty.className = "config-view__empty";
-      empty.textContent = "No folders found. All folders will search every PDF in this workbook.";
+      empty.textContent = "No folders found. All folders will search every document in this workbook.";
       folderSection.appendChild(empty);
     } else {
       for (const folder of this._folders) {

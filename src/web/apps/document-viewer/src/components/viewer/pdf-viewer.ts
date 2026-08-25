@@ -70,7 +70,7 @@ export class PdfViewer {
     this.element.replaceChildren();
     const placeholder = document.createElement("div");
     placeholder.className = "viewer__placeholder";
-    placeholder.textContent = "No PDFs added";
+    placeholder.textContent = "No documents added";
     this.element.appendChild(placeholder);
   }
 

@@ -1151,7 +1151,7 @@ namespace DocuLink.Addin.Modules.WebView
                     e.Graphics.FillRectangle(fill, bounds);
                     e.Graphics.DrawRectangle(border, bounds);
 
-                    var title = _locked ? "Adding files is paused" : "Drop PDFs or folders here";
+                    var title = _locked ? "Adding files is paused" : "Drop documents or folders here";
                     var body = _locked ? "OCR is running" : "or click to browse";
                     var titleSize = e.Graphics.MeasureString(title, titleFont);
                     var bodySize = e.Graphics.MeasureString(body, bodyFont);

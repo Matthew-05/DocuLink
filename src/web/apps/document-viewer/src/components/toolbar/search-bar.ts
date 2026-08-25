@@ -24,7 +24,7 @@ export class SearchBar {
     this._input = document.createElement("input");
     this._input.className = "search-bar__input";
     this._input.type = "search";
-    this._input.placeholder = "Indexing PDFs…";
+    this._input.placeholder = "Indexing documents…";
     this._input.disabled = true;
     this._input.addEventListener("input", () => this._handleInput());
 
@@ -65,12 +65,12 @@ export class SearchBar {
 
   enable(): void {
     this._input.disabled = false;
-    this._input.placeholder = "Search PDF…";
+    this._input.placeholder = "Search document…";
   }
 
   disable(): void {
     this._input.disabled = true;
-    this._input.placeholder = "Indexing PDFs…";
+    this._input.placeholder = "Indexing documents…";
     this._resultsPanel.clearResults();
   }
 

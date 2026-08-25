@@ -20,7 +20,7 @@
                           onAction="OnToggleAutoOpenViewerOnCellClick" />
           </menu>
           <button id="DocuLink.BtnAddPdf"
-                  label="Add PDF"
+                  label="Add Documents"
                   size="large"
                   getImage="GetAddPdfImage"
                   onAction="OnAddPdfDocuments" />

@@ -32,7 +32,7 @@ export class PdfSelector {
 
     this._triggerLabel = document.createElement("span");
     this._triggerLabel.className = "pdf-selector__trigger-label";
-    this._triggerLabel.textContent = "Select PDF…";
+    this._triggerLabel.textContent = "Select document…";
 
     const caret = document.createElement("span");
     caret.className = "pdf-selector__caret";
@@ -176,7 +176,7 @@ export class PdfSelector {
     this._entries = this._entries.filter((e) => e.id !== id);
     if (this._activeId === id) {
       this._activeId = null;
-      this._triggerLabel.textContent = "Select PDF…";
+      this._triggerLabel.textContent = "Select document…";
     }
     this._renderList(this._searchInput.value);
   }
@@ -192,7 +192,7 @@ export class PdfSelector {
   setActiveId(id: string): void {
     this._activeId = id;
     const entry = this._entries.find((e) => e.id === id);
-    this._triggerLabel.textContent = entry?.name ?? "Select PDF…";
+    this._triggerLabel.textContent = entry?.name ?? "Select document…";
     this._renderList(this._searchInput.value);
   }
 
@@ -227,8 +227,8 @@ export class PdfSelector {
       const empty = document.createElement("li");
       empty.className = "pdf-selector__empty";
       empty.textContent = this._folderFilterId === null
-        ? "No PDFs found"
-        : "No PDFs in this folder";
+        ? "No documents found"
+        : "No documents in this folder";
       this._list.appendChild(empty);
       return;
     }
