@@ -375,32 +375,10 @@ namespace DocuLink.Addin.Modules.WebView
             string sentinel = "__new__:" + folderName;
             string folderId = ResolveFolderId(wb, sentinel, folderIdCache);
 
-            foreach (string filePath in Directory.EnumerateFiles(dirPath, "*", SearchOption.AllDirectories))
+            foreach (ImportCandidate candidate in ImportPathCollector.CollectDirectory(dirPath, folderId))
             {
-                string full;
-                try
-                {
-                    full = Path.GetFullPath(filePath);
-                }
-                catch
-                {
-                    continue;
-                }
-
-                // Only offer types DocuLink can actually do something with, so a
-                // dropped folder full of incidental files doesn't flood the dialog.
-                if (!ConversionFormatCatalog.IsPdf(full) && !ConversionFormatCatalog.TryGetFormat(full, out _))
-                    continue;
-
-                if (ShouldSkipDuplicateOsImport(full))
-                    continue;
-
-                candidates.Add(new ImportCandidate
-                {
-                    Path = full,
-                    Name = Path.GetFileName(full),
-                    FolderId = folderId,
-                });
+                if (!ShouldSkipDuplicateOsImport(candidate.Path))
+                    candidates.Add(candidate);
             }
         }
 

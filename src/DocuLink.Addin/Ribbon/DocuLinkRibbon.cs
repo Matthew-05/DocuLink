@@ -5,6 +5,7 @@ using System.Linq;
 using DocuLink.Addin;
 using System.Reflection;
 using System.Runtime.InteropServices;
+using System.Threading.Tasks;
 using System.Text;
 using System.Windows.Forms;
 using DocuLink.Addin.Modules.Services;
@@ -144,18 +145,8 @@ namespace DocuLink.Addin.Ribbon
         {
             try
             {
-                var app = Globals.ThisAddIn.Application;
-                if (app.ActiveWorkbook == null)
-                {
-                    MessageBox.Show(
-                        text: "Open or create a workbook before adding documents.",
-                        caption: "DocuLink",
-                        buttons: MessageBoxButtons.OK,
-                        icon: MessageBoxIcon.Information);
-                    return;
-                }
-
-                if (!WorkbookProtectionGuard.TryRequireWritable(app.ActiveWorkbook))
+                Excel.Workbook workbook = GetWritableWorkbook();
+                if (workbook == null)
                     return;
 
                 string[] selectedPaths;
@@ -174,49 +165,206 @@ namespace DocuLink.Addin.Ribbon
                     selectedPaths = dialog.FileNames.ToArray();
                 }
 
-                var candidates = selectedPaths
-                    .Select(path => new ImportCandidate { Path = path, Name = Path.GetFileName(path) })
-                    .ToList();
-
-                // Confirm conversions before anything is read or written.
-                ImportSelectionPlan plan = ImportPreparationService.Plan(null, candidates);
-                if (plan.Cancelled || plan.IsEmpty)
-                    return;
-
-                PdfImportResult result;
-                IList<string> preparationErrors;
-
-                using (var progress = ThreadedProgressController.Show("Importing documents..."))
-                using (PreparedImport prepared = await ImportPreparationService.PrepareAsync(plan, progress))
-                {
-                    preparationErrors = prepared.Errors;
-                    result = new PdfImportService().ImportFilePaths(
-                        app.ActiveWorkbook, prepared.PathRequests, progress);
-
-                    if (result.AddedIds.Count > 0)
-                    {
-                        progress.Report(
-                            "Refreshing DocuLink",
-                            "Updating viewer data...",
-                            result.AddedIds.Count,
-                            result.AddedIds.Count);
-
-                        foreach (string id in result.AddedIds)
-                            Globals.ThisAddIn.NotifyViewerPdfAdded(id);
-                    }
-                }
-
-                ShowImportSummary(result, preparationErrors);
+                await ImportDocumentPathsAsync(workbook, selectedPaths);
             }
             catch (Exception ex)
             {
-                Modules.DocuLinkLog.Trace($"OnAddPdfDocuments failed: {ex}");
-                MessageBox.Show(
-                    $"Documents could not be imported.{Environment.NewLine}{Environment.NewLine}{ex.Message}",
-                    "DocuLink",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Error);
+                ShowImportFailure("OnAddPdfDocuments", ex);
             }
+        }
+
+        /// <summary>Adds files and folders copied in Windows Explorer.</summary>
+        public async void OnImportDocumentsFromClipboard(IRibbonControl control)
+        {
+            try
+            {
+                Excel.Workbook workbook = GetWritableWorkbook();
+                if (workbook == null)
+                    return;
+
+                if (!Clipboard.ContainsFileDropList())
+                {
+                    MessageBox.Show(
+                        text: "Copy one or more files or folders, then try again.",
+                        caption: "DocuLink",
+                        buttons: MessageBoxButtons.OK,
+                        icon: MessageBoxIcon.Information);
+                    return;
+                }
+
+                string[] clipboardPaths = Clipboard.GetFileDropList()
+                    .Cast<string>()
+                    .ToArray();
+
+                if (clipboardPaths.Length == 0)
+                    return;
+
+                await ImportDocumentPathsAsync(workbook, clipboardPaths);
+            }
+            catch (Exception ex)
+            {
+                ShowImportFailure("OnImportDocumentsFromClipboard", ex);
+            }
+        }
+
+        /// <summary>Adds every supported document in a user-selected directory tree.</summary>
+        public async void OnImportDocumentFolder(IRibbonControl control)
+        {
+            try
+            {
+                Excel.Workbook workbook = GetWritableWorkbook();
+                if (workbook == null)
+                    return;
+
+                string selectedPath = null;
+                Microsoft.Office.Core.FileDialog dialog = null;
+                FileDialogSelectedItems selectedItems = null;
+                try
+                {
+                    dialog = Globals.ThisAddIn.Application.FileDialog[
+                        MsoFileDialogType.msoFileDialogFolderPicker];
+                    dialog.Title = "Choose a folder of documents to add";
+                    dialog.ButtonName = "Import";
+                    dialog.AllowMultiSelect = false;
+
+                    if (dialog.Show() != -1)
+                        return;
+
+                    selectedItems = dialog.SelectedItems;
+                    if (selectedItems.Count > 0)
+                        selectedPath = selectedItems.Item(1);
+                }
+                finally
+                {
+                    if (selectedItems != null && Marshal.IsComObject(selectedItems))
+                        Marshal.FinalReleaseComObject(selectedItems);
+                    if (dialog != null && Marshal.IsComObject(dialog))
+                        Marshal.FinalReleaseComObject(dialog);
+                }
+
+                if (string.IsNullOrWhiteSpace(selectedPath))
+                    return;
+
+                string folderName = new DirectoryInfo(selectedPath).Name;
+                if (string.IsNullOrWhiteSpace(folderName))
+                    folderName = selectedPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+
+                await ImportDocumentPathsAsync(
+                    workbook,
+                    new[] { selectedPath },
+                    folderName);
+            }
+            catch (Exception ex)
+            {
+                ShowImportFailure("OnImportDocumentFolder", ex);
+            }
+        }
+
+        private static Excel.Workbook GetWritableWorkbook()
+        {
+            var app = Globals.ThisAddIn.Application;
+            if (app?.ActiveWorkbook == null)
+            {
+                MessageBox.Show(
+                    text: "Open or create a workbook before adding documents.",
+                    caption: "DocuLink",
+                    buttons: MessageBoxButtons.OK,
+                    icon: MessageBoxIcon.Information);
+                return null;
+            }
+
+            return WorkbookProtectionGuard.TryRequireWritable(app.ActiveWorkbook)
+                ? app.ActiveWorkbook
+                : null;
+        }
+
+        private static async Task ImportDocumentPathsAsync(
+            Excel.Workbook workbook,
+            IEnumerable<string> selectedPaths,
+            string importedFolderName = null)
+        {
+            var candidates = new List<ImportCandidate>();
+            foreach (string selectedPath in selectedPaths ?? Enumerable.Empty<string>())
+            {
+                if (string.IsNullOrWhiteSpace(selectedPath))
+                    continue;
+
+                if (Directory.Exists(selectedPath))
+                {
+                    candidates.AddRange(ImportPathCollector.CollectDirectory(selectedPath));
+                    continue;
+                }
+
+                if (File.Exists(selectedPath))
+                {
+                    candidates.Add(new ImportCandidate
+                    {
+                        Path = selectedPath,
+                        Name = Path.GetFileName(selectedPath),
+                    });
+                }
+            }
+
+            if (candidates.Count == 0)
+            {
+                MessageBox.Show(
+                    text: "No supported documents were found.",
+                    caption: "DocuLink",
+                    buttons: MessageBoxButtons.OK,
+                    icon: MessageBoxIcon.Information);
+                return;
+            }
+
+            // Confirm conversions before anything is read or written.
+            ImportSelectionPlan plan = ImportPreparationService.Plan(null, candidates);
+            if (plan.Cancelled || plan.IsEmpty)
+                return;
+
+            bool createsFolderGroup = !string.IsNullOrWhiteSpace(importedFolderName);
+            if (createsFolderGroup)
+            {
+                string folderId = new ManageFilesService().AddFolder(workbook, importedFolderName);
+                foreach (ImportCandidate candidate in plan.PdfCandidates.Concat(plan.ConvertCandidates))
+                    candidate.FolderId = folderId;
+            }
+
+            PdfImportResult result;
+            IList<string> preparationErrors;
+
+            using (var progress = ThreadedProgressController.Show("Importing documents..."))
+            using (PreparedImport prepared = await ImportPreparationService.PrepareAsync(plan, progress))
+            {
+                preparationErrors = prepared.Errors;
+                result = new PdfImportService().ImportFilePaths(
+                    workbook, prepared.PathRequests, progress);
+
+                if (result.AddedIds.Count > 0)
+                {
+                    progress.Report(
+                        "Refreshing DocuLink",
+                        "Updating viewer data...",
+                        result.AddedIds.Count,
+                        result.AddedIds.Count);
+
+                    foreach (string id in result.AddedIds)
+                        Globals.ThisAddIn.NotifyViewerPdfAdded(id);
+
+                    if (createsFolderGroup)
+                        Globals.ThisAddIn.NotifyViewerFoldersChanged();
+                }
+            }
+
+            ShowImportSummary(result, preparationErrors);
+        }
+
+        private static void ShowImportFailure(string operation, Exception ex)
+        {
+            Modules.DocuLinkLog.Trace($"{operation} failed: {ex}");
+            MessageBox.Show(
+                $"Documents could not be imported.{Environment.NewLine}{Environment.NewLine}{ex.Message}",
+                "DocuLink",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Error);
         }
 
         /// <summary>
@@ -293,6 +441,21 @@ namespace DocuLink.Addin.Ribbon
         public System.Drawing.Bitmap GetAddPdfImage(IRibbonControl control)
         {
             return LoadEmbeddedSvgAsIcon("icon-add-document.svg");
+        }
+
+        public System.Drawing.Bitmap GetAddFilesImage(IRibbonControl control)
+        {
+            return LoadEmbeddedSvgAsIcon("icon-add-files.svg");
+        }
+
+        public System.Drawing.Bitmap GetImportClipboardImage(IRibbonControl control)
+        {
+            return LoadEmbeddedSvgAsIcon("icon-import-clipboard.svg");
+        }
+
+        public System.Drawing.Bitmap GetImportFolderImage(IRibbonControl control)
+        {
+            return LoadEmbeddedSvgAsIcon("icon-import-folder.svg");
         }
 
         public System.Drawing.Bitmap GetDeleteLinksImage(IRibbonControl control)

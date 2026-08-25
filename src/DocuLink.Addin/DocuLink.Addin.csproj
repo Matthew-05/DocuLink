@@ -223,6 +223,7 @@
     <Compile Include="Modules\Services\Conversion\ConversionTempStore.cs" />
     <Compile Include="Modules\Services\Conversion\DocumentConversionService.cs" />
     <Compile Include="Modules\Services\Conversion\HtmlToPdfConverter.cs" />
+    <Compile Include="Modules\Services\Conversion\ImportPathCollector.cs" />
     <Compile Include="Modules\Services\Conversion\ImportPreparationService.cs" />
     <Compile Include="Modules\Services\Conversion\OfficeInteropConverter.cs" />
     <Compile Include="Modules\Services\Conversion\PythonConversionConverter.cs" />
@@ -308,7 +309,10 @@
     </None>
     <EmbeddedResource Include="Ribbon\DocuLinkRibbon.xml" />
     <EmbeddedResource Include="..\resources\icons\icon-add-document.svg" />
+    <EmbeddedResource Include="..\resources\icons\icon-add-files.svg" />
     <EmbeddedResource Include="..\resources\icons\icon-delete-links.svg" />
+    <EmbeddedResource Include="..\resources\icons\icon-import-clipboard.svg" />
+    <EmbeddedResource Include="..\resources\icons\icon-import-folder.svg" />
     <EmbeddedResource Include="..\resources\icons\icon-manage-files.svg" />
     <EmbeddedResource Include="..\resources\icons\icon-match-documents.svg" />
     <EmbeddedResource Include="..\resources\icons\icon-settings.svg" />

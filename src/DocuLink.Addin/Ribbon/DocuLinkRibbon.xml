@@ -29,11 +29,30 @@
                           getPressed="GetAutoOpenViewerOnCellClick"
                           onAction="OnToggleAutoOpenViewerOnCellClick" />
           </menu>
-          <button id="DocuLink.BtnAddPdf"
-                  label="Add Documents"
-                  size="large"
-                  getImage="GetAddPdfImage"
-                  onAction="OnAddPdfDocuments" />
+          <menu id="DocuLink.MenuAddDocuments"
+                label="Add Documents"
+                size="large"
+                itemSize="large"
+                getImage="GetAddPdfImage">
+            <button id="DocuLink.BtnAddFiles"
+                    label="Add Files..."
+                    screentip="Add Files"
+                    supertip="Choose one or more documents to add to the active workbook."
+                    getImage="GetAddFilesImage"
+                    onAction="OnAddPdfDocuments" />
+            <button id="DocuLink.BtnAddFromClipboard"
+                    label="Import from Clipboard"
+                    screentip="Import from Clipboard"
+                    supertip="Add files or folders that you copied to the Windows clipboard."
+                    getImage="GetImportClipboardImage"
+                    onAction="OnImportDocumentsFromClipboard" />
+            <button id="DocuLink.BtnAddFolder"
+                    label="Import Folder..."
+                    screentip="Import Folder"
+                    supertip="Choose a folder and add its supported documents, including documents in subfolders."
+                    getImage="GetImportFolderImage"
+                    onAction="OnImportDocumentFolder" />
+          </menu>
           <button id="DocuLink.BtnDeleteLinks"
                   label="Delete Links"
                   size="large"
