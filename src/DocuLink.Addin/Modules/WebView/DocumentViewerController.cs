@@ -35,6 +35,7 @@ namespace DocuLink.Addin.Modules.WebView
         private string _pendingNavigateId;
         private string _pendingNavigatePdfId;
         private int? _pendingNavigatePage;
+        private string _pendingSearchQuery;
         private bool _disposed;
 
         internal DocumentViewerController(Control invokeTarget, string loadFailureSurfaceName)
@@ -184,6 +185,7 @@ namespace DocuLink.Addin.Modules.WebView
                                 _dataSentToViewer = true;
                             }
                             SendLinkedRectanglesToWebView();
+                            FlushPendingSearchQuery();
                             FlushPendingNavigateToRectangle();
                         }
                         break;
@@ -621,6 +623,35 @@ namespace DocuLink.Addin.Modules.WebView
             }
         }
 
+        internal void SendSearchQuery(string query)
+        {
+            if (!_webViewReady)
+            {
+                _pendingSearchQuery = query ?? string.Empty;
+                return;
+            }
+
+            try
+            {
+                _webView.CoreWebView2.PostWebMessageAsString(
+                    HostMessageSerializer.BuildSetSearchQuery(query));
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine(
+                    $"[DocuLink] SendSearchQuery failed: {ex.Message}");
+            }
+        }
+
+        private void FlushPendingSearchQuery()
+        {
+            if (_pendingSearchQuery == null) return;
+
+            string query = _pendingSearchQuery;
+            _pendingSearchQuery = null;
+            SendSearchQuery(query);
+        }
+
         internal void SendNavigateToRectangle(string id, string pdfId, int page)
         {
             if (!_webViewReady)
@@ -685,6 +716,7 @@ namespace DocuLink.Addin.Modules.WebView
             SendPdfsToWebView();
             _dataSentToViewer = true;
             SendLinkedRectanglesToWebView();
+            FlushPendingSearchQuery();
             FlushPendingNavigateToRectangle();
             DocuLinkLog.Trace($"EXIT surface={_loadFailureSurfaceName}");
         }

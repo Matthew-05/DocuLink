@@ -841,6 +841,21 @@
       ]
     },
 
+    "SetSearchQueryMessage": {
+      "description": "Sent by the C# host when the active Excel cell changes while a document-viewer is open. The viewer replaces its search-bar value with the cell's displayed text without running a search. It clears any prior results so the user can explicitly run the new query with the search button or Enter. An empty query clears the current search.",
+      "type": "object",
+      "required": ["type", "query"],
+      "additionalProperties": false,
+      "properties": {
+        "type":  { "const": "set-search-query" },
+        "query": { "type": "string", "description": "Displayed text (Range.Text) of the active cell. For a multi-cell selection, this is the active/anchor cell." }
+      },
+      "examples": [
+        { "type": "set-search-query", "query": "Invoice 1042" },
+        { "type": "set-search-query", "query": "" }
+      ]
+    },
+
     "ResetUiMessage": {
       "description": "Sent by the C# host when the file-manager window is hidden. The web app should reset transient UI state so the next show starts fresh.",
       "type": "object",
@@ -1166,6 +1181,7 @@
     { "$ref": "#/definitions/ClearRectangleHighlightMessage" },
     { "$ref": "#/definitions/HighlightRectangleMessage" },
     { "$ref": "#/definitions/LinkSelectionChangedMessage" },
+    { "$ref": "#/definitions/SetSearchQueryMessage" },
     { "$ref": "#/definitions/ResetUiMessage" },
     { "$ref": "#/definitions/CancelOcrMessage" },
     { "$ref": "#/definitions/OcrPdfsMessage" },

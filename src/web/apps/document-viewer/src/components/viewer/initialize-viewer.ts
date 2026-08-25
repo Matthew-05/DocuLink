@@ -12,7 +12,7 @@ import { CharBboxOverlay } from "./char-bbox-overlay.js";
 import { createRectNavigator } from "./rect-navigator.js";
 import { attachExcelKeyBridge } from "./excel-key-bridge.js";
 import { createFitMode } from "./fit-mode.js";
-import { PdfTextSearcher, normalizeSearchQuery } from "./pdf-text-searcher.js";
+import { PdfTextSearcher } from "./pdf-text-searcher.js";
 import { SearchMatchRenderer } from "./search-match-renderer.js";
 import { createSearchNavigator } from "./search-navigator.js";
 import { TableCopyModal } from "../table-copy-modal/table-copy-modal.js";
@@ -252,7 +252,7 @@ export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLEleme
       if (match.pdfId === activePdfId) matches.set(match.id, match);
     }
 
-    const query = search.getQuery();
+    const query = search.getSubmittedQuery();
     const entry = selector.getEntry(activePdfId);
     if (query && entry) {
       for (const match of searcher.searchPage(query, entry, currentPage - 1)) {
@@ -288,7 +288,7 @@ export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLEleme
   };
 
   onVisiblePageChanged = () => {
-    if (!normalizeSearchQuery(search.getQuery())) return;
+    if (!search.getSubmittedQuery()) return;
     applyActivePdfHighlights();
   };
 
@@ -359,7 +359,7 @@ export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLEleme
   // open document stays loaded even when it sits outside the selected folder.
   folderFilter.onChange((folderId) => {
     selector.setFolderFilter(folderId);
-    const query = normalizeSearchQuery(search.getQuery());
+    const query = search.getSubmittedQuery();
     if (query) runSearch(query);
   });
 
@@ -487,7 +487,7 @@ export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLEleme
 
     const finish = (): void => {
       charBboxDebug.refresh();
-      const query = normalizeSearchQuery(search.getQuery());
+      const query = search.getSubmittedQuery();
       if (query) {
         applyActivePdfHighlights();
       }
@@ -544,7 +544,7 @@ export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLEleme
         search.disable();
       } else {
         search.enable();
-        const query = normalizeSearchQuery(search.getQuery());
+        const query = search.getSubmittedQuery();
         if (query) runSearch(query);
       }
     },
@@ -570,6 +570,7 @@ export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLEleme
       onClearRectangleHighlight: () => { renderer.clearHighlight(); },
       onHighlightRectangle: (id) => { renderer.highlightRectangle(id); },
       onLinkSelectionChanged: setLinkSelection,
+      onSetSearchQuery: (query) => { search.setQuery(query); },
       onLinkRectanglesRemoved: (ids) => {
         contextMenu.hide();
         renderer.removeRectangles(ids);

@@ -516,6 +516,9 @@ namespace DocuLink.Addin
 
             entry.Host.NotifyViewerShown();
 
+            entry.Host.SendSearchQuery(
+                GetActiveCellDisplayText(Application?.Selection as Excel.Range));
+
         }
 
 
@@ -537,6 +540,9 @@ namespace DocuLink.Addin
             _viewerWindow.BringToFront();
 
             _viewerWindow.NotifyViewerShown();
+
+            _viewerWindow.SendSearchQuery(
+                GetActiveCellDisplayText(Application?.Selection as Excel.Range));
 
         }
 
@@ -1551,6 +1557,10 @@ namespace DocuLink.Addin
 
             {
 
+                string searchQuery = GetActiveCellDisplayText(target);
+                IDocumentViewerHost visibleViewer = GetVisibleViewerHost();
+                visibleViewer?.SendSearchQuery(searchQuery);
+
                 Excel.Workbook wb = Application?.ActiveWorkbook;
 
                 if (wb == null) return;
@@ -1653,7 +1663,9 @@ namespace DocuLink.Addin
 
                     BuildLinkSelection(GetStorageSession(wb), target, out _);
 
-                GetActiveViewerHost()?.SendLinkSelectionChanged(entries);
+                IDocumentViewerHost viewer = GetVisibleViewerHost();
+                viewer?.SendSearchQuery(GetActiveCellDisplayText(target));
+                viewer?.SendLinkSelectionChanged(entries);
 
             }
 
@@ -1664,6 +1676,50 @@ namespace DocuLink.Addin
                 System.Diagnostics.Debug.WriteLine(
 
                     $"[DocuLink] PublishLinkSelection failed: {ex.Message}");
+
+            }
+
+        }
+
+
+
+        private IDocumentViewerHost GetVisibleViewerHost()
+
+        {
+
+            return IsViewerPoppedOut || IsTaskPaneViewerVisible()
+
+                ? GetActiveViewerHost()
+
+                : null;
+
+        }
+
+
+
+        private string GetActiveCellDisplayText(Excel.Range selection)
+
+        {
+
+            try
+
+            {
+
+                Excel.Range activeCell = Application?.ActiveCell as Excel.Range;
+
+                if (activeCell != null)
+
+                    return activeCell.Text?.ToString() ?? string.Empty;
+
+                return selection?.Text?.ToString() ?? string.Empty;
+
+            }
+
+            catch (COMException)
+
+            {
+
+                return string.Empty;
 
             }
 

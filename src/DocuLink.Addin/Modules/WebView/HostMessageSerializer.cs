@@ -248,6 +248,16 @@ namespace DocuLink.Addin.Modules.WebView
             return sb.ToString();
         }
 
+        /// <summary>Returns the JSON payload for a <c>set-search-query</c> message.</summary>
+        public static string BuildSetSearchQuery(string query)
+        {
+            var sb = new StringBuilder();
+            sb.Append("{\"type\":\"set-search-query\",\"query\":");
+            AppendString(sb, query ?? string.Empty);
+            sb.Append('}');
+            return sb.ToString();
+        }
+
         /// <summary>Returns the JSON payload for a <c>page-rotations-updated</c> message.</summary>
         public static string BuildPageRotationsUpdated(string pdfId, Dictionary<int, int> rotations)
         {

@@ -8,9 +8,12 @@ export class SearchBar {
   readonly element: HTMLElement;
 
   private readonly _input: HTMLInputElement;
+  private readonly _clearButton: HTMLButtonElement;
+  private readonly _searchButton: HTMLButtonElement;
   private readonly _resultsPanel: SearchResultsPanel;
   private _debounceTimer: ReturnType<typeof setTimeout> | null = null;
   private _resultsDismissed = false;
+  private _submittedQuery = "";
 
   private readonly _onQueryCallbacks: Array<(query: string) => void> = [];
   private readonly _onMatchClickedCallbacks: Array<(match: SearchMatch) => void> = [];
@@ -27,6 +30,28 @@ export class SearchBar {
     this._input.placeholder = "Indexing documents…";
     this._input.disabled = true;
     this._input.addEventListener("input", () => this._handleInput());
+    this._input.addEventListener("keydown", (e) => {
+      if (e.key !== "Enter") return;
+      e.preventDefault();
+      this._submitQuery();
+    });
+
+    this._clearButton = document.createElement("button");
+    this._clearButton.className = "search-bar__action search-bar__clear";
+    this._clearButton.type = "button";
+    this._clearButton.title = "Clear search";
+    this._clearButton.setAttribute("aria-label", "Clear search");
+    this._clearButton.textContent = "\u00d7";
+    this._clearButton.hidden = true;
+    this._clearButton.addEventListener("click", () => this._clearQuery());
+
+    this._searchButton = document.createElement("button");
+    this._searchButton.className = "search-bar__action search-bar__submit";
+    this._searchButton.type = "button";
+    this._searchButton.title = "Search";
+    this._searchButton.setAttribute("aria-label", "Search");
+    this._searchButton.append(SearchBar._createSearchIcon());
+    this._searchButton.addEventListener("click", () => this._submitQuery());
 
     this._resultsPanel = new SearchResultsPanel();
     this._resultsPanel.onMatchClicked((match) => {
@@ -38,7 +63,13 @@ export class SearchBar {
       for (const cb of this._onShowMoreCallbacks) cb();
     });
 
-    this.element.append(this._input, this._resultsPanel.element);
+    this.element.append(
+      this._input,
+      this._clearButton,
+      this._searchButton,
+      this._resultsPanel.element,
+    );
+    this._updateActions();
 
     document.addEventListener(
       "mousedown",
@@ -52,9 +83,13 @@ export class SearchBar {
 
     const reopenIfDismissed = (): void => {
       const shouldRefresh = this._resultsPanel.element.hidden || this._resultsDismissed;
-      if (shouldRefresh) {
+      if (
+        shouldRefresh
+        && this._submittedQuery
+        && this._submittedQuery === normalizeSearchQuery(this._input.value)
+      ) {
         this._resultsDismissed = false;
-        this._emitCurrentQuery();
+        this._emitQuery(this._submittedQuery);
       }
       this._showResults();
     };
@@ -66,16 +101,35 @@ export class SearchBar {
   enable(): void {
     this._input.disabled = false;
     this._input.placeholder = "Search document…";
+    this._updateActions();
   }
 
   disable(): void {
     this._input.disabled = true;
     this._input.placeholder = "Indexing documents…";
     this._resultsPanel.clearResults();
+    this._updateActions();
   }
 
   getQuery(): string {
     return this._input.value;
+  }
+
+  getSubmittedQuery(): string {
+    return this._submittedQuery;
+  }
+
+  setQuery(query: string): void {
+    this._cancelDebounce();
+
+    this._input.value = query;
+    this._resultsDismissed = false;
+    this._submittedQuery = "";
+    this._updateActions();
+
+    // A host-filled cell value is only staged. Publishing an empty query cancels
+    // any active session and clears results/highlights from the previous cell.
+    this._emitQuery("");
   }
 
   focus(): void {
@@ -128,7 +182,7 @@ export class SearchBar {
   }
 
   private _showResults(): void {
-    if (!this._resultsPanel.hasResults()) return;
+    if (!this._resultsPanel.hasContent()) return;
 
     this._resultsDismissed = false;
     const wasHidden = this._resultsPanel.element.hidden;
@@ -144,10 +198,9 @@ export class SearchBar {
 
   private _handleInput(): void {
     this._resultsDismissed = false;
+    this._updateActions();
 
-    if (this._debounceTimer !== null) {
-      clearTimeout(this._debounceTimer);
-    }
+    this._cancelDebounce();
 
     this._debounceTimer = setTimeout(() => {
       this._debounceTimer = null;
@@ -157,6 +210,60 @@ export class SearchBar {
 
   private _emitCurrentQuery(): void {
     const query = normalizeSearchQuery(this._input.value);
+    this._submittedQuery = query;
+    this._emitQuery(query);
+  }
+
+  private _emitQuery(query: string): void {
     for (const cb of this._onQueryCallbacks) cb(query);
+  }
+
+  private _submitQuery(): void {
+    if (this._input.disabled) return;
+    this._cancelDebounce();
+    this._resultsDismissed = false;
+    this._emitCurrentQuery();
+  }
+
+  private _clearQuery(): void {
+    if (this._input.disabled) return;
+    this._cancelDebounce();
+    this._input.value = "";
+    this._resultsDismissed = false;
+    this._updateActions();
+    this._emitCurrentQuery();
+    this._input.focus();
+  }
+
+  private _cancelDebounce(): void {
+    if (this._debounceTimer === null) return;
+    clearTimeout(this._debounceTimer);
+    this._debounceTimer = null;
+  }
+
+  private _updateActions(): void {
+    const disabled = this._input.disabled;
+    const hasQuery = normalizeSearchQuery(this._input.value).length > 0;
+    this._clearButton.hidden = !this._input.value;
+    this._clearButton.disabled = disabled;
+    this._searchButton.disabled = disabled || !hasQuery;
+  }
+
+  private static _createSearchIcon(): SVGSVGElement {
+    const namespace = "http://www.w3.org/2000/svg";
+    const svg = document.createElementNS(namespace, "svg");
+    svg.setAttribute("viewBox", "0 0 20 20");
+    svg.setAttribute("aria-hidden", "true");
+
+    const circle = document.createElementNS(namespace, "circle");
+    circle.setAttribute("cx", "8.5");
+    circle.setAttribute("cy", "8.5");
+    circle.setAttribute("r", "5.5");
+
+    const handle = document.createElementNS(namespace, "path");
+    handle.setAttribute("d", "M12.5 12.5 17 17");
+
+    svg.append(circle, handle);
+    return svg;
   }
 }

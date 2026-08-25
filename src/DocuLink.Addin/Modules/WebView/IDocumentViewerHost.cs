@@ -27,6 +27,8 @@ namespace DocuLink.Addin.Modules.WebView
 
         void SendLinkSelectionChanged(System.Collections.Generic.IList<LinkSelectionEntry> entries);
 
+        void SendSearchQuery(string query);
+
         void SendLinkRectanglesRemoved(System.Collections.Generic.IList<string> ids);
     }
 }

@@ -24,6 +24,7 @@ export interface HostMessageHandlers {
   onClearRectangleHighlight?: () => void;
   onHighlightRectangle?: (id: string) => void;
   onLinkSelectionChanged?: (entries: LinkSelectionEntry[]) => void;
+  onSetSearchQuery?: (query: string) => void;
   onPdfUpdated?: (entry: PdfEntry) => void;
   onLinkRectanglesRemoved?: (ids: string[]) => void;
   onPdfNameUpdated?: (id: string, name: string) => void;
@@ -204,6 +205,11 @@ function normalizeLinkType(value: unknown): LinkType {
   return value === "raw" || value === "sum" || value === "table" ? value : "auto";
 }
 
+interface SetSearchQueryMessage {
+  type: "set-search-query";
+  query: string;
+}
+
 function toLinkedRectEntry(rect: LinkedRectPayload): LinkedRectEntry {
   return {
     id: rect.id,
@@ -225,6 +231,7 @@ function handleMessage(raw: unknown, handlers: HostMessageHandlers): void {
     onClearRectangleHighlight,
     onHighlightRectangle,
     onLinkSelectionChanged,
+    onSetSearchQuery,
     onPdfUpdated,
     onLinkRectanglesRemoved,
     onPdfNameUpdated,
@@ -316,6 +323,13 @@ function handleMessage(raw: unknown, handlers: HostMessageHandlers): void {
         cellValue:   e.cellValue,
       }));
       onLinkSelectionChanged(entries);
+      return;
+    }
+
+    if (type === "set-search-query") {
+      if (!onSetSearchQuery) return;
+      const msg = parsed as SetSearchQueryMessage;
+      onSetSearchQuery(typeof msg.query === "string" ? msg.query : "");
       return;
     }
 

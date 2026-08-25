@@ -6,6 +6,12 @@ export interface SearchResultsPanelState {
   canLoadMore?: boolean;
 }
 
+export function getSearchResultsSummary(matchCount: number, hasMore: boolean): string {
+  if (matchCount === 0) return hasMore ? "Searching..." : "No results";
+  if (hasMore) return `${matchCount}+ results`;
+  return `${matchCount} result${matchCount === 1 ? "" : "s"}`;
+}
+
 export class SearchResultsPanel {
   readonly element: HTMLElement;
 
@@ -14,6 +20,7 @@ export class SearchResultsPanel {
   private _matches: SearchMatch[] = [];
   private _hasMore = false;
   private _canLoadMore = false;
+  private _hasSearchState = false;
 
   constructor() {
     this.element = document.createElement("div");
@@ -34,6 +41,7 @@ export class SearchResultsPanel {
     this._matches = state.matches;
     this._hasMore = state.hasMore;
     this._canLoadMore = state.canLoadMore ?? state.hasMore;
+    this._hasSearchState = true;
     this._render();
   }
 
@@ -41,6 +49,7 @@ export class SearchResultsPanel {
     this._matches = [];
     this._hasMore = false;
     this._canLoadMore = false;
+    this._hasSearchState = false;
     this.element.replaceChildren();
     this.element.hidden = true;
   }
@@ -50,32 +59,23 @@ export class SearchResultsPanel {
   }
 
   show(): void {
-    if (this._matches.length > 0) {
+    if (this._hasSearchState) {
       this.element.hidden = false;
     }
   }
 
-  hasResults(): boolean {
-    return this._matches.length > 0;
+  hasContent(): boolean {
+    return this._hasSearchState;
   }
 
   private _render(): void {
     this.element.replaceChildren();
 
-    if (this._matches.length === 0 && !this._hasMore) {
-      this.element.hidden = true;
-      return;
-    }
-
     this.element.hidden = false;
 
     const summary = document.createElement("div");
     summary.className = "search-results-panel__summary";
-    summary.textContent = this._matches.length === 0 && this._hasMore
-      ? "Searching..."
-      : this._hasMore
-      ? `${this._matches.length}+ results`
-      : `${this._matches.length} result${this._matches.length === 1 ? "" : "s"}`;
+    summary.textContent = getSearchResultsSummary(this._matches.length, this._hasMore);
     this.element.appendChild(summary);
 
     const grouped = groupByPdf(this._matches);
