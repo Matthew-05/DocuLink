@@ -61,6 +61,9 @@ namespace DocuLink.Addin
 
         private Modules.Infrastructure.ExcelUndoKeyHook _excelUndoKeyHook;
 
+        private readonly object _automaticUpdateCheckSync = new object();
+        private Task _automaticUpdateCheckTask;
+
         /// <summary>
         /// Excel-grid navigation state for keystrokes forwarded from the viewer. Single
         /// instance because Excel itself tracks only one entry anchor at a time.
@@ -1345,13 +1348,29 @@ namespace DocuLink.Addin
 
         }
 
-        private async Task CheckForUpdateOnOpenAsync()
+        private Task CheckForUpdateOnOpenAsync()
 
         {
 
-            if (AppVersion.Current == "dev") return;
+            if (string.Equals(AppVersion.Current, "dev", StringComparison.Ordinal))
+                return Task.CompletedTask;
 
-            if ((DateTime.UtcNow - Settings.Default.LastUpdateCheck).TotalHours < 24) return;
+            if ((DateTime.UtcNow - Settings.Default.LastUpdateCheck).TotalHours < 24)
+                return Task.CompletedTask;
+
+            lock (_automaticUpdateCheckSync)
+            {
+                if (_automaticUpdateCheckTask == null || _automaticUpdateCheckTask.IsCompleted)
+                    _automaticUpdateCheckTask = CheckForUpdateOnOpenCoreAsync();
+
+                return _automaticUpdateCheckTask;
+            }
+
+        }
+
+        private async Task CheckForUpdateOnOpenCoreAsync()
+
+        {
 
             UpdateCheckResult result;
 
@@ -1361,7 +1380,7 @@ namespace DocuLink.Addin
 
             if (result?.UpdateAvailable != true) return;
 
-            new UpdateDialog(result).ShowDialog();
+            UpdateDialog.ShowSingle(result);
 
         }
 

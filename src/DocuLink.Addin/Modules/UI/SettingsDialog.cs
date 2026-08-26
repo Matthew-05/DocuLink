@@ -29,7 +29,7 @@ namespace DocuLink.Addin.Modules.UI
                 Location = new Point(20, 72),
                 Font = new Font("Segoe UI", 9f)
             };
-            checkBtn.Click += (s, e) => new UpdateDialog().ShowDialog(this);
+            checkBtn.Click += (s, e) => UpdateDialog.ShowSingle(owner: this);
             Controls.Add(checkBtn);
 
             var closeBtn = new Button

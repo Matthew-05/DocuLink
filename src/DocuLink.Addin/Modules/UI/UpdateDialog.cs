@@ -13,6 +13,10 @@ namespace DocuLink.Addin.Modules.UI
     {
         private enum State { Checking, Found, UpToDate, Dev, Downloading, Complete, Error }
 
+        private static readonly object InstanceSync = new object();
+        private static UpdateDialog _activeDialog;
+        private static bool _installationStarted;
+
         private readonly UpdateCheckResult _preChecked;
         private CancellationTokenSource _downloadCts;
         private string _localMsiPath;
@@ -27,7 +31,7 @@ namespace DocuLink.Addin.Modules.UI
         private readonly Label _releaseNotesLabel;
         private readonly ReleaseNotesControl _releaseNotes;
 
-        internal UpdateDialog(UpdateCheckResult preChecked = null)
+        private UpdateDialog(UpdateCheckResult preChecked = null)
         {
             _preChecked = preChecked;
 
@@ -132,6 +136,83 @@ namespace DocuLink.Addin.Modules.UI
                 _closeButton,
                 _snoozeCheckBox
             });
+        }
+
+        /// <summary>
+        /// Shows the single update workflow shared by automatic and manual checks.
+        /// The dialog remains registered while an update is downloading, and a
+        /// successful installer launch suppresses further dialogs for this process.
+        /// </summary>
+        internal static bool ShowSingle(
+            UpdateCheckResult preChecked = null,
+            IWin32Window owner = null)
+        {
+            UpdateDialog dialog;
+            UpdateDialog existing;
+
+            lock (InstanceSync)
+            {
+                if (_installationStarted)
+                    return false;
+
+                existing = _activeDialog;
+                if (existing == null || existing.IsDisposed)
+                {
+                    dialog = new UpdateDialog(preChecked);
+                    _activeDialog = dialog;
+                    existing = null;
+                }
+                else
+                {
+                    dialog = null;
+                }
+            }
+
+            if (existing != null)
+            {
+                FocusExistingDialog(existing);
+                return false;
+            }
+
+            try
+            {
+                if (owner == null)
+                    dialog.ShowDialog();
+                else
+                    dialog.ShowDialog(owner);
+
+                return true;
+            }
+            finally
+            {
+                lock (InstanceSync)
+                {
+                    if (ReferenceEquals(_activeDialog, dialog))
+                        _activeDialog = null;
+                }
+
+                dialog.Dispose();
+            }
+        }
+
+        private static void FocusExistingDialog(UpdateDialog dialog)
+        {
+            if (dialog.IsDisposed || !dialog.IsHandleCreated)
+                return;
+
+            Action focus = () =>
+            {
+                if (dialog.IsDisposed || !dialog.Visible)
+                    return;
+
+                dialog.BringToFront();
+                dialog.Activate();
+            };
+
+            if (dialog.InvokeRequired)
+                dialog.BeginInvoke(focus);
+            else
+                focus();
         }
 
         protected override async void OnShown(EventArgs e)
@@ -306,7 +387,29 @@ namespace DocuLink.Addin.Modules.UI
             {
                 if (_localMsiPath != null)
                 {
-                    Process.Start("msiexec.exe", $"/i \"{_localMsiPath}\"");
+                    lock (InstanceSync)
+                    {
+                        if (_installationStarted)
+                            return;
+
+                        _installationStarted = true;
+                    }
+
+                    try
+                    {
+                        Process.Start("msiexec.exe", $"/i \"{_localMsiPath}\"");
+                    }
+                    catch
+                    {
+                        lock (InstanceSync)
+                            _installationStarted = false;
+
+                        _statusLabel.Text = "Could not start the installer.";
+                        _actionButton.Visible = true;
+                        _closeButton.Text = "Close";
+                        return;
+                    }
+
                     Globals.ThisAddIn.CloseAllApplicationWindows();
                     var owner = Owner;
                     Close();
