@@ -437,6 +437,7 @@ def _geometry_page_from_hocr(
     root = ET.fromstring(hocr_bytes)
     characters: list[dict] = []
     confidences: list[float] = []
+    line_stats: list[dict] = []
     word_count = 0
     line_index = 0
 
@@ -444,6 +445,9 @@ def _geometry_page_from_hocr(
     for line in root.iter():
         if not (_hocr_classes(line) & line_classes):
             continue
+        line_character_start = len(characters)
+        line_confidences: list[float] = []
+        line_word_count = 0
         previous_bbox: tuple[int, int, int, int] | None = None
         words = [
             element
@@ -458,7 +462,9 @@ def _geometry_page_from_hocr(
                 word.attrib.get("title", "")
             )
             if confidence_match:
-                confidences.append(float(confidence_match.group(1)))
+                confidence = float(confidence_match.group(1))
+                confidences.append(confidence)
+                line_confidences.append(confidence)
 
             all_char_elements = [
                 element
@@ -539,6 +545,23 @@ def _geometry_page_from_hocr(
                 int(char_items[-1][1][3]),
             )
             word_count += 1
+            line_word_count += 1
+        line_text = "".join(
+            str(character["char"])
+            for character in characters[line_character_start:]
+        ).strip()
+        line_stats.append(
+            {
+                "line_index": line_index,
+                "text": line_text,
+                "word_count": line_word_count,
+                "mean_confidence": round(
+                    statistics.fmean(line_confidences), 2
+                )
+                if line_confidences
+                else 0.0,
+            }
+        )
         line_index += 1
 
     return (
@@ -552,6 +575,7 @@ def _geometry_page_from_hocr(
             "mean_confidence": round(statistics.fmean(confidences), 2)
             if confidences
             else 0.0,
+            "line_stats": line_stats,
         },
     )
 
@@ -563,6 +587,7 @@ def _direct_ocr_page(
     language: str,
     psm: int,
     crop_to_dominant_image: bool,
+    preprocessing: str,
 ) -> tuple[dict, dict]:
     configure_tesseract()
 
@@ -588,6 +613,11 @@ def _direct_ocr_page(
     finally:
         doc.close()
 
+    if preprocessing == "faint-ink":
+        image = _prepare_faint_ink_image(image)
+    elif preprocessing != "none":
+        raise ValueError(f"Unknown direct OCR preprocessing: {preprocessing}")
+
     hocr_bytes = pytesseract.image_to_pdf_or_hocr(
         image,
         lang=language,
@@ -604,7 +634,27 @@ def _direct_ocr_page(
     stats["dpi"] = dpi
     stats["psm"] = psm
     stats["cropped"] = clip is not None
+    stats["preprocessing"] = preprocessing
     return page_geometry, stats
+
+
+def _prepare_faint_ink_image(image: "object") -> "object":
+    """Flatten uneven scan backgrounds while retaining colored pen strokes.
+
+    A normal grayscale conversion can make blue or red handwriting much lighter
+    than black print. Taking the darkest RGB channel preserves whichever channel
+    carries the most contrast for each pixel. Subtracting a blurred local
+    background then suppresses shadows, colored paper, stains, and camera-lighting
+    gradients without relying on one global threshold.
+    """
+    from PIL import ImageChops, ImageFilter, ImageOps
+
+    red, green, blue = image.convert("RGB").split()
+    darkest = ImageChops.darker(ImageChops.darker(red, green), blue)
+    blur_radius = max(6, min(24, round(min(image.size) / 140)))
+    background = darkest.filter(ImageFilter.GaussianBlur(blur_radius))
+    local_foreground = ImageChops.subtract(background, darkest)
+    return ImageOps.invert(ImageOps.autocontrast(local_foreground, cutoff=1))
 
 
 def _dominant_image_clip(page: "object") -> "object | None":
@@ -670,6 +720,7 @@ def extract_direct_text_geometry(
     language: str = "eng",
     psm: int = 3,
     crop_to_dominant_image: bool = False,
+    preprocessing: str = "none",
     progress_callback: "callable[[str], None] | None" = None,
 ) -> tuple[dict[int, dict], dict[int, dict]]:
     """OCR selected pages directly to geometry without constructing a PDF."""
@@ -697,6 +748,7 @@ def extract_direct_text_geometry(
                     language,
                     psm,
                     crop_to_dominant_image,
+                    preprocessing,
                 ): page_number
                 for page_number in unique_pages
             }
@@ -718,6 +770,209 @@ def extract_direct_text_geometry(
         else:
             os.environ["OMP_THREAD_LIMIT"] = previous_thread_limit
     return pages, stats
+
+
+def should_merge_faint_ink_retry(primary: dict, candidate: dict) -> bool:
+    """Accept a cleanup pass only when it adds material, plausible coverage."""
+    primary_characters = int(primary.get("character_count", 0))
+    candidate_characters = int(candidate.get("character_count", 0))
+    primary_words = int(primary.get("word_count", 0))
+    candidate_words = int(candidate.get("word_count", 0))
+    primary_confidence = float(primary.get("mean_confidence", 0.0))
+    candidate_confidence = float(candidate.get("mean_confidence", 0.0))
+    return (
+        candidate_characters >= primary_characters * 1.05
+        and candidate_words >= primary_words * 1.05
+        and candidate_confidence >= max(45.0, primary_confidence - 15.0)
+    )
+
+
+def _line_groups(page: dict) -> list[list[dict]]:
+    groups: dict[int, list[dict]] = {}
+    order: list[int] = []
+    for character in page.get("characters", []):
+        line_index = int(character.get("lineIndex", 0))
+        if line_index not in groups:
+            groups[line_index] = []
+            order.append(line_index)
+        groups[line_index].append(character)
+    return [groups[line_index] for line_index in order]
+
+
+def _line_bounds(characters: list[dict]) -> tuple[float, float, float, float] | None:
+    visible = [
+        character
+        for character in characters
+        if str(character.get("char", "")).strip()
+        and float(character.get("width", 0.0)) > 0
+        and float(character.get("height", 0.0)) > 0
+    ]
+    if not visible:
+        return None
+    return (
+        min(float(character["x"]) for character in visible),
+        min(float(character["y"]) for character in visible),
+        max(
+            float(character["x"]) + float(character["width"])
+            for character in visible
+        ),
+        max(
+            float(character["y"]) + float(character["height"])
+            for character in visible
+        ),
+    )
+
+
+def _line_regions_overlap(
+    first: tuple[float, float, float, float],
+    second: tuple[float, float, float, float],
+) -> bool:
+    horizontal = max(0.0, min(first[2], second[2]) - max(first[0], second[0]))
+    vertical = max(0.0, min(first[3], second[3]) - max(first[1], second[1]))
+    first_width = max(1e-6, first[2] - first[0])
+    second_width = max(1e-6, second[2] - second[0])
+    first_height = max(1e-6, first[3] - first[1])
+    second_height = max(1e-6, second[3] - second[1])
+    return (
+        horizontal / min(first_width, second_width) >= 0.10
+        and vertical / min(first_height, second_height) >= 0.35
+    )
+
+
+def merge_missing_text_lines(
+    primary_page: dict,
+    candidate_page: dict,
+    primary_line_stats: list[dict] | None = None,
+    candidate_line_stats: list[dict] | None = None,
+) -> tuple[dict, int, int, int]:
+    """Add missing lines and replace only weak overlaps with better coverage.
+
+    Returns the merged page, changed-line count, and word/character deltas. The
+    original Tesseract reading order is retained; new lines are inserted by
+    vertical position instead of globally re-sorting multi-column source text.
+    """
+    primary_groups = _line_groups(primary_page)
+    primary_bounds = [_line_bounds(group) for group in primary_groups]
+    primary_confidences = {
+        int(item.get("line_index", index)): float(
+            item.get("mean_confidence", 0.0)
+        )
+        for index, item in enumerate(primary_line_stats or [])
+    }
+    candidate_confidences = {
+        int(item.get("line_index", index)): float(
+            item.get("mean_confidence", 0.0)
+        )
+        for index, item in enumerate(candidate_line_stats or [])
+    }
+    additions: list[tuple[tuple[float, float, float, float], list[dict], str]] = []
+    replacements: dict[int, tuple[list[dict], str]] = {}
+    for candidate_index, group in enumerate(_line_groups(candidate_page)):
+        text = "".join(str(character.get("char", "")) for character in group).strip()
+        candidate_alphanumeric = sum(character.isalnum() for character in text)
+        if candidate_alphanumeric < 3:
+            continue
+        bounds = _line_bounds(group)
+        if bounds is None:
+            continue
+        overlapping = [
+            index
+            for index, occupied in enumerate(primary_bounds)
+            if occupied is not None and _line_regions_overlap(bounds, occupied)
+        ]
+        if overlapping:
+            if len(overlapping) != 1:
+                continue
+            primary_index = overlapping[0]
+            primary_text = "".join(
+                str(character.get("char", ""))
+                for character in primary_groups[primary_index]
+            ).strip()
+            primary_alphanumeric = sum(
+                character.isalnum() for character in primary_text
+            )
+            primary_line_index = int(
+                primary_groups[primary_index][0].get("lineIndex", primary_index)
+            )
+            candidate_line_index = int(
+                group[0].get("lineIndex", candidate_index)
+            )
+            primary_confidence = primary_confidences.get(
+                primary_line_index, 0.0
+            )
+            candidate_confidence = candidate_confidences.get(
+                candidate_line_index, 0.0
+            )
+            if not (
+                primary_line_stats is not None
+                and candidate_line_stats is not None
+                and primary_confidence < 60.0
+                and candidate_confidence >= 25.0
+                and candidate_confidence >= primary_confidence - 20.0
+                and candidate_alphanumeric
+                >= max(primary_alphanumeric + 5, primary_alphanumeric * 1.25)
+            ):
+                continue
+            replacements[primary_index] = (group, text)
+            continue
+        additions.append((bounds, group, text))
+
+    if not additions and not replacements:
+        return dict(primary_page), 0, 0, 0
+
+    additions.sort(key=lambda item: (item[0][1], item[0][0]))
+    merged_groups: list[list[dict]] = []
+    addition_index = 0
+    replaced_word_delta = 0
+    replaced_character_delta = 0
+    for primary_index, primary_group in enumerate(primary_groups):
+        primary_bounds_item = _line_bounds(primary_group)
+        primary_y = primary_bounds_item[1] if primary_bounds_item else 1.0
+        while (
+            addition_index < len(additions)
+            and additions[addition_index][0][1] < primary_y
+        ):
+            merged_groups.append(additions[addition_index][1])
+            addition_index += 1
+        replacement = replacements.get(primary_index)
+        if replacement is None:
+            merged_groups.append(primary_group)
+            continue
+        replacement_group, replacement_text = replacement
+        primary_text = "".join(
+            str(character.get("char", "")) for character in primary_group
+        ).strip()
+        replaced_word_delta += len(replacement_text.split()) - len(
+            primary_text.split()
+        )
+        replaced_character_delta += sum(
+            not character.isspace() for character in replacement_text
+        ) - sum(not character.isspace() for character in primary_text)
+        merged_groups.append(replacement_group)
+    merged_groups.extend(item[1] for item in additions[addition_index:])
+
+    merged_characters: list[dict] = []
+    for line_index, group in enumerate(merged_groups):
+        for character in group:
+            copied = dict(character)
+            copied["lineIndex"] = line_index
+            merged_characters.append(copied)
+
+    word_delta = replaced_word_delta + sum(
+        len(text.split()) for _, _, text in additions
+    )
+    character_delta = replaced_character_delta + sum(
+        sum(not character.isspace() for character in text)
+        for _, _, text in additions
+    )
+    merged_page = dict(primary_page)
+    merged_page["characters"] = merged_characters
+    return (
+        merged_page,
+        len(additions) + len(replacements),
+        word_delta,
+        character_delta,
+    )
 
 
 def merge_geometry_pages(

@@ -34,6 +34,7 @@ from engines.ocr_engine import (
     evaluate_adaptive_profiles,
     extract_direct_text_geometry,
     merge_geometry_pages,
+    merge_missing_text_lines,
     needs_adaptive_retry,
     needs_garbled_text_retry,
     needs_high_resolution_retry,
@@ -43,6 +44,7 @@ from engines.ocr_engine import (
     resolve_use_threads,
     select_pages_requiring_ocr,
     select_best_adaptive_profile,
+    should_merge_faint_ink_retry,
     summarize_geometry_quality,
 )
 from ocrmypdf.exceptions import DigitalSignatureError, InputFileError
@@ -78,7 +80,7 @@ _PROTOCOL_OUT = _claim_protocol_stream()
 from schemas.models import ConvertJob, ConvertResult, OcrJob, OcrProgress, OcrResult
 
 
-_GEOMETRY_CACHE_VERSION = "direct-hocr-v2"
+_GEOMETRY_CACHE_VERSION = "direct-hocr-v3"
 _GEOMETRY_CACHE_MAX_ENTRIES = 16
 _GEOMETRY_CACHE: OrderedDict[str, dict] = OrderedDict()
 
@@ -568,21 +570,78 @@ def _handle_job(job: OcrJob) -> None:
                         if float(stats["mean_confidence"]) < 75.0
                         or int(stats["character_count"]) < 40
                     ]
-                    if direct_retry_page_numbers:
+                    faint_ink_page_numbers = [
+                        page_number
+                        for page_number in direct_retry_page_numbers
+                        if int(direct_stats[page_number]["character_count"]) >= 40
+                        and float(direct_stats[page_number]["mean_confidence"]) < 75.0
+                    ]
+                    if faint_ink_page_numbers:
+                        evaluated_profiles.append(
+                            "direct-hocr-faint-ink-psm6-300"
+                        )
+                        on_progress(
+                            f"Enhancing {len(faint_ink_page_numbers)} faint or "
+                            "uneven scan page(s)…"
+                        )
+                        retry_started = time.perf_counter()
+                        enhanced_pages, enhanced_stats = (
+                            extract_direct_text_geometry(
+                                pdf_bytes,
+                                faint_ink_page_numbers,
+                                dpi=300,
+                                psm=6,
+                                preprocessing="faint-ink",
+                                progress_callback=on_progress,
+                            )
+                        )
+                        adaptive_ocr_ms += _elapsed_ms(retry_started)
+                        for page_number in faint_ink_page_numbers:
+                            first = direct_stats[page_number]
+                            enhanced = enhanced_stats[page_number]
+                            if not should_merge_faint_ink_retry(first, enhanced):
+                                continue
+                            (
+                                merged_page,
+                                changed_lines,
+                                word_delta,
+                                character_delta,
+                            ) = merge_missing_text_lines(
+                                direct_pages[page_number],
+                                enhanced_pages[page_number],
+                                first.get("line_stats"),
+                                enhanced.get("line_stats"),
+                            )
+                            if changed_lines <= 0:
+                                continue
+                            direct_pages[page_number] = merged_page
+                            first["word_count"] = (
+                                int(first["word_count"]) + word_delta
+                            )
+                            first["character_count"] = (
+                                int(first["character_count"]) + character_delta
+                            )
+
+                    high_resolution_page_numbers = [
+                        page_number
+                        for page_number in direct_retry_page_numbers
+                        if int(direct_stats[page_number]["character_count"]) < 40
+                    ]
+                    if high_resolution_page_numbers:
                         evaluated_profiles.append("direct-hocr-400")
                         on_progress(
-                            f"Retrying {len(direct_retry_page_numbers)} weak "
+                            f"Retrying {len(high_resolution_page_numbers)} sparse "
                             "page(s) at 400 DPI…"
                         )
                         retry_started = time.perf_counter()
                         retry_pages, retry_stats = extract_direct_text_geometry(
                             pdf_bytes,
-                            direct_retry_page_numbers,
+                            high_resolution_page_numbers,
                             dpi=400,
                             progress_callback=on_progress,
                         )
-                        adaptive_ocr_ms = _elapsed_ms(retry_started)
-                        for page_number in direct_retry_page_numbers:
+                        adaptive_ocr_ms += _elapsed_ms(retry_started)
+                        for page_number in high_resolution_page_numbers:
                             first = direct_stats[page_number]
                             retry = retry_stats[page_number]
                             first_characters = int(first["character_count"])

@@ -3,7 +3,7 @@ import unittest
 from unittest.mock import patch
 
 import pymupdf as fitz
-from PIL import Image
+from PIL import Image, ImageDraw
 from schemas.models import OcrJob
 
 from engines.ocr_engine import (
@@ -13,8 +13,10 @@ from engines.ocr_engine import (
     PROFILE_TABLE_SPARSE,
     _dominant_image_clip,
     _geometry_page_from_hocr,
+    _prepare_faint_ink_image,
     _remap_cropped_page_geometry,
     merge_geometry_pages,
+    merge_missing_text_lines,
     needs_adaptive_retry,
     needs_garbled_text_retry,
     needs_high_resolution_retry,
@@ -23,6 +25,7 @@ from engines.ocr_engine import (
     profile_ocr_options,
     select_pages_requiring_ocr,
     select_best_adaptive_profile,
+    should_merge_faint_ink_retry,
     summarize_geometry_quality,
 )
 
@@ -185,6 +188,126 @@ class DirectGeometryTests(unittest.TestCase):
         self.assertEqual(
             "".join(c["char"] for c in merged["pages"][1]["characters"]),
             "ocr two",
+        )
+
+    def test_faint_ink_retry_requires_material_coverage_without_confidence_collapse(
+        self,
+    ) -> None:
+        primary = {
+            "character_count": 500,
+            "word_count": 100,
+            "mean_confidence": 71.0,
+        }
+
+        self.assertTrue(
+            should_merge_faint_ink_retry(
+                primary,
+                {
+                    "character_count": 560,
+                    "word_count": 112,
+                    "mean_confidence": 62.0,
+                },
+            )
+        )
+        self.assertFalse(
+            should_merge_faint_ink_retry(
+                primary,
+                {
+                    "character_count": 560,
+                    "word_count": 112,
+                    "mean_confidence": 40.0,
+                },
+            )
+        )
+
+    def test_faint_ink_cleanup_strengthens_colored_strokes(self) -> None:
+        image = Image.new("RGB", (300, 120), (238, 224, 195))
+        draw = ImageDraw.Draw(image)
+        draw.rectangle((80, 45, 220, 54), fill=(85, 105, 190))
+
+        cleaned = _prepare_faint_ink_image(image)
+
+        self.assertLess(cleaned.getpixel((150, 49)), cleaned.getpixel((150, 20)))
+
+    def test_missing_line_merge_preserves_primary_and_adds_only_new_regions(
+        self,
+    ) -> None:
+        def line(text: str, y: float, line_index: int) -> list[dict]:
+            return [
+                {
+                    "char": character,
+                    "x": 0.10 + index * 0.02,
+                    "y": y,
+                    "width": 0.018,
+                    "height": 0.03,
+                    "lineIndex": line_index,
+                }
+                for index, character in enumerate(text)
+            ]
+
+        primary = {
+            "pageIndex": 0,
+            "characters": line("Printed label", 0.10, 0)
+            + line("Next section", 0.80, 1),
+        }
+        candidate = {
+            "pageIndex": 0,
+            "characters": line("Printed labe1", 0.10, 0)
+            + line("faint handwritten response", 0.45, 1),
+        }
+
+        merged, added_lines, added_words, added_characters = (
+            merge_missing_text_lines(primary, candidate)
+        )
+        merged_text = "".join(
+            character["char"] for character in merged["characters"]
+        )
+
+        self.assertEqual(added_lines, 1)
+        self.assertEqual(added_words, 3)
+        self.assertEqual(added_characters, len("fainthandwrittenresponse"))
+        self.assertEqual(
+            merged_text,
+            "Printed labelfaint handwritten responseNext section",
+        )
+
+    def test_missing_line_merge_replaces_short_weak_overlap_with_better_coverage(
+        self,
+    ) -> None:
+        def line(text: str) -> list[dict]:
+            return [
+                {
+                    "char": character,
+                    "x": 0.10 + index * 0.02,
+                    "y": 0.40,
+                    "width": 0.018,
+                    "height": 0.03,
+                    "lineIndex": 0,
+                }
+                for index, character in enumerate(text)
+            ]
+
+        primary = {"pageIndex": 0, "characters": line("short noise")}
+        candidate = {
+            "pageIndex": 0,
+            "characters": line("substantially longer response text"),
+        }
+
+        merged, changed_lines, word_delta, character_delta = (
+            merge_missing_text_lines(
+                primary,
+                candidate,
+                [{"line_index": 0, "mean_confidence": 50.0}],
+                [{"line_index": 0, "mean_confidence": 38.0}],
+            )
+        )
+
+        self.assertEqual(changed_lines, 1)
+        self.assertGreater(word_delta, 0)
+        self.assertGreater(character_delta, 0)
+        self.assertEqual(
+            "".join(character["char"] for character in merged["characters"]),
+            "substantially longer response text",
         )
 
     def test_cropped_geometry_maps_back_to_original_page(self) -> None:
