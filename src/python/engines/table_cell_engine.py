@@ -2,8 +2,10 @@
 from __future__ import annotations
 
 import io
+import os
 import re
 from collections import Counter
+from concurrent.futures import ThreadPoolExecutor
 from difflib import SequenceMatcher
 from typing import Callable
 
@@ -12,29 +14,23 @@ from PIL import Image, ImageDraw, ImageFilter, ImageOps
 
 from engines.ocr_engine import configure_tesseract
 from engines.table_date_engine import (
-    _date_columns,
     _map_image_rect,
     _prepare_cell,
     _recognize_date,
     detect_ruled_grid,
+    normalize_date,
 )
 
-
-_STATUS_PHRASES = (
-    "Closure Permanent",
-    "Closure Temporary",
-    "Layoff Permanent",
-    "Layoff Temporary",
-    "Layoff Unknown at this time",
-)
-
-_HEADER_LINE_LAYOUTS = {
-    "Effective Date": ("Effective", "Date"),
-    "Received Date": ("Received", "Date"),
-    "No. Of Employees": ("No. Of", "Employees"),
-}
 
 _MIN_TABLE_IMAGE_PAGE_COVERAGE = 0.05
+_MAX_CELL_OCR_WORKERS = 8
+
+
+def _cell_ocr_worker_count(task_count: int) -> int:
+    return min(
+        max(1, task_count),
+        max(1, min(_MAX_CELL_OCR_WORKERS, os.cpu_count() or 1)),
+    )
 
 
 def _largest_table_placement(
@@ -85,7 +81,9 @@ def _ink_line_boxes(
 
     row_groups: list[list[int]] = [[active_rows[0]]]
     for y in active_rows[1:]:
-        if y == row_groups[-1][-1] + 1:
+        # Join tiny vertical gaps from dotted glyphs and scan dropout while
+        # retaining the larger whitespace between genuinely wrapped lines.
+        if y <= row_groups[-1][-1] + 3:
             row_groups[-1].append(y)
         else:
             row_groups.append([y])
@@ -125,10 +123,6 @@ def _ink_box(image: Image.Image) -> tuple[int, int, int, int] | None:
 def _header_line_texts(text: str, line_count: int) -> list[str]:
     if line_count <= 1:
         return [text]
-    preferred = _HEADER_LINE_LAYOUTS.get(text)
-    if preferred and len(preferred) == line_count:
-        return list(preferred)
-
     words = text.split()
     if len(words) < line_count:
         return [text]
@@ -180,13 +174,6 @@ def _cleanup_text(text: str) -> str:
     cleaned = text.replace("�", " ").replace("—", "-").replace("–", "-")
     cleaned = re.sub(r"\s+", " ", cleaned).strip(" |_-")
     cleaned = re.sub(r"\s+([,.;:])", r"\1", cleaned)
-    cleaned = re.sub(r"\.\s+(Inc\.|LLC\b)", r", \1", cleaned)
-    cleaned = re.sub(r"\bd/o?b/a\s*", "d/b/a ", cleaned, flags=re.IGNORECASE)
-    cleaned = re.sub(r"\bd/b/a(?=[A-Z])", "d/b/a ", cleaned)
-    cleaned = re.sub(r"\b([A-Z])\.([A-Z])\.1\.", r"\1.\2.I.", cleaned)
-    cleaned = re.sub(r"bura\b", "burg", cleaned, flags=re.IGNORECASE)
-    if cleaned.endswith(")") and "(" not in cleaned:
-        cleaned = cleaned[:-1].rstrip()
     return cleaned.strip()
 
 
@@ -198,6 +185,8 @@ def _ocr_candidate(
     threshold: int | None = None,
     sharpen: bool = False,
     digits_only: bool = False,
+    numeric_only: bool = False,
+    psm: int = 7,
 ) -> tuple[str, float]:
     import pytesseract
 
@@ -212,9 +201,11 @@ def _ocr_candidate(
     )
     padded = Image.new("L", (prepared.width + 40, prepared.height + 40), 255)
     padded.paste(prepared, (20, 20))
-    config = "--psm 7 --dpi 600 -c preserve_interword_spaces=1"
+    config = f"--psm {psm} --dpi 600 -c preserve_interword_spaces=1"
     if digits_only:
         config += " -c tessedit_char_whitelist=0123456789"
+    elif numeric_only:
+        config += " -c tessedit_char_whitelist=0123456789.,$%()-/"
     data = pytesseract.image_to_data(
         padded,
         lang=language,
@@ -246,10 +237,11 @@ def _cell_candidates(
     *,
     kind: str,
     digits_only: bool = False,
+    numeric_only: bool = False,
 ) -> list[dict]:
     if kind == "status":
         variants = [("raw", raw_cell, 10, None, False)]
-    elif kind == "number":
+    elif kind in {"number", "numeric", "currency", "percentage"}:
         variants = [
             ("raw", raw_cell, 10, None, False),
             ("raw-threshold", raw_cell, 10, 160, False),
@@ -262,6 +254,7 @@ def _cell_candidates(
         ]
 
     candidates: list[dict] = []
+    psm = 6 if len(_ink_line_boxes(clean_cell)) > 1 else 7
 
     def append_variant(variant: tuple[str, Image.Image, int, int | None, bool]) -> None:
         source, image, scale, threshold, sharpen = variant
@@ -272,6 +265,8 @@ def _cell_candidates(
             threshold=threshold,
             sharpen=sharpen,
             digits_only=digits_only,
+            numeric_only=numeric_only,
+            psm=psm,
         )
         if text:
             candidates.append(
@@ -285,7 +280,9 @@ def _cell_candidates(
         (candidate["confidence"] for candidate in candidates),
         default=-1,
     )
-    if kind == "number" and (best_confidence < 80 or len({c["text"] for c in candidates}) > 1):
+    if kind in {"number", "numeric", "currency", "percentage"} and (
+        best_confidence < 80 or len({c["text"] for c in candidates}) > 1
+    ):
         retries = (
             ("raw-small", raw_cell, 8, None, False),
             ("clean-small", clean_cell, 8, None, False),
@@ -325,15 +322,51 @@ def _select_number(candidates: list[dict]) -> str | None:
     return max(scores, key=lambda text: (scores[text], len(text)))
 
 
-def _select_status(candidates: list[dict]) -> str | None:
-    if not candidates:
+def _select_numeric(candidates: list[dict], kind: str) -> str | None:
+    """Choose numeric OCR using generic column format, confidence, and consensus."""
+    numeric = [candidate for candidate in candidates if any(c.isdigit() for c in candidate["text"])]
+    if not numeric:
         return None
-    candidate = max(candidates, key=lambda item: item["confidence"])["text"]
-    normalized = candidate.lower()
+    counts = Counter(candidate["text"] for candidate in numeric)
+
+    def format_score(text: str) -> float:
+        if kind == "currency":
+            if re.fullmatch(r"\$\d{1,3}(?:,\d{3})*\.\d{2}", text):
+                return 35.0
+            if re.fullmatch(r"\$\d+\.\d{2}", text):
+                return 28.0
+            if text.startswith("$"):
+                return 8.0
+            return 0.0
+        if kind == "percentage":
+            if re.fullmatch(r"\d+\.\d+%", text):
+                return 30.0
+            if re.fullmatch(r"\d+%", text):
+                return 8.0
+            return 0.0
+        return 8.0 if re.fullmatch(r"[\d,.$%()/\-]+", text) else 0.0
+
     return max(
-        _STATUS_PHRASES,
-        key=lambda phrase: SequenceMatcher(None, normalized, phrase.lower()).ratio(),
-    )
+        numeric,
+        key=lambda candidate: (
+            format_score(candidate["text"])
+            + min(15.0, counts[candidate["text"]] * 3.0)
+            + float(candidate["confidence"]) * 0.30,
+            float(candidate["confidence"]),
+        ),
+    )["text"]
+
+
+def _normalize_currency_separators(text: str | None) -> str | None:
+    """Repair a US-dollar thousands separator only when the pattern is unambiguous."""
+    if not text or not re.fullmatch(r"\$\d{1,3}(?:\.\d{3})+\.\d{2}", text):
+        return text
+    integer, decimal = text.rsplit(".", 1)
+    return integer.replace(".", ",") + "." + decimal
+
+
+def _select_status(candidates: list[dict]) -> str | None:
+    return _select_general_text(candidates)
 
 
 def _looks_noisy(text: str) -> bool:
@@ -360,10 +393,20 @@ def _select_city(candidates: list[dict]) -> str | None:
 def _select_general_text(candidates: list[dict]) -> str | None:
     if not candidates:
         return None
-    raw = next((candidate for candidate in candidates if candidate["source"] == "raw"), None)
-    if raw and not _looks_noisy(raw["text"]):
-        return raw["text"]
-    return max(candidates, key=lambda item: (item["confidence"], len(item["text"])))["text"]
+    usable = [candidate for candidate in candidates if not _looks_noisy(candidate["text"])]
+    pool = usable or candidates
+    counts = Counter(_normalized_key(candidate["text"]) for candidate in pool)
+
+    def score(candidate: dict) -> tuple[int, float, int, int]:
+        text = candidate["text"]
+        return (
+            counts[_normalized_key(text)],
+            float(candidate["confidence"]),
+            1 if candidate["source"].startswith("raw") else 0,
+            len(text),
+        )
+
+    return max(pool, key=score)["text"]
 
 
 def _normalized_key(text: str) -> str:
@@ -410,36 +453,241 @@ def _canonicalize_repeated_cells(cells: list[dict]) -> None:
                 cell["text"] = canonical
 
 
-def _canonical_header(text: str) -> str:
-    normalized = _normalized_key(text)
-    if "notice" in normalized and "date" in normalized:
-        return "Notice Date"
-    if "effective" in normalized and "date" in normalized:
-        return "Effective Date"
-    if "received" in normalized and "date" in normalized:
-        return "Received Date"
-    if "company" in normalized:
-        return "Company"
-    if normalized == "city" or normalized.startswith("city"):
-        return "City"
-    if "employee" in normalized:
-        return "No. Of Employees"
-    if "layoff" in normalized and "closure" in normalized:
-        return "Layoff/Closure"
-    return text
-
-
 def _column_kind(header: str) -> str:
     normalized = _normalized_key(header)
     if "date" in normalized:
         return "date"
-    if "employee" in normalized or normalized.startswith("noof"):
+    if any(
+        hint in normalized
+        for hint in ("count", "quantity", "number", "employees", "noof")
+    ):
         return "number"
-    if "layoff" in normalized or "closure" in normalized:
+    if "rate" in normalized or "percent" in normalized:
+        return "percentage"
+    if any(
+        hint in normalized
+        for hint in ("amount", "balance", "price", "cost", "total")
+    ):
+        return "currency"
+    if "status" in normalized:
         return "status"
     if "city" in normalized:
         return "city"
     return "text"
+
+
+def _recognize_cell_images(
+    raw_cell: Image.Image,
+    clean_cell: Image.Image,
+    kind: str,
+    language: str,
+) -> dict:
+    """Recognize one already-cropped cell; safe to run in the cell thread pool."""
+    has_ink = _ink_box(clean_cell) is not None
+    candidates: list[dict] = []
+    if not has_ink:
+        text = None
+    elif kind == "date":
+        text = _recognize_date(raw_cell, language)
+    else:
+        candidates = _cell_candidates(
+            raw_cell,
+            clean_cell,
+            language,
+            kind=kind,
+            digits_only=kind == "number",
+            numeric_only=kind in {"numeric", "currency", "percentage"},
+        )
+        if kind == "number":
+            text = _select_number(candidates)
+        elif kind in {"numeric", "currency", "percentage"}:
+            text = _select_numeric(candidates, kind)
+            if kind == "currency":
+                text = _normalize_currency_separators(text)
+        elif kind == "status":
+            text = _select_status(candidates)
+        elif kind == "city":
+            text = _select_city(candidates)
+        else:
+            text = _select_general_text(candidates)
+    return {
+        "has_ink": has_ink,
+        "text": text,
+        "candidates": candidates,
+    }
+
+
+def _batch_ocr_cell_images(
+    cells: list[Image.Image],
+    language: str,
+    kind: str,
+    *,
+    threshold: int | None = None,
+) -> list[dict]:
+    """OCR one homogeneous table column in a single Tesseract process."""
+    import pytesseract
+
+    scale = 8
+    gap = 32
+    prepared_cells: list[Image.Image] = []
+    for cell in cells:
+        prepared = ImageOps.autocontrast(ImageOps.grayscale(cell))
+        if threshold is not None:
+            prepared = prepared.point(
+                lambda value, limit=threshold: 0 if value < limit else 255
+            )
+        prepared_cells.append(
+            prepared.resize(
+                (prepared.width * scale, prepared.height * scale),
+                Image.Resampling.LANCZOS,
+            )
+        )
+
+    strip_width = max(cell.width for cell in prepared_cells) + gap * 2
+    strip_height = sum(cell.height + gap * 2 for cell in prepared_cells)
+    strip = Image.new("L", (strip_width, strip_height), 255)
+    ranges: list[tuple[int, int]] = []
+    y = 0
+    for cell in prepared_cells:
+        top = y
+        strip.paste(cell, (gap, y + gap))
+        y += cell.height + gap * 2
+        ranges.append((top, y))
+
+    config = "--psm 6 --dpi 600 -c preserve_interword_spaces=1"
+    if kind == "number":
+        config += " -c tessedit_char_whitelist=0123456789"
+    elif kind in {"numeric", "currency", "percentage"}:
+        config += " -c tessedit_char_whitelist=0123456789.,$%()-/"
+    elif kind == "date":
+        config += " -c tessedit_char_whitelist=0123456789/"
+    data = pytesseract.image_to_data(
+        strip,
+        lang=language,
+        config=config,
+        output_type=pytesseract.Output.DICT,
+    )
+
+    texts: list[list[str]] = [[] for _ in cells]
+    confidences: list[list[float]] = [[] for _ in cells]
+    range_index = 0
+    for index, raw_text in enumerate(data.get("text", [])):
+        text = str(raw_text).strip()
+        if not text:
+            continue
+        center_y = int(data["top"][index]) + int(data["height"][index]) / 2
+        while range_index + 1 < len(ranges) and center_y >= ranges[range_index][1]:
+            range_index += 1
+        if not ranges[range_index][0] <= center_y < ranges[range_index][1]:
+            continue
+        texts[range_index].append(text)
+        try:
+            confidence = float(data["conf"][index])
+        except (TypeError, ValueError):
+            continue
+        if confidence >= 0:
+            confidences[range_index].append(confidence)
+
+    return [
+        {
+            "text": _cleanup_text(" ".join(parts)),
+            "confidence": sum(scores) / len(scores) if scores else -1.0,
+        }
+        for parts, scores in zip(texts, confidences)
+    ]
+
+
+def _batch_cell_result(
+    normal: dict,
+    thresholded: dict,
+    kind: str,
+    has_ink: bool,
+) -> dict:
+    """Select a batched reading and flag only ambiguous cells for retry."""
+    if not has_ink:
+        return {"has_ink": False, "text": None, "candidates": [], "reliable": True}
+    candidates = [
+        {"source": source, "text": result["text"], "confidence": result["confidence"]}
+        for source, result in (("batch", normal), ("batch-threshold", thresholded))
+        if result["text"]
+    ]
+    if kind == "date":
+        dates = [normalize_date(candidate["text"]) for candidate in candidates]
+        dates = [date for date in dates if date]
+        text = dates[0] if dates else None
+        reliable = bool(text) and (
+            len(set(dates)) == 1
+            or max((candidate["confidence"] for candidate in candidates), default=-1) >= 80
+        )
+    elif kind == "number":
+        text = _select_number(candidates)
+        reliable = bool(text) and text.isdigit()
+    elif kind in {"numeric", "currency", "percentage"}:
+        selected_text = _select_numeric(candidates, kind)
+        text = (
+            _normalize_currency_separators(selected_text)
+            if kind == "currency"
+            else selected_text
+        )
+        if kind == "currency":
+            valid_format = bool(
+                text and re.fullmatch(r"\$\d{1,3}(?:,\d{3})*\.\d{2}", text)
+            )
+        elif kind == "percentage":
+            valid_format = bool(text and re.fullmatch(r"\d+\.\d+%", text))
+        else:
+            valid_format = bool(text)
+        selected_confidence = max(
+            (
+                candidate["confidence"]
+                for candidate in candidates
+                if candidate["text"] == selected_text
+            ),
+            default=-1,
+        )
+        reliable = valid_format and (
+            selected_text == text
+            or sum(candidate["text"] == selected_text for candidate in candidates) >= 2
+            or selected_confidence >= 70
+        ) and (
+            len({_normalized_key(candidate["text"]) for candidate in candidates}) == 1
+            or selected_confidence >= 0
+        )
+    elif kind == "status":
+        text = _select_status(candidates)
+        reliable = bool(text)
+    elif kind == "city":
+        text = _select_city(candidates)
+        reliable = bool(text)
+    else:
+        text = _select_general_text(candidates)
+        reliable = bool(text) and (
+            len({_normalized_key(candidate["text"]) for candidate in candidates}) == 1
+            or max((candidate["confidence"] for candidate in candidates), default=-1) >= 75
+        )
+    return {
+        "has_ink": True,
+        "text": text,
+        "candidates": candidates,
+        "reliable": reliable,
+    }
+
+
+def _recognize_cell_column(specs: list[dict], language: str) -> list[dict]:
+    """Batch a column twice, preserving the individual-cell retry contract."""
+    cells = [spec["clean_cell"] for spec in specs]
+    kind = specs[0]["kind"]
+    normal = _batch_ocr_cell_images(cells, language, kind)
+    thresholded = _batch_ocr_cell_images(cells, language, kind, threshold=160)
+    return [
+        _batch_cell_result(
+            normal_result,
+            threshold_result,
+            kind,
+            _ink_box(spec["clean_cell"]) is not None,
+        )
+        for spec, normal_result, threshold_result in zip(specs, normal, thresholded)
+    ]
 
 
 def _cleanup_sparse_word(text: str) -> str | None:
@@ -448,12 +696,55 @@ def _cleanup_sparse_word(text: str) -> str | None:
         return "-"
     if not any(character.isalnum() for character in raw):
         return None
-    if re.fullmatch(r"10\D*", raw):
-        return "10th"
-    if re.fullmatch(r"25\D*", raw):
-        return "25th"
     cleaned = raw.replace("�", "")
     return cleaned or None
+
+
+def _recognize_header_rows(
+    gray: Image.Image,
+    x_lines: list[int],
+    y_lines: list[int],
+    language: str,
+) -> tuple[int, list[str]] | None:
+    """Infer a header row from grid structure instead of document vocabulary."""
+    import pytesseract
+
+    column_count = len(x_lines) - 1
+    if column_count < 2:
+        return None
+    for row in range(min(3, len(y_lines) - 1)):
+        def recognize_header(column: int) -> str:
+            cell = gray.crop(
+                (
+                    x_lines[column] + 1,
+                    y_lines[row] + 1,
+                    x_lines[column + 1],
+                    y_lines[row + 1],
+                )
+            )
+            raw = pytesseract.image_to_string(
+                _prepare_cell(cell, scale=8),
+                lang=language,
+                config="--psm 6 --dpi 600",
+            )
+            return _cleanup_text(raw)
+
+        with ThreadPoolExecutor(
+            max_workers=_cell_ocr_worker_count(column_count)
+        ) as executor:
+            texts = list(executor.map(recognize_header, range(column_count)))
+
+        populated = [text for text in texts if any(char.isalnum() for char in text)]
+        alphabetic = [text for text in populated if any(char.isalpha() for char in text)]
+        if (
+            len(populated) < max(2, (column_count + 2) // 3)
+            or len(alphabetic) < max(1, (column_count + 3) // 4)
+        ):
+            continue
+        # Header rows are overwhelmingly the first sufficiently textual grid row.
+        # Returning immediately avoids OCRing two data rows on ordinary tables.
+        return row, texts
+    return None
 
 
 def _recognize_sparse_region(
@@ -528,17 +819,27 @@ def _insert_invisible_cell(page: fitz.Page, rect: fitz.Rect, text: str) -> None:
     )
 
 
+def _is_table_recovery_useful(items: list[dict]) -> bool:
+    """Require broad cell success while excluding verified blanks from failures."""
+    ink_items = [item for item in items if item["has_ink"]]
+    recognized_ink = [item for item in ink_items if item["text"]]
+    return (
+        len(recognized_ink) >= 3
+        and len(recognized_ink) / max(1, len(ink_items)) >= 0.50
+    )
+
+
 def has_recoverable_ruled_table(
     pdf_bytes: bytes,
     language: str = "eng",
 ) -> tuple[bool, dict]:
-    """Cheaply detect a ruled table that requires the legacy cell-recovery path."""
+    """Cheaply detect a ruled grid that benefits from cell-aware recovery."""
     stats = {
         "table_images_examined": 0,
         "table_images_skipped_small": 0,
         "table_grid_candidates": 0,
     }
-    configure_tesseract()
+    del language  # retained for API compatibility; detection is image-only
     doc = fitz.open(stream=pdf_bytes, filetype="pdf")
     try:
         for page in doc:
@@ -566,13 +867,7 @@ def has_recoverable_ruled_table(
                 if not x_lines or not y_lines:
                     continue
                 stats["table_grid_candidates"] += 1
-                if _date_columns(
-                    ImageOps.grayscale(image),
-                    x_lines,
-                    y_lines,
-                    language,
-                ):
-                    return True, stats
+                return True, stats
         return False, stats
     finally:
         doc.close()
@@ -601,6 +896,8 @@ def recover_table_cells(
         "changed": False,
     }
     configure_tesseract()
+    previous_thread_limit = os.environ.get("OMP_THREAD_LIMIT")
+    os.environ["OMP_THREAD_LIMIT"] = "1"
     source_doc = fitz.open(stream=source_pdf_bytes, filetype="pdf")
     output_doc = fitz.open(stream=ocr_pdf_bytes, filetype="pdf")
     page_tables: dict[int, list[dict]] = {}
@@ -630,10 +927,15 @@ def recover_table_cells(
                     continue
                 stats["table_grid_candidates"] += 1
                 gray = ImageOps.grayscale(image)
-                date_header = _date_columns(gray, x_lines, y_lines, language)
-                if not date_header:
+                header_detection = _recognize_header_rows(
+                    gray,
+                    x_lines,
+                    y_lines,
+                    language,
+                )
+                if not header_detection:
                     continue
-                header_row, date_columns = date_header
+                header_row, header_texts = header_detection
                 clean = _clean_grid(gray, x_lines, y_lines)
                 first_data_row = header_row + 1
                 column_count = len(x_lines) - 1
@@ -662,14 +964,7 @@ def recover_table_cells(
                             y_lines[header_row + 1],
                         )
                     )
-                    import pytesseract
-
-                    header_text = pytesseract.image_to_string(
-                        _prepare_cell(raw_header, scale=8),
-                        lang=language,
-                        config="--psm 6 --dpi 600",
-                    )
-                    text = _canonical_header(_cleanup_text(header_text))
+                    text = header_texts[column]
                     clean_header = clean.crop(header_pixel_rect)
                     header_boxes = _ink_line_boxes(clean_header)
                     line_texts = _header_line_texts(text, len(header_boxes))
@@ -688,6 +983,7 @@ def recover_table_cells(
                             "column": column,
                             "text": text or None,
                             "kind": _column_kind(text),
+                            "has_ink": _ink_box(clean_header) is not None,
                             "rect": rect,
                             "segments": _map_cell_segments(
                                 placement,
@@ -700,6 +996,10 @@ def recover_table_cells(
                     )
 
                 cells: list[dict] = []
+                specs: list[dict] = []
+                column_specs: dict[int, list[dict]] = {
+                    header["column"]: [] for header in headers
+                }
                 for row in range(first_data_row, len(y_lines) - 1):
                     for header in headers:
                         column = header["column"]
@@ -709,61 +1009,95 @@ def recover_table_cells(
                             x_lines[column + 1],
                             y_lines[row + 1],
                         )
-                        raw_cell = gray.crop(pixel_rect)
-                        clean_cell = clean.crop(
-                            (
-                                x_lines[column],
-                                y_lines[row],
-                                x_lines[column + 1],
-                                y_lines[row + 1],
-                            )
+                        spec = {
+                            "row": row,
+                            "column": column,
+                            "kind": header["kind"],
+                            "pixel_rect": pixel_rect,
+                            "raw_cell": gray.crop(pixel_rect),
+                            "clean_cell": clean.crop(
+                                (
+                                    x_lines[column],
+                                    y_lines[row],
+                                    x_lines[column + 1],
+                                    y_lines[row + 1],
+                                )
+                            ),
+                        }
+                        specs.append(spec)
+                        column_specs[column].append(spec)
+
+                with ThreadPoolExecutor(
+                    max_workers=_cell_ocr_worker_count(column_count)
+                ) as executor:
+                    column_futures = {
+                        column: executor.submit(
+                            _recognize_cell_column,
+                            items,
+                            language,
                         )
-                        kind = header["kind"]
-                        candidates: list[dict] = []
-                        if kind == "date":
-                            text = _recognize_date(raw_cell, language)
-                            stats["date_cells_detected"] += 1
-                            if text:
-                                stats["date_cells_resolved"] += 1
-                            else:
-                                stats["date_cells_unresolved"] += 1
+                        for column, items in column_specs.items()
+                    }
+                    for column, future in column_futures.items():
+                        for spec, recognized in zip(column_specs[column], future.result()):
+                            spec["recognized"] = recognized
+
+                    retry_futures = {
+                        id(spec): executor.submit(
+                            _recognize_cell_images,
+                            spec["raw_cell"],
+                            spec["clean_cell"],
+                            spec["kind"],
+                            language,
+                        )
+                        for spec in specs
+                        if not spec["recognized"]["reliable"]
+                    }
+                    for spec in specs:
+                        retry = retry_futures.get(id(spec))
+                        if retry is not None:
+                            spec["recognized"] = retry.result()
+
+                for spec in specs:
+                    recognized = spec["recognized"]
+                    text = recognized["text"]
+                    kind = spec["kind"]
+                    has_ink = recognized["has_ink"]
+                    if kind == "date" and has_ink:
+                        stats["date_cells_detected"] += 1
+                        if text:
+                            stats["date_cells_resolved"] += 1
                         else:
-                            candidates = _cell_candidates(
-                                raw_cell,
+                            stats["date_cells_unresolved"] += 1
+                    clean_cell = spec["clean_cell"]
+                    column = spec["column"]
+                    cells.append(
+                        {
+                            "row": spec["row"],
+                            "column": column,
+                            "kind": kind,
+                            "has_ink": has_ink,
+                            "text": text,
+                            "candidates": recognized["candidates"],
+                            "rect": _map_image_rect(
+                                placement,
+                                image.size,
+                                spec["pixel_rect"],
+                            ),
+                            "segments": _map_cell_segments(
+                                placement,
+                                image.size,
+                                (x_lines[column], y_lines[spec["row"]]),
                                 clean_cell,
-                                language,
-                                kind=kind,
-                                digits_only=kind == "number",
-                            )
-                            if kind == "number":
-                                text = _select_number(candidates)
-                            elif kind == "status":
-                                text = _select_status(candidates)
-                            elif kind == "city":
-                                text = _select_city(candidates)
-                            else:
-                                text = _select_general_text(candidates)
-                        cells.append(
-                            {
-                                "row": row,
-                                "column": column,
-                                "kind": kind,
-                                "text": text,
-                                "candidates": candidates,
-                                "rect": _map_image_rect(
-                                    placement,
-                                    image.size,
-                                    pixel_rect,
-                                ),
-                                "segments": _map_cell_segments(
-                                    placement,
-                                    image.size,
-                                    (x_lines[column], y_lines[row]),
-                                    clean_cell,
-                                    [text] if text else [],
-                                ),
-                            }
-                        )
+                                _header_line_texts(
+                                    text,
+                                    len(_ink_line_boxes(clean_cell)),
+                                )
+                                if text
+                                else [],
+                            ),
+                        }
+                    )
 
                 for header in headers:
                     if header["kind"] == "text":
@@ -771,8 +1105,13 @@ def recover_table_cells(
                             [cell for cell in cells if cell["column"] == header["column"]]
                         )
                 for cell in cells:
-                    if cell["segments"]:
-                        cell["segments"][0]["text"] = cell["text"]
+                    if cell["segments"] and cell["text"]:
+                        line_texts = _header_line_texts(
+                            cell["text"],
+                            len(cell["segments"]),
+                        )
+                        for segment, line_text in zip(cell["segments"], line_texts):
+                            segment["text"] = line_text
 
                 table_items = headers + cells
                 region_items: list[dict] = []
@@ -795,7 +1134,10 @@ def recover_table_cells(
                         )
                         stats["page_text_regions_detected"] += 1
                         stats["page_text_words_resolved"] += len(region_items)
-                resolved = sum(bool(item["text"]) for item in table_items)
+                resolved = sum(
+                    not item["has_ink"] or bool(item["text"])
+                    for item in table_items
+                )
                 stats["date_tables_detected"] += 1
                 stats["table_cells_detected"] += len(table_items)
                 stats["table_cells_resolved"] += resolved
@@ -821,20 +1163,21 @@ def recover_table_cells(
             page = output_doc.load_page(page_index)
             for table in tables:
                 items = table["items"]
-                resolution = sum(bool(item["text"]) for item in items) / len(items)
-                if resolution < 0.98:
+                if not _is_table_recovery_useful(items):
+                    table["accepted"] = False
                     continue
-                rect = _map_image_rect(
-                    table["placement"],
-                    table["image_size"],
-                    (
-                        table["x_lines"][0] - 3,
-                        table["y_lines"][table["header_row"]] - 3,
-                        table["x_lines"][-1] + 3,
-                        table["y_lines"][-1] + 3,
-                    ),
-                )
-                page.add_redact_annot(rect, fill=False, cross_out=False)
+                table["accepted"] = True
+                # Replace cells independently. Unresolved ink keeps its existing
+                # whole-page OCR text, while confidently empty cells have grid
+                # artifacts removed without being counted as failures.
+                for item in items:
+                    if item["has_ink"] and not item["text"]:
+                        continue
+                    page.add_redact_annot(
+                        item["rect"],
+                        fill=False,
+                        cross_out=False,
+                    )
                 redacted_pages.add(page_index)
                 if table["region_rect"] is not None:
                     page.add_redact_annot(
@@ -853,6 +1196,8 @@ def recover_table_cells(
         for page_index, tables in page_tables.items():
             page = output_doc.load_page(page_index)
             for table in tables:
+                if not table.get("accepted", False):
+                    continue
                 for item in table["region_items"]:
                     _insert_invisible_cell(
                         page,
@@ -869,8 +1214,14 @@ def recover_table_cells(
                                 segment["text"],
                             )
 
+        if not redacted_pages:
+            return ocr_pdf_bytes, stats
         stats["changed"] = True
         return output_doc.tobytes(garbage=4, deflate=True), stats
     finally:
         source_doc.close()
         output_doc.close()
+        if previous_thread_limit is None:
+            os.environ.pop("OMP_THREAD_LIMIT", None)
+        else:
+            os.environ["OMP_THREAD_LIMIT"] = previous_thread_limit

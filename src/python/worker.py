@@ -198,6 +198,7 @@ def _handle_job(job: OcrJob) -> None:
     direct_mean_confidence: float | None = None
     direct_ocr_error = ""
     table_detection_ms = 0
+    legacy_table_required = False
     geometry_cache_key = ""
     geometry_cache_hit = False
 
@@ -815,7 +816,11 @@ def _handle_job(job: OcrJob) -> None:
             low_resolution_scan,
         )
         adaptive_detection_ms = _elapsed_ms(adaptive_detection_started)
-        if (sparse_result or low_resolution_quality_risk) and geometry["pages"]:
+        if (
+            (sparse_result or low_resolution_quality_risk)
+            and geometry["pages"]
+            and not legacy_table_required
+        ):
             try:
                 if sparse_result:
                     on_progress("OCR coverage low; evaluating high-resolution layouts…")

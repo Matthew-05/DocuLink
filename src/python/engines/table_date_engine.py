@@ -4,6 +4,7 @@ from __future__ import annotations
 import datetime as dt
 import io
 import re
+from collections import Counter
 from collections.abc import Callable
 
 import pymupdf as fitz
@@ -12,10 +13,10 @@ from PIL import Image, ImageOps
 from engines.ocr_engine import configure_tesseract
 
 
-_GRID_DARKNESS = 110
+_GRID_DARKNESS_LEVELS = (110, 140, 170, 200, 220)
 _MIN_IMAGE_WIDTH = 400
 _MIN_IMAGE_HEIGHT = 200
-_DATE_PATTERN = re.compile(r"\d{2}/\d{2}/\d{4}")
+_DATE_PATTERN = re.compile(r"\d{1,2}/\d{1,2}/\d{4}")
 
 
 def _pixel_values(image: Image.Image) -> list[int]:
@@ -24,17 +25,32 @@ def _pixel_values(image: Image.Image) -> list[int]:
     return list(flattened() if flattened is not None else image.getdata())
 
 
-def _line_centers(counts: list[int], minimum: int) -> list[int]:
+def _line_centers(
+    counts: list[int],
+    minimum: int,
+    *,
+    merge_distance: int = 1,
+) -> list[int]:
     """Collapse adjacent qualifying pixels into one grid-line coordinate."""
     runs: list[list[int]] = []
     for index, count in enumerate(counts):
         if count < minimum:
             continue
-        if not runs or index > runs[-1][-1] + 1:
+        if not runs or index > runs[-1][-1] + merge_distance:
             runs.append([index])
         else:
             runs[-1].append(index)
-    return [round(sum(run) / len(run)) for run in runs]
+    centers: list[int] = []
+    for run in runs:
+        weights = [counts[index] for index in run]
+        total_weight = sum(weights)
+        centers.append(
+            round(
+                sum(index * weight for index, weight in zip(run, weights))
+                / max(1, total_weight)
+            )
+        )
+    return centers
 
 
 def detect_ruled_grid(image: Image.Image) -> tuple[list[int], list[int]]:
@@ -44,26 +60,36 @@ def detect_ruled_grid(image: Image.Image) -> tuple[list[int], list[int]]:
     if width < _MIN_IMAGE_WIDTH or height < _MIN_IMAGE_HEIGHT:
         return [], []
 
-    # Project a binary dark-pixel mask down to one row / column. Pillow's BOX
-    # resampler performs the averaging in native code; the former nested Python
-    # pixel loops took several seconds per high-resolution scan and hundreds of
-    # seconds across a long document even when no grid existed.
-    dark = gray.point(lambda value: 255 if value < _GRID_DARKNESS else 0)
-    vertical_density = _pixel_values(
-        dark.resize((width, 1), Image.Resampling.BOX)
-    )
-    horizontal_density = _pixel_values(
-        dark.resize((1, height), Image.Resampling.BOX)
-    )
-    x_lines = _line_centers(vertical_density, round(255 * 0.70))
-    y_lines = _line_centers(horizontal_density, round(255 * 0.50))
-    if len(x_lines) < 3 or len(y_lines) < 3:
-        return [], []
-    return x_lines, y_lines
+    # Scanners and image-to-PDF converters encode nominally identical grid lines
+    # anywhere from near-black to pale gray. Try increasingly permissive masks and
+    # stop at the first coherent grid, which avoids treating page shading as rules.
+    # Projection remains in native Pillow code, so this threshold ladder is much
+    # cheaper than even one OCR pass.
+    for darkness in _GRID_DARKNESS_LEVELS:
+        dark = gray.point(lambda value, limit=darkness: 255 if value < limit else 0)
+        vertical_density = _pixel_values(
+            dark.resize((width, 1), Image.Resampling.BOX)
+        )
+        horizontal_density = _pixel_values(
+            dark.resize((1, height), Image.Resampling.BOX)
+        )
+        x_lines = _line_centers(
+            vertical_density,
+            round(255 * 0.70),
+            merge_distance=max(1, round(width * 0.008)),
+        )
+        y_lines = _line_centers(
+            horizontal_density,
+            round(255 * 0.50),
+            merge_distance=max(1, round(height * 0.008)),
+        )
+        if len(x_lines) >= 3 and len(y_lines) >= 3:
+            return x_lines, y_lines
+    return [], []
 
 
 def normalize_date(raw: str) -> str | None:
-    """Accept only real MM/DD/YYYY dates in the expected document-era range."""
+    """Accept real slash dates with one- or two-digit months and days."""
     cleaned = re.sub(r"[^0-9/]", "", raw)
     digits = re.sub(r"\D", "", cleaned)
     if len(digits) == 8:
@@ -122,7 +148,7 @@ def _ocr_text(cell: Image.Image, language: str, *, psm: int, scale: int,
 
 
 def _recognize_date(cell: Image.Image, language: str) -> str | None:
-    """Run a bounded retry ladder and return the first validated date."""
+    """Run a bounded retry ladder and prefer agreement between valid readings."""
     variants = (
         (7, 8, None, True),
         (7, 10, None, False),
@@ -132,6 +158,7 @@ def _recognize_date(cell: Image.Image, language: str) -> str | None:
         (7, 10, 200, False),
         (13, 10, 200, False),
     )
+    recognized: list[str] = []
     for psm, scale, threshold, use_data in variants:
         date = normalize_date(
             _ocr_text(
@@ -144,8 +171,13 @@ def _recognize_date(cell: Image.Image, language: str) -> str | None:
             )
         )
         if date:
-            return date
-    return None
+            recognized.append(date)
+            if recognized.count(date) >= 2:
+                return date
+    if not recognized:
+        return None
+    counts = Counter(recognized)
+    return max(counts, key=lambda date: (counts[date], -recognized.index(date)))
 
 
 def _date_columns(
