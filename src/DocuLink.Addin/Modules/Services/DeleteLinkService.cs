@@ -201,7 +201,8 @@ namespace DocuLink.Addin.Modules.Services
                     links,
                     idsToDelete,
                     orphanBindings,
-                    "DeleteLinksInSelection");
+                    clearTableCellData: true,
+                    operationName: "DeleteLinksInSelection");
             }
         }
 
@@ -231,7 +232,8 @@ namespace DocuLink.Addin.Modules.Services
                     links,
                     idsToDelete,
                     new List<(Excel.Range cell, int trackIndex)>(),
-                    "DeleteLinksForPdf");
+                    clearTableCellData: false,
+                    operationName: "DeleteLinksForPdf");
             }
         }
 
@@ -241,6 +243,7 @@ namespace DocuLink.Addin.Modules.Services
             IList<LinkedRectangle> links,
             HashSet<string> idsToDelete,
             IList<(Excel.Range cell, int trackIndex)> orphanBindings,
+            bool clearTableCellData,
             string operationName)
         {
             var cellsToClear = new List<Excel.Range>();
@@ -258,7 +261,7 @@ namespace DocuLink.Addin.Modules.Services
                 if (cell != null)
                 {
                     cellsToClear.Add(cell);
-                    if (rect.LinkType == LinkType.Table)
+                    if (clearTableCellData && rect.LinkType == LinkType.Table)
                         new TableExcelWriteService().Clear(cell, rect.TableGrid);
                 }
 
