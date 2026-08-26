@@ -9,8 +9,31 @@ export interface FileTableOptions {
 /** Tooltip shown on every control disabled by the OCR lock. */
 const LOCKED_HINT = "Unavailable while OCR is running";
 
+type SortKey = "name" | "linkCount" | "status" | "fileSizeBytes" | "dateAdded" | "folder";
+type SortDirection = "ascending" | "descending";
+
+interface ColumnDefinition {
+  className: string;
+  label: string;
+  sortKey: SortKey;
+  minWidth: number;
+}
+
+const DATA_COLUMNS: ColumnDefinition[] = [
+  { className: "col-name", label: "File Name", sortKey: "name", minWidth: 100 },
+  { className: "col-links", label: "Links", sortKey: "linkCount", minWidth: 56 },
+  { className: "col-status", label: "Status", sortKey: "status", minWidth: 92 },
+  { className: "col-size", label: "Size", sortKey: "fileSizeBytes", minWidth: 62 },
+  { className: "col-date", label: "Date Added", sortKey: "dateAdded", minWidth: 88 },
+  { className: "col-folder", label: "Folder", sortKey: "folder", minWidth: 80 },
+];
+
+const TEXT_COLLATOR = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" });
+
 export class FileTable {
   private readonly _root: HTMLElement;
+  private readonly _table: HTMLTableElement;
+  private readonly _columnElements = new Map<string, HTMLTableColElement>();
   private readonly _thead: HTMLTableSectionElement;
   private readonly _tbody: HTMLTableSectionElement;
   private readonly _contextMenu: HTMLDivElement;
@@ -26,6 +49,8 @@ export class FileTable {
   private _isLoading = true;
   private readonly _ocrProgress = new Map<string, OcrProgress>();
   private readonly _onSelectionChange: (ids: string[]) => void;
+  private _sortKey: SortKey | null = null;
+  private _sortDirection: SortDirection = "ascending";
   /** Anchor row for shift-click range selection — the last row explicitly clicked. */
   private _lastClickedId: string | null = null;
   /**
@@ -41,29 +66,21 @@ export class FileTable {
     this._root = document.createElement("div");
     this._root.className = "file-table-wrap";
 
-    const table = document.createElement("table");
-    table.className = "file-table";
+    this._table = document.createElement("table");
+    this._table.className = "file-table";
+    this._buildColumnGroup();
 
     this._thead = document.createElement("thead");
-    this._thead.innerHTML = `
-      <tr>
-        <th class="col-check"><input type="checkbox" class="select-all-cb" title="Select all" /></th>
-        <th class="col-name">File Name</th>
-        <th class="col-links">Links</th>
-        <th class="col-status">Status</th>
-        <th class="col-size">Size</th>
-        <th class="col-date">Date Added</th>
-        <th class="col-folder">Folder</th>
-      </tr>`;
+    this._buildHeader();
 
     const selectAllCb = this._thead.querySelector<HTMLInputElement>(".select-all-cb")!;
     selectAllCb.addEventListener("change", () => this._onSelectAll(selectAllCb.checked));
 
     this._tbody = document.createElement("tbody");
 
-    table.appendChild(this._thead);
-    table.appendChild(this._tbody);
-    this._root.appendChild(table);
+    this._table.appendChild(this._thead);
+    this._table.appendChild(this._tbody);
+    this._root.appendChild(this._table);
 
     // Create context menu
     this._contextMenu = document.createElement("div");
@@ -78,6 +95,160 @@ export class FileTable {
     document.addEventListener("click", () => this._hideContextMenu());
 
     container.appendChild(this._root);
+  }
+
+  private _buildColumnGroup(): void {
+    const columnGroup = document.createElement("colgroup");
+    for (const className of ["col-check", ...DATA_COLUMNS.map((column) => column.className)]) {
+      const column = document.createElement("col");
+      column.className = className;
+      this._columnElements.set(className, column);
+      columnGroup.appendChild(column);
+    }
+    this._table.appendChild(columnGroup);
+  }
+
+  private _buildHeader(): void {
+    const row = document.createElement("tr");
+    const checkboxHeader = document.createElement("th");
+    checkboxHeader.className = "col-check";
+    const selectAll = document.createElement("input");
+    selectAll.type = "checkbox";
+    selectAll.className = "select-all-cb";
+    selectAll.title = "Select all";
+    checkboxHeader.appendChild(selectAll);
+    row.appendChild(checkboxHeader);
+
+    DATA_COLUMNS.forEach((column, index) => {
+      const header = document.createElement("th");
+      header.className = `${column.className} file-table__sortable-header`;
+      header.dataset["sortKey"] = column.sortKey;
+      header.setAttribute("aria-sort", "none");
+
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "file-table__sort-button";
+      button.title = `Sort by ${column.label}`;
+
+      const label = document.createElement("span");
+      label.textContent = column.label;
+      button.appendChild(label);
+
+      const indicator = document.createElement("span");
+      indicator.className = "file-table__sort-indicator";
+      indicator.setAttribute("aria-hidden", "true");
+      button.appendChild(indicator);
+
+      button.addEventListener("click", () => this._setSort(column.sortKey));
+      header.appendChild(button);
+
+      if (index < DATA_COLUMNS.length - 1) {
+        const resizeHandle = document.createElement("span");
+        resizeHandle.className = "file-table__resize-handle";
+        resizeHandle.setAttribute("role", "separator");
+        resizeHandle.setAttribute("aria-orientation", "vertical");
+        resizeHandle.setAttribute("aria-label", `Resize ${column.label} column`);
+        resizeHandle.addEventListener("pointerdown", (event) => {
+          this._startColumnResize(event, header, column);
+        });
+        header.appendChild(resizeHandle);
+      }
+
+      row.appendChild(header);
+    });
+
+    this._thead.appendChild(row);
+  }
+
+  private _setSort(sortKey: SortKey): void {
+    if (this._sortKey === sortKey) {
+      this._sortDirection = this._sortDirection === "ascending" ? "descending" : "ascending";
+    } else {
+      this._sortKey = sortKey;
+      this._sortDirection = "ascending";
+    }
+
+    this._updateSortHeaders();
+    this._render();
+  }
+
+  private _updateSortHeaders(): void {
+    for (const header of this._thead.querySelectorAll<HTMLTableCellElement>("th[data-sort-key]")) {
+      const active = header.dataset["sortKey"] === this._sortKey;
+      const direction = active ? this._sortDirection : "none";
+      header.setAttribute("aria-sort", direction);
+
+      const button = header.querySelector<HTMLButtonElement>(".file-table__sort-button");
+      if (button) {
+        const label = button.querySelector("span")?.textContent ?? "column";
+        button.title = active
+          ? `Sort ${label} ${this._sortDirection === "ascending" ? "descending" : "ascending"}`
+          : `Sort by ${label}`;
+      }
+    }
+  }
+
+  private _startColumnResize(
+    event: PointerEvent,
+    header: HTMLTableCellElement,
+    column: ColumnDefinition,
+  ): void {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    event.stopPropagation();
+
+    const columnElement = this._columnElements.get(column.className);
+    const fillerDefinition = DATA_COLUMNS[DATA_COLUMNS.length - 1]!;
+    const fillerColumn = this._columnElements.get(fillerDefinition.className);
+    if (!columnElement || !fillerColumn) return;
+
+    const headers = Array.from(
+      this._thead.querySelectorAll<HTMLTableCellElement>("th"),
+    );
+    const headerWidths = headers.map((current) => current.getBoundingClientRect().width);
+    const columns = Array.from(this._columnElements.values());
+    for (let index = 0; index < columns.length; index++) {
+      columns[index]!.style.width = `${headerWidths[index]}px`;
+    }
+
+    const handle = event.currentTarget as HTMLElement;
+    const startX = event.clientX;
+    const startWidth = header.getBoundingClientRect().width;
+    const fillerStartWidth = headerWidths[headerWidths.length - 1]!;
+    const startTableWidth = this._table.getBoundingClientRect().width;
+    const currentMin = effectiveMinimumWidth(column.minWidth, startWidth);
+    const fillerMin = effectiveMinimumWidth(fillerDefinition.minWidth, fillerStartWidth);
+    this._table.style.width = `${startTableWidth}px`;
+
+    this._root.classList.add("file-table-wrap--resizing");
+    handle.classList.add("file-table__resize-handle--active");
+    handle.setPointerCapture(event.pointerId);
+
+    const onPointerMove = (moveEvent: PointerEvent): void => {
+      const requestedWidth = startWidth + moveEvent.clientX - startX;
+      const width = Math.max(currentMin, requestedWidth);
+      const delta = width - startWidth;
+      const fillerSlack = Math.max(0, fillerStartWidth - fillerMin);
+      const absorbedDelta = delta > 0 ? Math.min(delta, fillerSlack) : delta;
+
+      columnElement.style.width = `${width}px`;
+      fillerColumn.style.width = `${fillerStartWidth - absorbedDelta}px`;
+      this._table.style.width = `${startTableWidth + Math.max(0, delta - fillerSlack)}px`;
+    };
+
+    const finish = (): void => {
+      handle.removeEventListener("pointermove", onPointerMove);
+      handle.removeEventListener("pointerup", finish);
+      handle.removeEventListener("pointercancel", finish);
+      handle.removeEventListener("lostpointercapture", finish);
+      handle.classList.remove("file-table__resize-handle--active");
+      this._root.classList.remove("file-table-wrap--resizing");
+    };
+
+    handle.addEventListener("pointermove", onPointerMove);
+    handle.addEventListener("pointerup", finish);
+    handle.addEventListener("pointercancel", finish);
+    handle.addEventListener("lostpointercapture", finish);
   }
 
   update(files: FileEntry[], selectedFolderId: string | null): void {
@@ -107,12 +278,18 @@ export class FileTable {
    */
   updateStatus(fileId: string, status: string, progress: OcrProgress = {}): void {
     const entry = this._files.find((f) => f.id === fileId);
+    const previousStatus = entry?.status;
     if (entry) entry.status = status;
 
     if (status === "queued" || status === "processing") {
       this._ocrProgress.set(fileId, progress);
     } else {
       this._ocrProgress.delete(fileId);
+    }
+
+    if (this._sortKey === "status" && previousStatus !== status) {
+      this._render();
+      return;
     }
 
     const row = Array.from(this._tbody.rows).find(
@@ -183,7 +360,42 @@ export class FileTable {
       files = files.filter((f) => f.name.toLowerCase().includes(lower));
     }
 
-    return files;
+    if (this._sortKey === null) return files;
+
+    const sortKey = this._sortKey;
+    const direction = this._sortDirection === "ascending" ? 1 : -1;
+    return files
+      .map((file, index) => ({ file, index }))
+      .sort((left, right) => {
+        const compared = this._compareFiles(left.file, right.file, sortKey);
+        return compared === 0 ? left.index - right.index : compared * direction;
+      })
+      .map(({ file }) => file);
+  }
+
+  private _compareFiles(left: FileEntry, right: FileEntry, sortKey: SortKey): number {
+    switch (sortKey) {
+      case "linkCount":
+        return (left.linkCount ?? 0) - (right.linkCount ?? 0);
+      case "fileSizeBytes":
+        return left.fileSizeBytes - right.fileSizeBytes;
+      case "dateAdded": {
+        const leftTime = Date.parse(left.dateAdded);
+        const rightTime = Date.parse(right.dateAdded);
+        return (Number.isNaN(leftTime) ? 0 : leftTime) - (Number.isNaN(rightTime) ? 0 : rightTime);
+      }
+      case "folder":
+        return TEXT_COLLATOR.compare(this._folderName(left), this._folderName(right));
+      case "status":
+        return TEXT_COLLATOR.compare(formatStatusLabel(left.status), formatStatusLabel(right.status));
+      case "name":
+        return TEXT_COLLATOR.compare(left.name, right.name);
+    }
+  }
+
+  private _folderName(file: FileEntry): string {
+    if (!file.folderId) return "";
+    return this._folders.find((folder) => folder.id === file.folderId)?.name ?? "";
   }
 
   private _onSelectAll(checked: boolean): void {
@@ -576,4 +788,9 @@ function formatDate(iso: string): string {
   } catch {
     return iso;
   }
+}
+
+/** Avoids snapping a column wider when the task pane starts below its ideal width. */
+function effectiveMinimumWidth(preferred: number, rendered: number): number {
+  return rendered >= preferred ? preferred : Math.max(32, rendered * 0.6);
 }

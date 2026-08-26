@@ -76,7 +76,7 @@ namespace DocuLink.Addin.Modules.WebView
             // OcrService needs a Control reference for UI-thread marshalling;
             // created here after the Form's handle is available.
             _ocrService = new OcrService(this);
-            Width = 900;
+            Width = 1100;
             Height = 620;
             MinimumSize = new System.Drawing.Size(700, 480);
             StartPosition = FormStartPosition.CenterScreen;

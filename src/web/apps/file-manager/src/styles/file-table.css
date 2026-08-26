@@ -7,36 +7,47 @@
    header and are unaffected. */
 .file-table-wrap {
   flex: 1;
-  overflow-y: auto;
+  overflow: auto;
   padding: 0 var(--gap) var(--gap);
+}
+
+.file-table-wrap--resizing {
+  cursor: col-resize;
+  user-select: none;
 }
 
 .file-table {
   width: 100%;
+  min-width: 100%;
   table-layout: fixed;
   border-collapse: collapse;
   font-size: 12.5px;
 }
 
+.file-table th,
+.file-table td {
+  box-sizing: border-box;
+}
+
 /* ── Column widths ────────────────────────────────────────────────────────── */
 
-.file-table thead th.col-check,
-.file-table tbody td.col-check {
+/* Keep width ownership on the colgroup. These values total 100%, so the
+   browser does not redistribute an undeclared remainder before the first
+   resize. A drag replaces them with the current rendered pixel widths. */
+.file-table col.col-check {
   width: 4%;
 }
 
-.file-table thead th.col-name,
-.file-table tbody td.col-name {
-  width: 24%;
+.file-table col.col-name {
+  width: 26%;
 }
 
-/* Width and alignment are shared so the header sits over its numbers, but the
-   muted colour and larger type are body-only. Applying those to the header too
-   out-specified the shared `thead th` rule, so the Links header rendered a
-   different size and colour from every other header. */
+.file-table col.col-links {
+  width: 10%;
+}
+
 .file-table thead th.col-links,
 .file-table tbody td.col-links {
-  width: 7%;
   text-align: center;
 }
 
@@ -46,27 +57,23 @@
 }
 
 /* Sized against the widest pill, "◌ Processing" (~89px at 900px window width:
-   18% of a ~616px table = ~111px, less 20px cell padding = ~91px of content).
+   20% of a ~616px table = ~123px, less 20px cell padding = ~103px of content).
    Narrower than this and the pill spills into the Size column, because the
    table is table-layout: fixed and the pill is nowrap. */
-.file-table thead th.col-status,
-.file-table tbody td.col-status {
-  width: 18%;
+.file-table col.col-status {
+  width: 20%;
 }
 
-.file-table thead th.col-size,
-.file-table tbody td.col-size {
-  width: 10%;
+.file-table col.col-size {
+  width: 11%;
 }
 
-.file-table thead th.col-date,
-.file-table tbody td.col-date {
-  width: 12%;
+.file-table col.col-date {
+  width: 13%;
 }
 
-.file-table thead th.col-folder,
-.file-table tbody td.col-folder {
-  width: 15%;
+.file-table col.col-folder {
+  width: 16%;
 }
 
 /* ── Header ───────────────────────────────────────────────────────────────── */
@@ -84,6 +91,108 @@
   letter-spacing: 0.05em;
   color: var(--color-text-muted);
   border-bottom: 1px solid var(--color-border);
+}
+
+/* A box-shadow stays crisp on sticky cells under border-collapse, unlike a
+   vertical cell border, which Chromium can drop or flicker while scrolling. */
+.file-table thead th:not(:last-child) {
+  box-shadow: inset -1px 0 var(--color-border);
+}
+
+.file-table__sortable-header {
+  padding: 0 !important;
+}
+
+.file-table__sort-button {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  width: 100%;
+  min-width: 0;
+  padding: 8px 14px 8px 10px;
+  overflow: hidden;
+  color: inherit;
+  font: inherit;
+  font-weight: inherit;
+  letter-spacing: inherit;
+  text-align: inherit;
+  text-transform: inherit;
+  white-space: nowrap;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}
+
+.file-table__sort-button > span:first-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.file-table thead th.col-links .file-table__sort-button {
+  justify-content: center;
+}
+
+.file-table__sort-button:hover,
+.file-table__sortable-header[aria-sort="ascending"] .file-table__sort-button,
+.file-table__sortable-header[aria-sort="descending"] .file-table__sort-button {
+  color: var(--color-text);
+}
+
+.file-table__sort-button:focus-visible {
+  position: relative;
+  z-index: 1;
+  outline: 2px solid var(--color-accent);
+  outline-offset: -2px;
+}
+
+.file-table__sort-indicator {
+  display: none;
+  flex: none;
+  width: 8px;
+  height: 10px;
+  margin-left: 4px;
+  font-size: 10px;
+  line-height: 10px;
+}
+
+.file-table__sortable-header[aria-sort="ascending"] .file-table__sort-indicator,
+.file-table__sortable-header[aria-sort="descending"] .file-table__sort-indicator {
+  display: inline-block;
+}
+
+.file-table__sortable-header[aria-sort="ascending"] .file-table__sort-indicator::before {
+  content: "↑";
+}
+
+.file-table__sortable-header[aria-sort="descending"] .file-table__sort-indicator::before {
+  content: "↓";
+}
+
+.file-table__resize-handle {
+  position: absolute;
+  z-index: 2;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 8px;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.file-table__resize-handle::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 2px;
+  background: transparent;
+}
+
+.file-table__resize-handle:hover::after,
+.file-table__resize-handle--active::after {
+  background: var(--color-accent);
 }
 
 /* ── Body rows ────────────────────────────────────────────────────────────── */
