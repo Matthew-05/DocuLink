@@ -53,22 +53,6 @@ namespace DocuLink.Addin.Modules.WebView
 
         public void SendFoldersToWebView() => _controller.SendFoldersToWebView();
 
-        protected override void OnFormClosing(FormClosingEventArgs e)
-        {
-            DocuLinkLog.Trace($"ENTER reason={e.CloseReason} cancel={e.Cancel}");
-
-            if (e.CloseReason == CloseReason.UserClosing)
-            {
-                e.Cancel = true;
-                Hide();
-                DocuLinkLog.Trace("EXIT user close hidden");
-                return;
-            }
-
-            base.OnFormClosing(e);
-            DocuLinkLog.Trace($"EXIT cancel={e.Cancel}");
-        }
-
         protected override void OnFormClosed(FormClosedEventArgs e)
         {
             DocuLinkLog.Trace($"ENTER reason={e.CloseReason}");

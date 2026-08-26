@@ -168,7 +168,13 @@ namespace DocuLink.Addin.Modules.WebView
                 switch (messageType)
                 {
                     case "viewer-shell-ready":
+                        // A shell-ready message identifies a newly mounted web document. Any
+                        // state retained by this controller belongs to the previous JavaScript
+                        // context and must not suppress the new context's bootstrap payload.
                         _webShellReady = true;
+                        _webViewReady = false;
+                        _dataSentToViewer = false;
+                        _contentReady = false;
                         break;
 
                     case "viewer-ready":
@@ -177,16 +183,13 @@ namespace DocuLink.Addin.Modules.WebView
                             _webShellReady = true;
                         }
                         _webViewReady = true;
+                        // viewer-ready is emitted once per initialized JavaScript context. A
+                        // renderer/page restart therefore needs a complete authoritative sync,
+                        // even if the previous context had already received the workbook data.
+                        _dataSentToViewer = false;
                         if (_viewerShown)
                         {
-                            if (!_dataSentToViewer)
-                            {
-                                SendPdfsToWebView();
-                                _dataSentToViewer = true;
-                            }
-                            SendLinkedRectanglesToWebView();
-                            FlushPendingSearchQuery();
-                            FlushPendingNavigateToRectangle();
+                            RefreshDataIfReady();
                         }
                         break;
 
@@ -713,7 +716,11 @@ namespace DocuLink.Addin.Modules.WebView
         {
             DocuLinkLog.Trace($"ENTER surface={_loadFailureSurfaceName} ready={_webViewReady} dataSent={_dataSentToViewer}");
             if (_disposed || !_webViewReady || _dataSentToViewer) return;
-            SendPdfsToWebView();
+
+            // Do not mark this viewer as synchronized when loading or posting the
+            // authoritative catalogue failed. A later show/activation/ready event can retry.
+            if (!SendPdfsToWebView()) return;
+
             _dataSentToViewer = true;
             SendLinkedRectanglesToWebView();
             FlushPendingSearchQuery();
@@ -791,11 +798,11 @@ namespace DocuLink.Addin.Modules.WebView
             _webView.CoreWebView2.PostWebMessageAsString(json);
         }
 
-        internal void SendPdfsToWebView()
+        private bool SendPdfsToWebView()
         {
             using (DocuLinkLog.Time($"SendPdfsToWebView surface={_loadFailureSurfaceName}"))
             {
-            if (_disposed) return;
+            if (_disposed || !_webViewReady) return false;
             try
             {
                 Excel.Application app = Globals.ThisAddIn.Application;
@@ -810,11 +817,13 @@ namespace DocuLink.Addin.Modules.WebView
                 }
                 string json = HostMessageSerializer.BuildPdfsLoaded(pdfs, folders);
                 _webView.CoreWebView2.PostWebMessageAsString(json);
+                return true;
             }
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"[DocuLink] SendPdfsToWebView failed: {ex.Message}");
                 DocuLinkLog.Trace($"EXCEPTION {ex.GetType().FullName}: {ex.Message}");
+                return false;
             }
             }
         }

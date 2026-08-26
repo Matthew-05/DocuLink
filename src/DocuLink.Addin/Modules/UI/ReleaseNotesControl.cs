@@ -76,6 +76,14 @@ namespace DocuLink.Addin.Modules.UI
                 NavigateToPendingHtml();
         }
 
+        internal void ShowStatusMessage(string message)
+        {
+            _pendingHtml = null;
+            _statusLabel.Text = message;
+            _statusLabel.Visible = true;
+            _statusLabel.BringToFront();
+        }
+
         private async Task InitializeWebViewAsync()
         {
             try

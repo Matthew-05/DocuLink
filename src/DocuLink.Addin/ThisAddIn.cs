@@ -507,7 +507,7 @@ namespace DocuLink.Addin
         {
 
             if (IsViewerPoppedOut)
-                _viewerWindow.Hide();
+                _viewerWindow.Close();
 
 
 
@@ -533,6 +533,12 @@ namespace DocuLink.Addin
             if (_viewerWindow == null || _viewerWindow.IsDisposed)
 
                 _viewerWindow = new ViewerWindowHost();
+
+
+            // The pop-out is shared across workbooks and does not receive incremental
+            // updates while hidden. Always bootstrap it from the active workbook when it
+            // is shown again instead of trusting data retained from its previous use.
+            _viewerWindow.InvalidateData();
 
 
 
