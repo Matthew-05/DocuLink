@@ -137,7 +137,12 @@ namespace DocuLink.Addin.Modules.Services
                 .Any(r => !string.Equals(r.Id, entry.RectId, StringComparison.Ordinal)
                           && r.LinkedCell.TrackIndex == rect.LinkedCell.TrackIndex);
 
-            if (!new DeleteLinkService().DeleteLink(entry.RectId, workbook))
+            // Undo removes data produced by the creation being reversed. Keep this explicit
+            // so ordinary link-removal callers remain preserve-data by default.
+            if (!new DeleteLinkService().DeleteLink(
+                entry.RectId,
+                workbook,
+                deleteCellData: true))
             {
                 DocuLinkLog.Trace($"undo: DeleteLink refused rect {entry.RectId}");
                 return false;

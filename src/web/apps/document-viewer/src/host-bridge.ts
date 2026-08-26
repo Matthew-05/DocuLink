@@ -427,7 +427,7 @@ export function sendLinkRectangleClicked(id: string): void {
   postToHost({ type: "link-rectangle-clicked", id });
 }
 
-export function sendLinkRectangleDeleted(id: string, deleteCellData = true): void {
+export function sendLinkRectangleDeleted(id: string, deleteCellData: boolean): void {
   postToHost({ type: "link-rectangle-deleted", id, deleteCellData });
 }
 

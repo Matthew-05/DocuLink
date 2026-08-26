@@ -471,7 +471,7 @@ export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLEleme
   });
 
   contextMenu.onDelete((id) => {
-    sendLinkRectangleDeleted(id);
+    sendLinkRectangleDeleted(id, true);
   });
 
   contextMenu.onDeleteKeepData((id) => {

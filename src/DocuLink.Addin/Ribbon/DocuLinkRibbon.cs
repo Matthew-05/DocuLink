@@ -115,7 +115,9 @@ namespace DocuLink.Addin.Ribbon
                     app.EnableEvents = false;
 
                     deletedIds = new DeleteLinkService().DeleteLinksInSelection(
-                        selection, app.ActiveWorkbook);
+                        selection,
+                        app.ActiveWorkbook,
+                        deleteCellData: false);
 
                     if (deletedIds.Count > 0)
                         Globals.ThisAddIn.GetActiveViewerHost()?.SendLinkRectanglesRemoved(deletedIds);

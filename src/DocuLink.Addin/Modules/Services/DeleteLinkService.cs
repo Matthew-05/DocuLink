@@ -18,7 +18,7 @@ namespace DocuLink.Addin.Modules.Services
         public bool DeleteLink(
             string rectId,
             Excel.Workbook workbook,
-            bool deleteCellData = true)
+            bool deleteCellData = false)
         {
             if (string.IsNullOrWhiteSpace(rectId) || workbook == null)
                 return false;
@@ -148,7 +148,10 @@ namespace DocuLink.Addin.Modules.Services
             }
         }
 
-        public IList<string> DeleteLinksInSelection(Excel.Range selection, Excel.Workbook workbook)
+        public IList<string> DeleteLinksInSelection(
+            Excel.Range selection,
+            Excel.Workbook workbook,
+            bool deleteCellData = false)
         {
             if (selection == null || workbook == null)
                 return Array.Empty<string>();
@@ -201,7 +204,7 @@ namespace DocuLink.Addin.Modules.Services
                     links,
                     idsToDelete,
                     orphanBindings,
-                    clearTableCellData: true,
+                    clearTableCellData: deleteCellData,
                     operationName: "DeleteLinksInSelection");
             }
         }

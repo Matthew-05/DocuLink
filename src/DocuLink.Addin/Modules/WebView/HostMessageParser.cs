@@ -51,8 +51,8 @@ namespace DocuLink.Addin.Modules.WebView
             return new LinkRectangleDeletedPayload
             {
                 Id = id,
-                DeleteCellData = !obj.ContainsKey("deleteCellData")
-                    || ParseBoolean(obj, "deleteCellData"),
+                DeleteCellData = obj.ContainsKey("deleteCellData")
+                    && ParseBoolean(obj, "deleteCellData"),
             };
         }
         catch
