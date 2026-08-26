@@ -2,8 +2,11 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.IO.Compression;
 using System.Reflection;
+using System.Security.Cryptography;
 using System.Text;
+using System.Threading;
 using System.Web.Script.Serialization;
 
 namespace DocuLink.Addin.Modules.Infrastructure
@@ -23,6 +26,9 @@ namespace DocuLink.Addin.Modules.Infrastructure
     /// </summary>
     internal sealed class PythonWorkerSession : IDisposable
     {
+        private static readonly object RuntimeSync = new object();
+        private static string _resolvedWorkerDir;
+
         private Process _process;
         private StreamWriter _stdin;
         private StreamReader _stdout;
@@ -33,18 +39,19 @@ namespace DocuLink.Addin.Modules.Infrastructure
 
         /// <summary>Full path to the bundled CPython host executable.</summary>
         public static string WorkerExePath =>
-            Path.Combine(GetAddinDir(), "python", "worker", "python.exe");
+            Path.Combine(ResolveWorkerDir(), "python.exe");
 
         /// <summary>Full path to the worker entry script.</summary>
         public static string WorkerScriptPath =>
-            Path.Combine(GetAddinDir(), "python", "worker", "worker.py");
+            Path.Combine(ResolveWorkerDir(), "worker.py");
 
         /// <summary>False when the worker has not been built into the add-in output.</summary>
         public static bool IsAvailable =>
-            File.Exists(WorkerExePath) && File.Exists(WorkerScriptPath);
+            HasExpandedWorker(Path.Combine(GetAddinDir(), "python", "worker"))
+            || File.Exists(GetRuntimeArchivePath());
 
         public const string NotBuiltMessage =
-            "Python worker not found. Run src/python/build-worker.ps1 to build it.";
+            "Python OCR runtime not found. Run src/python/build-worker.ps1 to build it.";
 
         /// <summary>Starts the worker process and opens UTF-8 wrappers over its pipes.</summary>
         public void Start()
@@ -57,7 +64,7 @@ namespace DocuLink.Addin.Modules.Infrastructure
             var psi = new ProcessStartInfo
             {
                 FileName = WorkerExePath,
-                Arguments = $"\"{WorkerScriptPath}\"",
+                Arguments = $"-B \"{WorkerScriptPath}\"",
                 UseShellExecute = false,
                 RedirectStandardInput = true,
                 RedirectStandardOutput = true,
@@ -229,6 +236,165 @@ namespace DocuLink.Addin.Modules.Infrastructure
             string codeBase = Assembly.GetExecutingAssembly().CodeBase;
             return Path.GetDirectoryName(new Uri(codeBase).LocalPath)
                 ?? AppDomain.CurrentDomain.BaseDirectory;
+        }
+
+        private static string ResolveWorkerDir()
+        {
+            if (!string.IsNullOrEmpty(_resolvedWorkerDir))
+                return _resolvedWorkerDir;
+
+            lock (RuntimeSync)
+            {
+                if (!string.IsNullOrEmpty(_resolvedWorkerDir))
+                    return _resolvedWorkerDir;
+
+                // Preserve compatibility with developer outputs created before
+                // the runtime was packaged as an archive.
+                string expandedWorkerDir = Path.Combine(GetAddinDir(), "python", "worker");
+                string archivePath = GetRuntimeArchivePath();
+                if (!File.Exists(archivePath) && HasExpandedWorker(expandedWorkerDir))
+                {
+                    _resolvedWorkerDir = expandedWorkerDir;
+                    return _resolvedWorkerDir;
+                }
+
+                if (!File.Exists(archivePath))
+                    throw new FileNotFoundException(NotBuiltMessage, archivePath);
+
+                string archiveHash = ComputeSha256(archivePath);
+                string runtimeRoot = Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                    "DocuLink",
+                    "Runtime");
+                string targetDir = Path.Combine(runtimeRoot, archiveHash);
+                string readyMarker = Path.Combine(targetDir, ".ready");
+
+                // Multiple Excel processes can start simultaneously. Serialize
+                // extraction across processes so one cannot replace a cache that
+                // another has just begun using.
+                using (var extractionMutex = new Mutex(
+                    initiallyOwned: false,
+                    name: "Local\\DocuLink.Runtime." + archiveHash))
+                {
+                    bool acquired;
+                    try
+                    {
+                        acquired = extractionMutex.WaitOne(TimeSpan.FromMinutes(15));
+                    }
+                    catch (AbandonedMutexException)
+                    {
+                        acquired = true;
+                    }
+
+                    if (!acquired)
+                        throw new TimeoutException("Timed out preparing the DocuLink OCR runtime.");
+
+                    try
+                    {
+                        if (!HasExpandedWorker(targetDir) || !File.Exists(readyMarker))
+                            ExtractRuntimeArchive(archivePath, runtimeRoot, targetDir, archiveHash);
+                    }
+                    finally
+                    {
+                        extractionMutex.ReleaseMutex();
+                    }
+                }
+
+                _resolvedWorkerDir = targetDir;
+                return _resolvedWorkerDir;
+            }
+        }
+
+        private static string GetRuntimeArchivePath()
+        {
+            return Path.Combine(GetAddinDir(), "python", "worker-runtime.zip");
+        }
+
+        private static bool HasExpandedWorker(string directory)
+        {
+            return File.Exists(Path.Combine(directory, "python.exe"))
+                && File.Exists(Path.Combine(directory, "worker.py"));
+        }
+
+        private static string ComputeSha256(string path)
+        {
+            using (var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read))
+            using (var sha = SHA256.Create())
+            {
+                byte[] hash = sha.ComputeHash(stream);
+                var text = new StringBuilder(hash.Length * 2);
+                foreach (byte value in hash)
+                    text.Append(value.ToString("x2"));
+                return text.ToString();
+            }
+        }
+
+        private static void ExtractRuntimeArchive(
+            string archivePath,
+            string runtimeRoot,
+            string targetDir,
+            string archiveHash)
+        {
+            Directory.CreateDirectory(runtimeRoot);
+            string stagingDir = Path.Combine(
+                runtimeRoot,
+                ".extract-" + archiveHash + "-" + Guid.NewGuid().ToString("N"));
+
+            try
+            {
+                Directory.CreateDirectory(stagingDir);
+                string stagingRoot = Path.GetFullPath(stagingDir)
+                    .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+                    + Path.DirectorySeparatorChar;
+
+                using (var stream = new FileStream(archivePath, FileMode.Open, FileAccess.Read, FileShare.Read))
+                using (var archive = new ZipArchive(stream, ZipArchiveMode.Read))
+                {
+                    foreach (ZipArchiveEntry entry in archive.Entries)
+                    {
+                        string destination = Path.GetFullPath(Path.Combine(stagingDir, entry.FullName));
+                        if (!destination.StartsWith(stagingRoot, StringComparison.OrdinalIgnoreCase))
+                            throw new InvalidDataException("OCR runtime archive contains an invalid path.");
+
+                        if (string.IsNullOrEmpty(entry.Name))
+                        {
+                            Directory.CreateDirectory(destination);
+                            continue;
+                        }
+
+                        string parent = Path.GetDirectoryName(destination);
+                        if (!string.IsNullOrEmpty(parent))
+                            Directory.CreateDirectory(parent);
+
+                        using (Stream input = entry.Open())
+                        using (var output = new FileStream(
+                            destination, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+                        {
+                            input.CopyTo(output);
+                        }
+                    }
+                }
+
+                if (!HasExpandedWorker(stagingDir))
+                    throw new InvalidDataException("OCR runtime archive is incomplete.");
+
+                File.WriteAllText(
+                    Path.Combine(stagingDir, ".ready"), archiveHash, Encoding.ASCII);
+
+                if (Directory.Exists(targetDir))
+                    Directory.Delete(targetDir, recursive: true);
+                Directory.Move(stagingDir, targetDir);
+            }
+            catch
+            {
+                try
+                {
+                    if (Directory.Exists(stagingDir))
+                        Directory.Delete(stagingDir, recursive: true);
+                }
+                catch { }
+                throw;
+            }
         }
     }
 }

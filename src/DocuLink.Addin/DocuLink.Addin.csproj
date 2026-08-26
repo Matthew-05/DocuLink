@@ -108,6 +108,8 @@
     <Reference Include="System" />
     <Reference Include="System.Data" />
     <Reference Include="System.Drawing" />
+    <Reference Include="System.IO.Compression" />
+    <Reference Include="System.IO.Compression.FileSystem" />
     <Reference Include="System.Windows.Forms" />
     <Reference Include="System.Xml" />
     <Reference Include="System.Core" />
@@ -250,6 +252,7 @@
     <Compile Include="Modules\Services\PdfTextLayerDetector.cs" />
     <Compile Include="Modules\Services\RotatePageService.cs" />
     <Compile Include="Modules\Services\UpdateCheckService.cs" />
+    <Compile Include="Modules\Services\UpdateInstallerService.cs" />
     <Compile Include="Modules\Services\UpdateLinkService.cs" />
     <Compile Include="Modules\Services\WorkbookProtectionGuard.cs" />
     <Compile Include="Modules\UI\LinkTextPromptDialog.cs">
@@ -395,16 +398,13 @@
   </Target>
   <!-- ── Python OCR worker copy ── -->
   <PropertyGroup>
-    <PythonWorkerDistDir>$(MSBuildProjectDirectory)\..\python\dist\worker</PythonWorkerDistDir>
-    <PythonWorkerOutputDir>$(OutputPath)python\worker\</PythonWorkerOutputDir>
+    <PythonWorkerArchive>$(MSBuildProjectDirectory)\..\python\dist\worker-runtime.zip</PythonWorkerArchive>
+    <PythonWorkerOutput>$(OutputPath)python\worker-runtime.zip</PythonWorkerOutput>
   </PropertyGroup>
   <Target Name="CopyPythonWorkerToOutput" AfterTargets="CopyWebUiToOutput">
-    <Warning Condition="!Exists('$(PythonWorkerDistDir)')" Text="[DocuLink] Python OCR worker not built — $(PythonWorkerDistDir) not found. Run src/python/build-worker.ps1 to build it. OCR will not work until the worker is present." />
-    <ItemGroup Condition="Exists('$(PythonWorkerDistDir)')">
-      <PythonWorkerFiles Include="$(PythonWorkerDistDir)\**\*.*" />
-    </ItemGroup>
-    <Message Condition="Exists('$(PythonWorkerDistDir)')" Text="[DocuLink] Copying Python OCR worker to output…" Importance="high" />
-    <Copy Condition="Exists('$(PythonWorkerDistDir)')" SourceFiles="@(PythonWorkerFiles)" DestinationFiles="@(PythonWorkerFiles->'$(PythonWorkerOutputDir)%(RecursiveDir)%(Filename)%(Extension)')" />
+    <Warning Condition="!Exists('$(PythonWorkerArchive)')" Text="[DocuLink] Python OCR runtime not built — $(PythonWorkerArchive) not found. Run src/python/build-worker.ps1 to build it. OCR will not work until the runtime is present." />
+    <Message Condition="Exists('$(PythonWorkerArchive)')" Text="[DocuLink] Copying Python OCR runtime archive to output…" Importance="high" />
+    <Copy Condition="Exists('$(PythonWorkerArchive)')" SourceFiles="$(PythonWorkerArchive)" DestinationFiles="$(PythonWorkerOutput)" SkipUnchangedFiles="true" />
   </Target>
   <!-- This section defines VSTO properties that describe the host-changeable project properties. -->
   <ProjectExtensions>

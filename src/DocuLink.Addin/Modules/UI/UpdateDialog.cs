@@ -321,10 +321,10 @@ namespace DocuLink.Addin.Modules.UI
                     break;
 
                 case State.Complete:
-                    _statusLabel.Text = "Download complete. Ready to install.";
+                    _statusLabel.Text = "Download complete. Close Excel to install.";
                     _progressBar.Visible = false;
                     _percentLabel.Visible = false;
-                    _actionButton.Text = "Install Now";
+                    _actionButton.Text = "Install After Exit";
                     _actionButton.Tag = null;
                     _actionButton.Visible = true;
                     _snoozeCheckBox.Visible = false;
@@ -382,7 +382,8 @@ namespace DocuLink.Addin.Modules.UI
 
         private async void ActionButton_Click(object sender, EventArgs e)
         {
-            // "Install Now" path — _actionButton.Tag is null
+            // Installation path — the detached helper waits for Excel to exit,
+            // so Windows Installer does not contend with loaded VSTO assemblies.
             if (_actionButton.Tag == null)
             {
                 if (_localMsiPath != null)
@@ -397,18 +398,26 @@ namespace DocuLink.Addin.Modules.UI
 
                     try
                     {
-                        Process.Start("msiexec.exe", $"/i \"{_localMsiPath}\"");
+                        UpdateInstallerService.ScheduleAfterExcelExit(_localMsiPath);
                     }
                     catch
                     {
                         lock (InstanceSync)
                             _installationStarted = false;
 
-                        _statusLabel.Text = "Could not start the installer.";
+                        _statusLabel.Text = "Could not schedule the installer.";
                         _actionButton.Visible = true;
                         _closeButton.Text = "Close";
                         return;
                     }
+
+                    MessageBox.Show(
+                        this,
+                        "The DocuLink installer is ready and will start after Excel exits.\n\n" +
+                        "Save your work, then close every Excel window to continue.",
+                        "DocuLink Update",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Information);
 
                     Globals.ThisAddIn.CloseAllApplicationWindows();
                     var owner = Owner;

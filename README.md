@@ -87,13 +87,13 @@ This builds all web workspaces, including `document-viewer`, `file-manager`, `do
 .\src\python\build-worker.ps1
 ```
 
-The worker build downloads the embeddable Python runtime and required OCR tools if needed, installs `src/python/requirements.txt`, and writes the bundled worker to:
+The worker build downloads the embeddable Python runtime and required OCR tools if needed, installs `src/python/requirements.txt`, prunes build-only files, and writes the bundled runtime archive to:
 
 ```text
-src/python/dist/worker/
+src/python/dist/worker-runtime.zip
 ```
 
-The C# build copies this folder into the add-in output automatically. If the worker has not been built, the add-in still builds, but OCR will not work until the worker is present.
+The C# build copies this archive into the add-in output automatically. The add-in extracts it once into a hash-versioned cache under `%LOCALAPPDATA%\DocuLink\Runtime`, so an unchanged OCR runtime is reused across DocuLink upgrades. If the worker has not been built, the add-in still builds, but OCR will not work until the runtime is present.
 
 #### C# VSTO Add-in
 

@@ -9,7 +9,7 @@
         Override tool locations with $env:TESSERACT_DIR or $env:GHOSTSCRIPT_DIR.
 
     Output:
-      src/python/dist/worker/python.exe  (signed Python + scripts + tool binaries)
+      src/python/dist/worker-runtime.zip (Python + scripts + tool binaries)
 
     The dist/ folder is gitignored. After building, the C# project copies
     the worker to the addin output directory automatically on the next build.
@@ -147,8 +147,101 @@ Copy-Item $gsDir (Join-Path $workerDir "ghostscript") -Recurse -Force
 # ── Verify output ─────────────────────────────────────────────────────────────
 $outputExe = Join-Path $workerDir "python.exe"
 if (Test-Path $outputExe) {
-    Write-Host "`nBuild complete: $outputExe" -ForegroundColor Green
-    Write-Host "Build the C# project to automatically copy the worker to the addin output."
+    # Build tools, documentation and bytecode caches are not needed at runtime.
+    # Removing them saves substantial space and thousands of extracted files.
+    Write-Host "`nPruning build-only runtime files..." -ForegroundColor Cyan
+
+    $sitePackages = Join-Path $workerDir "Lib\site-packages"
+    $prunePaths = @(
+        (Join-Path $sitePackages "pip"),
+        (Join-Path $sitePackages "setuptools"),
+        (Join-Path $sitePackages "wheel"),
+        (Join-Path $sitePackages "_distutils_hack"),
+        (Join-Path $sitePackages "distutils-precedence.pth"),
+        (Join-Path $workerDir "ghostscript\doc"),
+        (Join-Path $workerDir "ghostscript\examples"),
+        (Join-Path $workerDir 'ghostscript\$PLUGINSDIR'),
+        (Join-Path $workerDir "ghostscript\vcredist_x64.exe"),
+        (Join-Path $workerDir "ghostscript\uninstgs.exe.nsis"),
+        (Join-Path $workerDir "ghostscript\bin\gswin64.exe"),
+        (Join-Path $workerDir "ghostscript\bin\gsdll64.lib")
+    )
+
+    $prunePaths += Get-ChildItem $sitePackages -Directory -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -match '^(pip|setuptools|wheel)-.*\.dist-info$' } |
+        ForEach-Object { $_.FullName }
+    $prunePaths += Get-ChildItem (Join-Path $workerDir "Scripts") -File -Filter "pip*.exe" -ErrorAction SilentlyContinue |
+        ForEach-Object { $_.FullName }
+    $prunePaths += Get-ChildItem (Join-Path $workerDir "tesseract") -File -Filter "*.exe" -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -ne "tesseract.exe" } |
+        ForEach-Object { $_.FullName }
+
+    foreach ($path in $prunePaths) {
+        if (Test-Path -LiteralPath $path) {
+            Remove-Item -LiteralPath $path -Recurse -Force
+        }
+    }
+
+    # Python is launched with -B by the host, so these caches are neither needed
+    # in the archive nor recreated in the per-user runtime cache.
+    Get-ChildItem -LiteralPath $workerDir -Directory -Recurse -Filter "__pycache__" -ErrorAction SilentlyContinue |
+        Sort-Object FullName -Descending |
+        Remove-Item -Recurse -Force
+    Get-ChildItem -LiteralPath $workerDir -File -Recurse -Filter "*.pyc" -ErrorAction SilentlyContinue |
+        Remove-Item -Force
+
+    $archivePath = Join-Path $scriptDir "dist\worker-runtime.zip"
+    if (Test-Path -LiteralPath $archivePath) {
+        Remove-Item -LiteralPath $archivePath -Force
+    }
+
+    Write-Host "Packing OCR runtime into a single installer payload..." -ForegroundColor Cyan
+    Add-Type -AssemblyName System.IO.Compression
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+
+    # Create a deterministic archive: stable ordering and timestamps make its
+    # SHA-256 (and therefore the runtime cache key) stay unchanged when the
+    # runtime contents have not changed between DocuLink releases.
+    $archiveStream = [System.IO.File]::Open(
+        $archivePath,
+        [System.IO.FileMode]::CreateNew,
+        [System.IO.FileAccess]::Write,
+        [System.IO.FileShare]::None)
+    $archive = New-Object System.IO.Compression.ZipArchive(
+        $archiveStream,
+        [System.IO.Compression.ZipArchiveMode]::Create,
+        $false)
+    $fixedTimestamp = New-Object System.DateTimeOffset(
+        2000, 1, 1, 0, 0, 0, [System.TimeSpan]::Zero)
+
+    try {
+        $runtimeFiles = Get-ChildItem -LiteralPath $workerDir -File -Recurse |
+            Sort-Object FullName
+
+        foreach ($file in $runtimeFiles) {
+            $relativePath = $file.FullName.Substring($workerDir.Length + 1).Replace('\', '/')
+            $entry = $archive.CreateEntry(
+                $relativePath,
+                [System.IO.Compression.CompressionLevel]::Optimal)
+            $entry.LastWriteTime = $fixedTimestamp
+
+            $input = $file.OpenRead()
+            $output = $entry.Open()
+            try {
+                $input.CopyTo($output)
+            } finally {
+                $output.Dispose()
+                $input.Dispose()
+            }
+        }
+    } finally {
+        $archive.Dispose()
+        $archiveStream.Dispose()
+    }
+
+    $archiveSizeMb = [math]::Round((Get-Item -LiteralPath $archivePath).Length / 1MB, 1)
+    Write-Host "`nBuild complete: $archivePath ($archiveSizeMb MB)" -ForegroundColor Green
+    Write-Host "Build the C# project to copy the runtime archive into the add-in output."
 } else {
     throw "Build appeared to succeed but python.exe not found at: $outputExe"
 }
