@@ -40,11 +40,13 @@ namespace DocuLink.Addin
 
         private readonly List<WorkbookPaneEntry> _workbookPanes = new List<WorkbookPaneEntry>();
 
+        // Standalone viewers are also workbook-scoped. A workbook may own at most one,
+        // while viewers belonging to other open workbooks remain independent and visible.
+        private readonly List<WorkbookViewerEntry> _workbookViewers = new List<WorkbookViewerEntry>();
+
         private FileManagerHost _fileManagerWindow;
 
         private DocumentMatcherHost _matcherWindow;
-
-        private ViewerWindowHost _viewerWindow;
 
         private readonly Dictionary<string, WorkbookStorageSession> _storageSessions =
             new Dictionary<string, WorkbookStorageSession>(StringComparer.OrdinalIgnoreCase);
@@ -120,8 +122,7 @@ namespace DocuLink.Addin
         }
 
         internal bool IsViewerPoppedOut =>
-
-            _viewerWindow != null && !_viewerWindow.IsDisposed && _viewerWindow.Visible;
+            IsViewerPoppedOutFor(Application?.ActiveWorkbook);
 
         /// <summary>
         /// Controls whether linked-cell selection opens the task-pane viewer. This is
@@ -506,8 +507,10 @@ namespace DocuLink.Addin
 
         {
 
-            if (IsViewerPoppedOut)
-                _viewerWindow.Close();
+            Excel.Workbook wb = Application?.ActiveWorkbook;
+            WorkbookViewerEntry viewerEntry = FindViewerEntryFor(wb);
+            if (viewerEntry != null && !viewerEntry.Window.IsDisposed)
+                viewerEntry.Window.Close();
 
 
 
@@ -529,28 +532,23 @@ namespace DocuLink.Addin
         internal void ShowViewerWindow()
 
         {
+            ReconcileClosedWorkbooks();
 
-            if (_viewerWindow == null || _viewerWindow.IsDisposed)
+            Excel.Workbook wb = Application?.ActiveWorkbook;
+            if (wb == null) return;
 
-                _viewerWindow = new ViewerWindowHost();
+            WorkbookViewerEntry entry = EnsureViewerWindowFor(wb);
+            entry.Window.InvalidateData();
 
+            HideTaskPaneFor(wb);
 
-            // The pop-out is shared across workbooks and does not receive incremental
-            // updates while hidden. Always bootstrap it from the active workbook when it
-            // is shown again instead of trusting data retained from its previous use.
-            _viewerWindow.InvalidateData();
+            entry.Window.Show();
 
+            entry.Window.BringToFront();
 
+            entry.Window.NotifyViewerShown();
 
-            HideAllTaskPanes();
-
-            _viewerWindow.Show();
-
-            _viewerWindow.BringToFront();
-
-            _viewerWindow.NotifyViewerShown();
-
-            _viewerWindow.SendSearchQuery(
+            entry.Window.SendSearchQuery(
                 GetActiveCellDisplayText(Application?.Selection as Excel.Range));
 
         }
@@ -707,10 +705,11 @@ namespace DocuLink.Addin
         internal IDocumentViewerHost GetActiveViewerHost()
 
         {
-
-            if (IsViewerPoppedOut)
-
-                return _viewerWindow;
+            WorkbookViewerEntry viewerEntry = FindViewerEntryForActiveWorkbook();
+            if (viewerEntry != null
+                && !viewerEntry.Window.IsDisposed
+                && viewerEntry.Window.Visible)
+                return viewerEntry.Window;
 
             return FindEntryForActiveWorkbook()?.Host;
 
@@ -749,10 +748,11 @@ namespace DocuLink.Addin
         internal void PreloadViewerWindow()
 
         {
+            Excel.Workbook wb = Application?.ActiveWorkbook;
+            if (wb == null) return;
 
-            _viewerWindow = new ViewerWindowHost();
-
-            _ = _viewerWindow.Handle;
+            WorkbookViewerEntry entry = EnsureViewerWindowFor(wb);
+            _ = entry.Window.Handle;
 
         }
 
@@ -772,8 +772,11 @@ namespace DocuLink.Addin
         {
             if (_fileManagerWindow != null && !_fileManagerWindow.IsDisposed)
                 _fileManagerWindow.Close();
-            if (_viewerWindow != null && !_viewerWindow.IsDisposed)
-                _viewerWindow.Close();
+            foreach (WorkbookViewerEntry entry in _workbookViewers.ToArray())
+            {
+                if (!entry.Window.IsDisposed)
+                    entry.Window.Close();
+            }
             if (_matcherWindow != null && !_matcherWindow.IsDisposed)
                 _matcherWindow.Close();
         }
@@ -804,7 +807,7 @@ namespace DocuLink.Addin
 
 
 
-            var host = new TaskPaneHost();
+            var host = new TaskPaneHost(wb);
 
             // Passing the active window scopes the pane to this workbook's window,
 
@@ -822,7 +825,7 @@ namespace DocuLink.Addin
 
             {
 
-                if (IsViewerPoppedOut && pane.Visible)
+                if (IsViewerPoppedOutFor(wb) && pane.Visible)
 
                     pane.Visible = false;
 
@@ -840,36 +843,36 @@ namespace DocuLink.Addin
 
 
 
-        private void HideAllTaskPanes()
-
+        private WorkbookViewerEntry EnsureViewerWindowFor(Excel.Workbook workbook)
         {
+            WorkbookViewerEntry entry = FindViewerEntryFor(workbook);
+            if (entry != null && !entry.Window.IsDisposed)
+                return entry;
 
-            foreach (var entry in _workbookPanes)
+            if (entry != null)
+                _workbookViewers.Remove(entry);
 
+            var window = new ViewerWindowHost(workbook);
+            entry = new WorkbookViewerEntry(workbook, window);
+            _workbookViewers.Add(entry);
+            return entry;
+        }
+
+        private void HideTaskPaneFor(Excel.Workbook workbook)
+        {
+            WorkbookPaneEntry entry = FindEntryFor(workbook);
+            if (entry == null) return;
+
+            try
             {
-
-                try
-
-                {
-
-                    if (entry.Pane.Visible)
-
-                        entry.Pane.Visible = false;
-
-                }
-
-                catch (Exception ex)
-
-                {
-
-                    System.Diagnostics.Debug.WriteLine(
-
-                        $"[DocuLink] HideAllTaskPanes failed: {ex.Message}");
-
-                }
-
+                if (entry.Pane.Visible)
+                    entry.Pane.Visible = false;
             }
-
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine(
+                    $"[DocuLink] HideTaskPaneFor failed: {ex.Message}");
+            }
         }
 
 
@@ -882,6 +885,17 @@ namespace DocuLink.Addin
 
             return wb == null ? null : FindEntryFor(wb);
 
+        }
+
+        private WorkbookViewerEntry FindViewerEntryForActiveWorkbook()
+        {
+            return FindViewerEntryFor(Application?.ActiveWorkbook);
+        }
+
+        private bool IsViewerPoppedOutFor(Excel.Workbook workbook)
+        {
+            WorkbookViewerEntry entry = FindViewerEntryFor(workbook);
+            return entry != null && !entry.Window.IsDisposed && entry.Window.Visible;
         }
 
 
@@ -964,6 +978,42 @@ namespace DocuLink.Addin
         }
 
 
+
+        /// <summary>Finds the standalone viewer owned by a workbook using COM identity.</summary>
+        private WorkbookViewerEntry FindViewerEntryFor(Excel.Workbook wb)
+        {
+            if (wb == null) return null;
+
+            IntPtr target = IntPtr.Zero;
+            try
+            {
+                target = Marshal.GetIUnknownForObject(wb);
+                foreach (WorkbookViewerEntry entry in _workbookViewers)
+                {
+                    IntPtr candidate = IntPtr.Zero;
+                    try
+                    {
+                        candidate = Marshal.GetIUnknownForObject(entry.Workbook);
+                        if (candidate == target) return entry;
+                    }
+                    catch (Exception ex)
+                    {
+                        Modules.DocuLinkLog.Trace(
+                            $"FindViewerEntryFor skipping unusable entry: {ex.Message}");
+                    }
+                    finally
+                    {
+                        if (candidate != IntPtr.Zero) Marshal.Release(candidate);
+                    }
+                }
+            }
+            finally
+            {
+                if (target != IntPtr.Zero) Marshal.Release(target);
+            }
+
+            return null;
+        }
 
         // ── Event handlers ────────────────────────────────────────────────────
 
@@ -1098,31 +1148,23 @@ namespace DocuLink.Addin
 
                 _fileManagerWindow = null;
 
-                try
-
+                foreach (WorkbookViewerEntry entry in _workbookViewers.ToArray())
                 {
-
-                    if (_viewerWindow != null && !_viewerWindow.IsDisposed)
-
+                    try
                     {
-
-                        Modules.DocuLinkLog.Trace("disposing viewer window");
-
-                        _viewerWindow.Dispose();
-
+                        if (!entry.Window.IsDisposed)
+                        {
+                            Modules.DocuLinkLog.Trace("disposing workbook viewer window");
+                            entry.Window.Dispose();
+                        }
                     }
-
+                    catch (Exception ex)
+                    {
+                        Modules.DocuLinkLog.Trace(
+                            $"viewer window dispose failed: {ex.GetType().FullName}: {ex.Message}");
+                    }
                 }
-
-                catch (Exception ex)
-
-                {
-
-                    Modules.DocuLinkLog.Trace($"viewer window dispose failed: {ex.GetType().FullName}: {ex.Message}");
-
-                }
-
-                _viewerWindow = null;
+                _workbookViewers.Clear();
 
                 try
 
@@ -1164,7 +1206,8 @@ namespace DocuLink.Addin
         {
             Modules.DocuLinkLog.Trace(
                 $"ENTER workbook={GetWorkbookDebugName(wb)} cancel={cancel} " +
-                $"panes={_workbookPanes.Count} sessions={_storageSessions.Count}");
+                $"panes={_workbookPanes.Count} viewers={_workbookViewers.Count} " +
+                $"sessions={_storageSessions.Count}");
 
             // Safe to drop even if the close is cancelled: the session is only a cache over
             // the workbook's Custom XML, and GetStorageSession rebuilds it on next use.
@@ -1195,7 +1238,9 @@ namespace DocuLink.Addin
         /// </remarks>
         private void ReconcileClosedWorkbooks()
         {
-            if (_workbookPanes.Count == 0 && _storageSessions.Count == 0)
+            if (_workbookPanes.Count == 0
+                && _workbookViewers.Count == 0
+                && _storageSessions.Count == 0)
                 return;
 
             var liveWorkbooks = new HashSet<IntPtr>();
@@ -1242,6 +1287,27 @@ namespace DocuLink.Addin
                 {
                     Modules.DocuLinkLog.Trace(
                         $"reconcile: host dispose failed: {ex.GetType().FullName}: {ex.Message}");
+                }
+            }
+
+            foreach (WorkbookViewerEntry entry in _workbookViewers.ToArray())
+            {
+                if (!entry.Window.IsDisposed
+                    && IsWorkbookStillOpen(entry.Workbook, liveWorkbooks))
+                    continue;
+
+                Modules.DocuLinkLog.Trace("reconcile: removing viewer for closed workbook");
+                _workbookViewers.Remove(entry);
+
+                try
+                {
+                    if (!entry.Window.IsDisposed)
+                        entry.Window.Dispose();
+                }
+                catch (Exception ex)
+                {
+                    Modules.DocuLinkLog.Trace(
+                        $"reconcile: viewer dispose failed: {ex.GetType().FullName}: {ex.Message}");
                 }
             }
 
@@ -1300,13 +1366,16 @@ namespace DocuLink.Addin
 
             {
 
-                if (IsViewerPoppedOut)
+                WorkbookViewerEntry viewerEntry = FindViewerEntryFor(wb);
+                if (viewerEntry != null
+                    && !viewerEntry.Window.IsDisposed
+                    && viewerEntry.Window.Visible)
 
                 {
 
-                    _viewerWindow.InvalidateData();
+                    viewerEntry.Window.InvalidateData();
 
-                    _viewerWindow.RefreshDataIfReady();
+                    viewerEntry.Window.RefreshDataIfReady();
 
                     return;
 
@@ -1982,6 +2051,19 @@ namespace DocuLink.Addin
 
         }
 
+    }
+
+    /// <summary>Associates a workbook's COM identity with its standalone viewer.</summary>
+    internal sealed class WorkbookViewerEntry
+    {
+        internal Excel.Workbook Workbook { get; }
+        internal ViewerWindowHost Window { get; }
+
+        internal WorkbookViewerEntry(Excel.Workbook workbook, ViewerWindowHost window)
+        {
+            Workbook = workbook;
+            Window = window;
+        }
     }
 
 }

@@ -1,6 +1,7 @@
 using System;
 using System.Windows.Forms;
 using DocuLink.Addin.Modules;
+using Excel = Microsoft.Office.Interop.Excel;
 
 namespace DocuLink.Addin.Modules.WebView
 {
@@ -9,15 +10,27 @@ namespace DocuLink.Addin.Modules.WebView
     {
         private readonly DocumentViewerController _controller;
 
-        public ViewerWindowHost()
+        public ViewerWindowHost(Excel.Workbook workbook)
         {
-            Text = "DocuLink \u2013 Document Viewer";
+            string workbookName;
+            try
+            {
+                workbookName = workbook?.Name;
+            }
+            catch
+            {
+                workbookName = null;
+            }
+
+            Text = string.IsNullOrWhiteSpace(workbookName)
+                ? "DocuLink \u2013 Document Viewer"
+                : $"DocuLink \u2013 Document Viewer \u2013 {workbookName}";
             Width = 900;
             Height = 700;
             MinimumSize = new System.Drawing.Size(640, 480);
             StartPosition = FormStartPosition.CenterScreen;
 
-            _controller = new DocumentViewerController(this, "document viewer");
+            _controller = new DocumentViewerController(this, "document viewer", workbook);
             Controls.Add(_controller.Surface);
             _controller.Start();
         }

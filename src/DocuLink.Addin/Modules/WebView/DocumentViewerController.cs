@@ -21,6 +21,7 @@ namespace DocuLink.Addin.Modules.WebView
     {
         private readonly Control _invokeTarget;
         private readonly string _loadFailureSurfaceName;
+        private readonly Excel.Workbook _workbook;
         private readonly Panel _surface = new Panel();
         private readonly Label _startupPlaceholder = new Label();
         private readonly WebView2 _webView = new WebView2();
@@ -38,10 +39,14 @@ namespace DocuLink.Addin.Modules.WebView
         private string _pendingSearchQuery;
         private bool _disposed;
 
-        internal DocumentViewerController(Control invokeTarget, string loadFailureSurfaceName)
+        internal DocumentViewerController(
+            Control invokeTarget,
+            string loadFailureSurfaceName,
+            Excel.Workbook workbook)
         {
             _invokeTarget = invokeTarget ?? throw new ArgumentNullException(nameof(invokeTarget));
             _loadFailureSurfaceName = loadFailureSurfaceName ?? "viewer";
+            _workbook = workbook ?? throw new ArgumentNullException(nameof(workbook));
 
             Color background = Color.FromArgb(244, 244, 249);
 
@@ -272,7 +277,10 @@ namespace DocuLink.Addin.Modules.WebView
             if (payload == null) return;
 
             _invokeTarget.BeginInvoke(new Action(() =>
-                Globals.ThisAddIn.CellNavigation.Navigate(payload.Motion, payload.Reverse)));
+            {
+                if (!TryActivateWorkbook()) return;
+                Globals.ThisAddIn.CellNavigation.Navigate(payload.Motion, payload.Reverse);
+            }));
         }
 
         /// <summary>
@@ -281,7 +289,11 @@ namespace DocuLink.Addin.Modules.WebView
         /// </summary>
         private void HandleUndoLinkCreation()
         {
-            _invokeTarget.BeginInvoke(new Action(() => Globals.ThisAddIn.UndoMostRecentAction()));
+            _invokeTarget.BeginInvoke(new Action(() =>
+            {
+                if (!TryActivateWorkbook()) return;
+                Globals.ThisAddIn.UndoMostRecentAction();
+            }));
         }
 
         private void HandleLinkRectangleCreated(string json)
@@ -289,10 +301,11 @@ namespace DocuLink.Addin.Modules.WebView
             var payload = HostMessageParser.ParseLinkRectangleCreated(json);
             if (payload == null) return;
 
-            Excel.Workbook wb = Globals.ThisAddIn.Application?.ActiveWorkbook;
-            if (wb == null) return;
-
-            _invokeTarget.BeginInvoke(new Action(() => ExecuteLinkRectangleCreated(payload, wb)));
+            _invokeTarget.BeginInvoke(new Action(() =>
+            {
+                if (!TryActivateWorkbook()) return;
+                ExecuteLinkRectangleCreated(payload, _workbook);
+            }));
         }
 
         private void ExecuteLinkRectangleCreated(LinkRectangleCreatedPayload payload, Excel.Workbook wb)
@@ -383,8 +396,8 @@ namespace DocuLink.Addin.Modules.WebView
             var payload = HostMessageParser.ParseLinkRectangleUpdated(json);
             if (payload == null) return;
 
-            Excel.Workbook wb = Globals.ThisAddIn.Application?.ActiveWorkbook;
-            if (wb == null) return;
+            if (!TryActivateWorkbook()) return;
+            Excel.Workbook wb = _workbook;
 
             IWin32Window owner = _invokeTarget.FindForm() ?? _invokeTarget;
             if (!WorkbookProtectionGuard.TryRequireWritable(wb, owner))
@@ -420,8 +433,8 @@ namespace DocuLink.Addin.Modules.WebView
             string rectId = HostMessageParser.ParseLinkRectangleClicked(json);
             if (string.IsNullOrWhiteSpace(rectId)) return;
 
-            Excel.Workbook wb = Globals.ThisAddIn.Application?.ActiveWorkbook;
-            if (wb == null) return;
+            if (!TryActivateWorkbook()) return;
+            Excel.Workbook wb = _workbook;
 
             Globals.ThisAddIn.SuppressNextSelectionNav = true;
 
@@ -467,8 +480,8 @@ namespace DocuLink.Addin.Modules.WebView
                 HostMessageParser.ParseLinkRectangleDeletion(json);
             if (payload == null) return;
 
-            Excel.Workbook wb = Globals.ThisAddIn.Application?.ActiveWorkbook;
-            if (wb == null) return;
+            if (!TryActivateWorkbook()) return;
+            Excel.Workbook wb = _workbook;
 
             IWin32Window owner = _invokeTarget.FindForm() ?? _invokeTarget;
             if (!WorkbookProtectionGuard.TryRequireWritable(wb, owner))
@@ -493,8 +506,8 @@ namespace DocuLink.Addin.Modules.WebView
             CopyTableSelectionPayload payload = HostMessageParser.ParseCopyTableSelection(json);
             if (payload == null) return;
 
-            Excel.Workbook wb = Globals.ThisAddIn.Application?.ActiveWorkbook;
-            if (wb == null) return;
+            if (!TryActivateWorkbook()) return;
+            Excel.Workbook wb = _workbook;
 
             IWin32Window owner = _invokeTarget.FindForm() ?? _invokeTarget;
             if (!WorkbookProtectionGuard.TryRequireWritable(wb, owner))
@@ -520,8 +533,8 @@ namespace DocuLink.Addin.Modules.WebView
             var payload = HostMessageParser.ParseRotatePage(json);
             if (payload == null) return;
 
-            Excel.Workbook wb = Globals.ThisAddIn.Application?.ActiveWorkbook;
-            if (wb == null) return;
+            if (!TryActivateWorkbook()) return;
+            Excel.Workbook wb = _workbook;
 
             IWin32Window owner = _invokeTarget.FindForm() ?? _invokeTarget;
             if (!WorkbookProtectionGuard.TryRequireWritable(wb, owner))
@@ -591,6 +604,28 @@ namespace DocuLink.Addin.Modules.WebView
             {
                 System.Diagnostics.Debug.WriteLine(
                     $"[DocuLink] SendLinkedRectangleAdded failed: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Commands originating from a pop-out must act on that pop-out's workbook, even
+        /// when another workbook was focused in Excel. Activating the owner also makes the
+        /// workbook's current selection authoritative for link creation and grid navigation.
+        /// </summary>
+        private bool TryActivateWorkbook()
+        {
+            if (_disposed) return false;
+
+            try
+            {
+                _workbook.Activate();
+                return true;
+            }
+            catch (Exception ex)
+            {
+                DocuLinkLog.Trace(
+                    $"Activate owning workbook failed surface={_loadFailureSurfaceName}: {ex.Message}");
+                return false;
             }
         }
 
@@ -755,12 +790,7 @@ namespace DocuLink.Addin.Modules.WebView
             if (_disposed) return;
             try
             {
-                Excel.Application app = Globals.ThisAddIn.Application;
-                Excel.Workbook workbook = app?.ActiveWorkbook;
-                if (workbook == null)
-                    return;
-
-                PostLinkedRectangles(Globals.ThisAddIn.GetStorageSession(workbook).GetLinks());
+                PostLinkedRectangles(Globals.ThisAddIn.GetStorageSession(_workbook).GetLinks());
             }
             catch (Exception ex)
             {
@@ -805,16 +835,9 @@ namespace DocuLink.Addin.Modules.WebView
             if (_disposed || !_webViewReady) return false;
             try
             {
-                Excel.Application app = Globals.ThisAddIn.Application;
-                Excel.Workbook workbook = app?.ActiveWorkbook;
-                IList<PdfDocument> pdfs = new List<PdfDocument>();
-                IList<PdfFolder> folders = new List<PdfFolder>();
-                if (workbook != null)
-                {
-                    var store = new DocuLinkCustomXmlPartStore(workbook);
-                    pdfs = store.LoadAllPdfsWithBinary();
-                    folders = store.LoadContent().Folders;
-                }
+                var store = new DocuLinkCustomXmlPartStore(_workbook);
+                IList<PdfDocument> pdfs = store.LoadAllPdfsWithBinary();
+                IList<PdfFolder> folders = store.LoadContent().Folders;
                 string json = HostMessageSerializer.BuildPdfsLoaded(pdfs, folders);
                 _webView.CoreWebView2.PostWebMessageAsString(json);
                 return true;
@@ -840,12 +863,7 @@ namespace DocuLink.Addin.Modules.WebView
 
             try
             {
-                Excel.Application app = Globals.ThisAddIn.Application;
-                Excel.Workbook workbook = app?.ActiveWorkbook;
-                if (workbook == null)
-                    return;
-
-                DocuLinkContent content = new DocuLinkCustomXmlPartStore(workbook).LoadContent();
+                DocuLinkContent content = new DocuLinkCustomXmlPartStore(_workbook).LoadContent();
                 string json = HostMessageSerializer.BuildViewerFoldersUpdated(
                     content.Folders, content.Pdfs);
                 _webView.CoreWebView2.PostWebMessageAsString(json);
@@ -864,12 +882,7 @@ namespace DocuLink.Addin.Modules.WebView
 
             try
             {
-                Excel.Application app = Globals.ThisAddIn.Application;
-                Excel.Workbook workbook = app?.ActiveWorkbook;
-                if (workbook == null)
-                    return;
-
-                var store = new DocuLinkCustomXmlPartStore(workbook);
+                var store = new DocuLinkCustomXmlPartStore(_workbook);
                 if (!store.TryGetPdf(pdfId, out PdfDocument pdf))
                     return;
 
@@ -890,12 +903,7 @@ namespace DocuLink.Addin.Modules.WebView
 
             try
             {
-                Excel.Application app = Globals.ThisAddIn.Application;
-                Excel.Workbook workbook = app?.ActiveWorkbook;
-                if (workbook == null)
-                    return;
-
-                var store = new DocuLinkCustomXmlPartStore(workbook);
+                var store = new DocuLinkCustomXmlPartStore(_workbook);
                 if (!store.TryGetPdf(pdfId, out PdfDocument pdf))
                     return;
 

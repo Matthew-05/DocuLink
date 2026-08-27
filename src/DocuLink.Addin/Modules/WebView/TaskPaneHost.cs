@@ -1,5 +1,6 @@
 using System.Windows.Forms;
 using DocuLink.Addin.Modules;
+using Excel = Microsoft.Office.Interop.Excel;
 
 namespace DocuLink.Addin.Modules.WebView
 {
@@ -8,10 +9,10 @@ namespace DocuLink.Addin.Modules.WebView
     {
         private readonly DocumentViewerController _controller;
 
-        public TaskPaneHost()
+        public TaskPaneHost(Excel.Workbook workbook)
         {
             Dock = DockStyle.Fill;
-            _controller = new DocumentViewerController(this, "task pane");
+            _controller = new DocumentViewerController(this, "task pane", workbook);
             Controls.Add(_controller.Surface);
             _controller.Start();
         }
