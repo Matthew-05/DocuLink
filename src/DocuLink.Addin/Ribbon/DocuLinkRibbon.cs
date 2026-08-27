@@ -349,10 +349,10 @@ namespace DocuLink.Addin.Ribbon
                         result.AddedIds.Count);
 
                     foreach (string id in result.AddedIds)
-                        Globals.ThisAddIn.NotifyViewerPdfAdded(id);
+                        Globals.ThisAddIn.NotifyViewerPdfAdded(workbook, id);
 
                     if (createsFolderGroup)
-                        Globals.ThisAddIn.NotifyViewerFoldersChanged();
+                        Globals.ThisAddIn.NotifyViewerFoldersChanged(workbook);
                 }
             }
 

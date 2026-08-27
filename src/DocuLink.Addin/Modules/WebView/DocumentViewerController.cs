@@ -271,7 +271,7 @@ namespace DocuLink.Addin.Modules.WebView
             _invokeTarget.BeginInvoke(new Action(() =>
             {
                 if (!TryActivateWorkbook()) return;
-                Globals.ThisAddIn.ShowManageFilesWindow();
+                Globals.ThisAddIn.ShowManageFilesWindow(_workbook);
             }));
         }
 
@@ -395,7 +395,7 @@ namespace DocuLink.Addin.Modules.WebView
                     DocuLinkLog.Trace("SendHighlightRectangle done");
                 }
 
-                Globals.ThisAddIn.NotifyFileManagerLinksChanged();
+                Globals.ThisAddIn.NotifyFileManagerLinksChanged(_workbook);
 
                 DocuLinkLog.Trace("restoring focus to Excel");
                 RestoreExcelFocus();
@@ -509,7 +509,7 @@ namespace DocuLink.Addin.Modules.WebView
                 SendLinkRectanglesRemoved(new[] { payload.Id });
             }
 
-            Globals.ThisAddIn.NotifyFileManagerLinksChanged();
+            Globals.ThisAddIn.NotifyFileManagerLinksChanged(_workbook);
 
             RestoreExcelFocus();
         }
@@ -537,7 +537,7 @@ namespace DocuLink.Addin.Modules.WebView
             }
             if (allRects == null) return;
 
-            Globals.ThisAddIn.NotifyFileManagerLinksChanged();
+            Globals.ThisAddIn.NotifyFileManagerLinksChanged(_workbook);
             RestoreExcelFocus();
         }
 

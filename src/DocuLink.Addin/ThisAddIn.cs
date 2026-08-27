@@ -44,7 +44,10 @@ namespace DocuLink.Addin
         // while viewers belonging to other open workbooks remain independent and visible.
         private readonly List<WorkbookViewerEntry> _workbookViewers = new List<WorkbookViewerEntry>();
 
-        private FileManagerHost _fileManagerWindow;
+        // File managers follow the same ownership model as standalone viewers: each open
+        // workbook may have one independent window, permanently bound to that workbook.
+        private readonly List<WorkbookFileManagerEntry> _workbookFileManagers =
+            new List<WorkbookFileManagerEntry>();
 
         private DocumentMatcherHost _matcherWindow;
 
@@ -393,8 +396,8 @@ namespace DocuLink.Addin
             if (removedId != null)
             {
                 _cellNavigation.ResetAnchor();
-                GetActiveViewerHost()?.SendLinkRectanglesRemoved(new List<string> { removedId });
-                NotifyFileManagerLinksChanged();
+                GetViewerHostFor(wb)?.SendLinkRectanglesRemoved(new List<string> { removedId });
+                NotifyFileManagerLinksChanged(wb);
             }
 
             return removedId;
@@ -581,35 +584,35 @@ namespace DocuLink.Addin
 
         /// </summary>
 
-        internal void RefreshTaskPanePdf(string pdfId)
+        internal void RefreshTaskPanePdf(Excel.Workbook workbook, string pdfId)
 
         {
 
-            GetActiveViewerHost()?.SendPdfUpdated(pdfId);
+            GetViewerHostFor(workbook)?.SendPdfUpdated(pdfId);
 
         }
 
-        internal void NotifyViewerPdfAdded(string pdfId)
+        internal void NotifyViewerPdfAdded(Excel.Workbook workbook, string pdfId)
 
         {
 
-            GetActiveViewerHost()?.SendPdfAdded(pdfId);
+            GetViewerHostFor(workbook)?.SendPdfAdded(pdfId);
 
         }
 
-        internal void NotifyViewerPdfRenamed(string id, string name)
+        internal void NotifyViewerPdfRenamed(Excel.Workbook workbook, string id, string name)
 
         {
 
-            GetActiveViewerHost()?.SendPdfNameUpdated(id, name);
+            GetViewerHostFor(workbook)?.SendPdfNameUpdated(id, name);
 
         }
 
-        internal void NotifyViewerPdfRemoved(string id)
+        internal void NotifyViewerPdfRemoved(Excel.Workbook workbook, string id)
 
         {
 
-            GetActiveViewerHost()?.SendPdfRemoved(id);
+            GetViewerHostFor(workbook)?.SendPdfRemoved(id);
 
         }
 
@@ -623,11 +626,11 @@ namespace DocuLink.Addin
 
         /// </summary>
 
-        internal void NotifyViewerShowPdf(string pdfId)
+        internal void NotifyViewerShowPdf(Excel.Workbook workbook, string pdfId)
 
         {
 
-            GetActiveViewerHost()?.SendShowPdf(pdfId);
+            GetViewerHostFor(workbook)?.SendShowPdf(pdfId);
 
         }
 
@@ -641,11 +644,11 @@ namespace DocuLink.Addin
 
         /// </summary>
 
-        internal void NotifyViewerFoldersChanged()
+        internal void NotifyViewerFoldersChanged(Excel.Workbook workbook)
 
         {
 
-            GetActiveViewerHost()?.SendFoldersToWebView();
+            GetViewerHostFor(workbook)?.SendFoldersToWebView();
 
         }
 
@@ -654,18 +657,18 @@ namespace DocuLink.Addin
         internal void ShowManageFilesWindow()
 
         {
+            ShowManageFilesWindow(Application?.ActiveWorkbook);
+        }
 
-            if (_fileManagerWindow == null || _fileManagerWindow.IsDisposed)
+        internal void ShowManageFilesWindow(Excel.Workbook workbook)
+        {
+            ReconcileClosedWorkbooks();
+            if (workbook == null) return;
 
-                _fileManagerWindow = new FileManagerHost();
-
-
-
-            _fileManagerWindow.Show();
-
-            _fileManagerWindow.BringToFront();
-
-            _fileManagerWindow.RefreshDataIfReady();
+            WorkbookFileManagerEntry entry = EnsureFileManagerFor(workbook);
+            entry.Window.Show();
+            entry.Window.BringToFront();
+            entry.Window.RefreshDataIfReady();
 
         }
 
@@ -691,9 +694,11 @@ namespace DocuLink.Addin
 
 
 
-        internal void NotifyFileManagerLinksChanged()
+        internal void NotifyFileManagerLinksChanged(Excel.Workbook workbook)
         {
-            _fileManagerWindow?.RefreshDataIfReady();
+            WorkbookFileManagerEntry entry = FindFileManagerEntryFor(workbook);
+            if (entry != null && !entry.Window.IsDisposed)
+                entry.Window.RefreshDataIfReady();
         }
 
 
@@ -705,13 +710,18 @@ namespace DocuLink.Addin
         internal IDocumentViewerHost GetActiveViewerHost()
 
         {
-            WorkbookViewerEntry viewerEntry = FindViewerEntryForActiveWorkbook();
+            return GetViewerHostFor(Application?.ActiveWorkbook);
+        }
+
+        private IDocumentViewerHost GetViewerHostFor(Excel.Workbook workbook)
+        {
+            WorkbookViewerEntry viewerEntry = FindViewerEntryFor(workbook);
             if (viewerEntry != null
                 && !viewerEntry.Window.IsDisposed
                 && viewerEntry.Window.Visible)
                 return viewerEntry.Window;
 
-            return FindEntryForActiveWorkbook()?.Host;
+            return FindEntryFor(workbook)?.Host;
 
         }
 
@@ -736,10 +746,11 @@ namespace DocuLink.Addin
         internal void PreloadFileManagerWindow()
 
         {
+            Excel.Workbook wb = Application?.ActiveWorkbook;
+            if (wb == null) return;
 
-            _fileManagerWindow = new FileManagerHost();
-
-            _ = _fileManagerWindow.Handle;
+            WorkbookFileManagerEntry entry = EnsureFileManagerFor(wb);
+            _ = entry.Window.Handle;
 
         }
 
@@ -770,8 +781,11 @@ namespace DocuLink.Addin
 
         internal void CloseAllApplicationWindows()
         {
-            if (_fileManagerWindow != null && !_fileManagerWindow.IsDisposed)
-                _fileManagerWindow.Close();
+            foreach (WorkbookFileManagerEntry entry in _workbookFileManagers.ToArray())
+            {
+                if (!entry.Window.IsDisposed)
+                    entry.Window.Close();
+            }
             foreach (WorkbookViewerEntry entry in _workbookViewers.ToArray())
             {
                 if (!entry.Window.IsDisposed)
@@ -858,6 +872,21 @@ namespace DocuLink.Addin
             return entry;
         }
 
+        private WorkbookFileManagerEntry EnsureFileManagerFor(Excel.Workbook workbook)
+        {
+            WorkbookFileManagerEntry entry = FindFileManagerEntryFor(workbook);
+            if (entry != null && !entry.Window.IsDisposed)
+                return entry;
+
+            if (entry != null)
+                _workbookFileManagers.Remove(entry);
+
+            var window = new FileManagerHost(workbook);
+            entry = new WorkbookFileManagerEntry(workbook, window);
+            _workbookFileManagers.Add(entry);
+            return entry;
+        }
+
         private void HideTaskPaneFor(Excel.Workbook workbook)
         {
             WorkbookPaneEntry entry = FindEntryFor(workbook);
@@ -885,11 +914,6 @@ namespace DocuLink.Addin
 
             return wb == null ? null : FindEntryFor(wb);
 
-        }
-
-        private WorkbookViewerEntry FindViewerEntryForActiveWorkbook()
-        {
-            return FindViewerEntryFor(Application?.ActiveWorkbook);
         }
 
         private bool IsViewerPoppedOutFor(Excel.Workbook workbook)
@@ -1015,6 +1039,42 @@ namespace DocuLink.Addin
             return null;
         }
 
+        /// <summary>Finds the file manager owned by a workbook using COM identity.</summary>
+        private WorkbookFileManagerEntry FindFileManagerEntryFor(Excel.Workbook wb)
+        {
+            if (wb == null) return null;
+
+            IntPtr target = IntPtr.Zero;
+            try
+            {
+                target = Marshal.GetIUnknownForObject(wb);
+                foreach (WorkbookFileManagerEntry entry in _workbookFileManagers)
+                {
+                    IntPtr candidate = IntPtr.Zero;
+                    try
+                    {
+                        candidate = Marshal.GetIUnknownForObject(entry.Workbook);
+                        if (candidate == target) return entry;
+                    }
+                    catch (Exception ex)
+                    {
+                        Modules.DocuLinkLog.Trace(
+                            $"FindFileManagerEntryFor skipping unusable entry: {ex.Message}");
+                    }
+                    finally
+                    {
+                        if (candidate != IntPtr.Zero) Marshal.Release(candidate);
+                    }
+                }
+            }
+            finally
+            {
+                if (target != IntPtr.Zero) Marshal.Release(target);
+            }
+
+            return null;
+        }
+
         // ── Event handlers ────────────────────────────────────────────────────
 
 
@@ -1122,31 +1182,23 @@ namespace DocuLink.Addin
 
                 _workbookPanes.Clear();
 
-                try
-
+                foreach (WorkbookFileManagerEntry entry in _workbookFileManagers.ToArray())
                 {
-
-                    if (_fileManagerWindow != null && !_fileManagerWindow.IsDisposed)
-
+                    try
                     {
-
-                        Modules.DocuLinkLog.Trace("disposing file manager window");
-
-                        _fileManagerWindow.Dispose();
-
+                        if (!entry.Window.IsDisposed)
+                        {
+                            Modules.DocuLinkLog.Trace("disposing workbook file manager window");
+                            entry.Window.Dispose();
+                        }
                     }
-
+                    catch (Exception ex)
+                    {
+                        Modules.DocuLinkLog.Trace(
+                            $"file manager dispose failed: {ex.GetType().FullName}: {ex.Message}");
+                    }
                 }
-
-                catch (Exception ex)
-
-                {
-
-                    Modules.DocuLinkLog.Trace($"file manager dispose failed: {ex.GetType().FullName}: {ex.Message}");
-
-                }
-
-                _fileManagerWindow = null;
+                _workbookFileManagers.Clear();
 
                 foreach (WorkbookViewerEntry entry in _workbookViewers.ToArray())
                 {
@@ -1207,6 +1259,7 @@ namespace DocuLink.Addin
             Modules.DocuLinkLog.Trace(
                 $"ENTER workbook={GetWorkbookDebugName(wb)} cancel={cancel} " +
                 $"panes={_workbookPanes.Count} viewers={_workbookViewers.Count} " +
+                $"fileManagers={_workbookFileManagers.Count} " +
                 $"sessions={_storageSessions.Count}");
 
             // Safe to drop even if the close is cancelled: the session is only a cache over
@@ -1240,6 +1293,7 @@ namespace DocuLink.Addin
         {
             if (_workbookPanes.Count == 0
                 && _workbookViewers.Count == 0
+                && _workbookFileManagers.Count == 0
                 && _storageSessions.Count == 0)
                 return;
 
@@ -1308,6 +1362,27 @@ namespace DocuLink.Addin
                 {
                     Modules.DocuLinkLog.Trace(
                         $"reconcile: viewer dispose failed: {ex.GetType().FullName}: {ex.Message}");
+                }
+            }
+
+            foreach (WorkbookFileManagerEntry entry in _workbookFileManagers.ToArray())
+            {
+                if (!entry.Window.IsDisposed
+                    && IsWorkbookStillOpen(entry.Workbook, liveWorkbooks))
+                    continue;
+
+                Modules.DocuLinkLog.Trace("reconcile: removing file manager for closed workbook");
+                _workbookFileManagers.Remove(entry);
+
+                try
+                {
+                    if (!entry.Window.IsDisposed)
+                        entry.Window.Dispose();
+                }
+                catch (Exception ex)
+                {
+                    Modules.DocuLinkLog.Trace(
+                        $"reconcile: file manager dispose failed: {ex.GetType().FullName}: {ex.Message}");
                 }
             }
 
@@ -1573,8 +1648,8 @@ namespace DocuLink.Addin
                 {
                     Modules.DocuLinkLog.Trace(
                         $"pruned stale linked rectangles count={prunedIds.Count}");
-                    GetActiveViewerHost()?.SendLinkRectanglesRemoved(prunedIds);
-                    NotifyFileManagerLinksChanged();
+                    GetViewerHostFor(wb)?.SendLinkRectanglesRemoved(prunedIds);
+                    NotifyFileManagerLinksChanged(wb);
                 }
 
             }
@@ -2060,6 +2135,19 @@ namespace DocuLink.Addin
         internal ViewerWindowHost Window { get; }
 
         internal WorkbookViewerEntry(Excel.Workbook workbook, ViewerWindowHost window)
+        {
+            Workbook = workbook;
+            Window = window;
+        }
+    }
+
+    /// <summary>Associates a workbook's COM identity with its file-manager window.</summary>
+    internal sealed class WorkbookFileManagerEntry
+    {
+        internal Excel.Workbook Workbook { get; }
+        internal FileManagerHost Window { get; }
+
+        internal WorkbookFileManagerEntry(Excel.Workbook workbook, FileManagerHost window)
         {
             Workbook = workbook;
             Window = window;

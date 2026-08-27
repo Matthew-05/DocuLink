@@ -34,7 +34,9 @@ namespace DocuLink.Addin.Modules.WebView
         public const int MinWidth = 160;
     }
 
-    /// <summary>Hosts the file-manager web UI in a standalone non-modal window.</summary>
+    /// <summary>
+    /// Hosts the file-manager web UI in a standalone non-modal window bound to one workbook.
+    /// </summary>
     /// <remarks>
     /// Explorer → WebView2 file drops often do not surface HTML5 drop events inside Office/WinForms;
     /// Chromium may navigate to file:/// URLs instead. This host disables WebView2 external
@@ -44,6 +46,7 @@ namespace DocuLink.Addin.Modules.WebView
     /// </remarks>
     public sealed class FileManagerHost : Form
     {
+        private readonly Excel.Workbook _workbook;
         private readonly WebView2 _webView = new WebView2();
         private readonly NativeDropZonePanel _nativeDropZone = new NativeDropZonePanel();
         private readonly ManageFilesService _service = new ManageFilesService();
@@ -70,9 +73,23 @@ namespace DocuLink.Addin.Modules.WebView
         private readonly Dictionary<string, long> _recentOsImportTicks =
             new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
 
-        public FileManagerHost()
+        public FileManagerHost(Excel.Workbook workbook)
         {
-            Text = "DocuLink – Manage Files";
+            _workbook = workbook ?? throw new ArgumentNullException(nameof(workbook));
+
+            string workbookName;
+            try
+            {
+                workbookName = workbook.Name;
+            }
+            catch
+            {
+                workbookName = null;
+            }
+
+            Text = string.IsNullOrWhiteSpace(workbookName)
+                ? "DocuLink – Manage Files"
+                : $"DocuLink – Manage Files – {workbookName}";
             // OcrService needs a Control reference for UI-thread marshalling;
             // created here after the Form's handle is available.
             _ocrService = new OcrService(this);
@@ -286,10 +303,10 @@ namespace DocuLink.Addin.Modules.WebView
                 return;
             }
 
-            Excel.Workbook wb = GetActiveWorkbook();
+            Excel.Workbook wb = _workbook;
             if (wb == null)
             {
-                System.Diagnostics.Debug.WriteLine("[DocuLink] OS drop ignored: no active workbook.");
+                System.Diagnostics.Debug.WriteLine("[DocuLink] OS drop ignored: owning workbook unavailable.");
                 return;
             }
             if (!RequireWritable(wb))
@@ -425,11 +442,11 @@ namespace DocuLink.Addin.Modules.WebView
 
                     SendFilesToWebView();
                     foreach (string id in addedIds)
-                        Globals.ThisAddIn.NotifyViewerPdfAdded(id);
+                        Globals.ThisAddIn.NotifyViewerPdfAdded(_workbook, id);
 
                     // An import can create folders on the fly, so refresh the viewer's
                     // folder filter after the new documents have landed.
-                    Globals.ThisAddIn.NotifyViewerFoldersChanged();
+                    Globals.ThisAddIn.NotifyViewerFoldersChanged(_workbook);
                 }
             }
 
@@ -563,7 +580,7 @@ namespace DocuLink.Addin.Modules.WebView
             if (req?.PdfIds == null || req.PdfIds.Count == 0) return;
             if (_ocrService.IsRunning) return;
 
-            Excel.Workbook wb = GetActiveWorkbook();
+            Excel.Workbook wb = _workbook;
             if (wb == null) return;
             if (!RequireWritable(wb)) return;
 
@@ -587,7 +604,7 @@ namespace DocuLink.Addin.Modules.WebView
                         if (status == PdfStatus.Ocr)
                         {
                             anyComplete = true;
-                            Globals.ThisAddIn.RefreshTaskPanePdf(pdfId);
+                            Globals.ThisAddIn.RefreshTaskPanePdf(_workbook, pdfId);
                         }
                     });
             }
@@ -607,7 +624,7 @@ namespace DocuLink.Addin.Modules.WebView
         {
             if (IsOcrLocked) return;
 
-            Excel.Workbook wb = GetActiveWorkbook();
+            Excel.Workbook wb = _workbook;
             if (wb == null) return;
             if (!RequireWritable(wb)) return;
 
@@ -653,7 +670,7 @@ namespace DocuLink.Addin.Modules.WebView
         {
             if (IsOcrLocked) return;
 
-            Excel.Workbook wb = GetActiveWorkbook();
+            Excel.Workbook wb = _workbook;
             if (wb == null) return;
             if (!RequireWritable(wb)) return;
 
@@ -702,7 +719,7 @@ namespace DocuLink.Addin.Modules.WebView
 
         private void HandleRenameFile(RenameFileRequest req)
         {
-            Excel.Workbook wb = GetActiveWorkbook();
+            Excel.Workbook wb = _workbook;
             if (wb == null) return;
             if (!RequireWritable(wb)) return;
 
@@ -715,19 +732,19 @@ namespace DocuLink.Addin.Modules.WebView
             System.Diagnostics.Debug.WriteLine($"[DocuLink] SendFilesToWebView: {sw.ElapsedMilliseconds}ms");
 
             sw.Restart();
-            Globals.ThisAddIn.NotifyViewerPdfRenamed(req.Id, req.NewName);
+            Globals.ThisAddIn.NotifyViewerPdfRenamed(_workbook, req.Id, req.NewName);
             System.Diagnostics.Debug.WriteLine($"[DocuLink] NotifyViewerPdfRenamed: {sw.ElapsedMilliseconds}ms");
         }
 
         private void HandleRemoveFile(RemoveFileRequest req)
         {
             if (_activeOcrIds.Contains(req.Id)) return;
-            Excel.Workbook wb = GetActiveWorkbook();
+            Excel.Workbook wb = _workbook;
             if (wb == null) return;
             if (!RequireWritable(wb)) return;
             _service.RemovePdf(wb, req.Id);
             SendFilesToWebView();
-            Globals.ThisAddIn.NotifyViewerPdfRemoved(req.Id);
+            Globals.ThisAddIn.NotifyViewerPdfRemoved(_workbook, req.Id);
         }
 
         /// <summary>
@@ -738,52 +755,52 @@ namespace DocuLink.Addin.Modules.WebView
         private void HandleSelectFile(SelectFileRequest req)
         {
             if (string.IsNullOrWhiteSpace(req?.Id)) return;
-            Globals.ThisAddIn.NotifyViewerShowPdf(req.Id);
+            Globals.ThisAddIn.NotifyViewerShowPdf(_workbook, req.Id);
         }
 
         private void HandleMoveFile(MoveFileRequest req)
         {
             if (_activeOcrIds.Contains(req.Id)) return;
-            Excel.Workbook wb = GetActiveWorkbook();
+            Excel.Workbook wb = _workbook;
             if (wb == null) return;
             if (!RequireWritable(wb)) return;
             DocuLinkContent content = _service.MoveFile(wb, req.Id, req.FolderId);
             SendFilesToWebView(content);
-            Globals.ThisAddIn.NotifyViewerFoldersChanged();
+            Globals.ThisAddIn.NotifyViewerFoldersChanged(_workbook);
         }
 
         private void HandleAddFolder(AddFolderRequest req)
         {
-            Excel.Workbook wb = GetActiveWorkbook();
+            Excel.Workbook wb = _workbook;
             if (wb == null) return;
             if (!RequireWritable(wb)) return;
             _service.AddFolder(wb, req.Name);
             SendFilesToWebView();
-            Globals.ThisAddIn.NotifyViewerFoldersChanged();
+            Globals.ThisAddIn.NotifyViewerFoldersChanged(_workbook);
         }
 
         private void HandleRenameFolder(RenameFolderRequest req)
         {
-            Excel.Workbook wb = GetActiveWorkbook();
+            Excel.Workbook wb = _workbook;
             if (wb == null) return;
             if (!RequireWritable(wb)) return;
             _service.RenameFolder(wb, req.Id, req.NewName);
             SendFilesToWebView();
-            Globals.ThisAddIn.NotifyViewerFoldersChanged();
+            Globals.ThisAddIn.NotifyViewerFoldersChanged(_workbook);
         }
 
         private void HandleRemoveFolder(RemoveFolderRequest req)
         {
-            Excel.Workbook wb = GetActiveWorkbook();
+            Excel.Workbook wb = _workbook;
             if (wb == null) return;
             if (!RequireWritable(wb)) return;
             _service.RemoveFolder(wb, req.Id);
             SendFilesToWebView();
-            Globals.ThisAddIn.NotifyViewerFoldersChanged();
+            Globals.ThisAddIn.NotifyViewerFoldersChanged(_workbook);
         }
 
         /// <summary>
-        /// Pushes the current workbook's file list to the web UI, but only if the web app
+        /// Pushes the owning workbook's file list to the web UI, but only if the web app
         /// has already signalled <c>manager-ready</c>. Call this whenever the window is
         /// shown after a warm-load so the web UI receives data unavailable at pre-init time.
         /// </summary>
@@ -794,7 +811,7 @@ namespace DocuLink.Addin.Modules.WebView
             SendFilesToWebView();
         }
 
-        /// <summary>Reads the active workbook's file list and pushes it to the web UI.</summary>
+        /// <summary>Reads the owning workbook's file list and pushes it to the web UI.</summary>
         public void SendFilesToWebView(DocuLinkContent preloaded = null)
         {
             if (InvokeRequired)
@@ -819,9 +836,7 @@ namespace DocuLink.Addin.Modules.WebView
                 DocuLinkContent content = preloaded;
                 if (content == null)
                 {
-                    Excel.Workbook wb = GetActiveWorkbook();
-                    if (wb == null) return;
-                    var store = new DocuLinkCustomXmlPartStore(wb);
+                    var store = new DocuLinkCustomXmlPartStore(_workbook);
                     content = store.LoadContent();
                     if (content == null)
                     {
@@ -833,15 +848,11 @@ namespace DocuLink.Addin.Modules.WebView
                 IReadOnlyDictionary<string, int> linkCounts = null;
                 try
                 {
-                    Excel.Workbook wb = GetActiveWorkbook();
-                    if (wb != null)
-                    {
-                        var links = new WorkbookStorageSession(wb).GetLinks();
-                        var counts = new Dictionary<string, int>(StringComparer.Ordinal);
-                        foreach (var link in links)
-                            counts[link.PdfId] = counts.TryGetValue(link.PdfId, out int n) ? n + 1 : 1;
-                        linkCounts = counts;
-                    }
+                    var links = Globals.ThisAddIn.GetStorageSession(_workbook).GetLinks();
+                    var counts = new Dictionary<string, int>(StringComparer.Ordinal);
+                    foreach (var link in links)
+                        counts[link.PdfId] = counts.TryGetValue(link.PdfId, out int n) ? n + 1 : 1;
+                    linkCounts = counts;
                 }
                 catch { /* non-fatal; link counts default to 0 */ }
 
@@ -854,11 +865,6 @@ namespace DocuLink.Addin.Modules.WebView
                 DocuLinkLog.Trace($"EXCEPTION {ex.GetType().FullName}: {ex.Message}");
             }
             }
-        }
-
-        private static Excel.Workbook GetActiveWorkbook()
-        {
-            return Globals.ThisAddIn.Application?.ActiveWorkbook;
         }
 
         private bool RequireWritable(Excel.Workbook workbook)
