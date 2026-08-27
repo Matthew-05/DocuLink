@@ -129,7 +129,8 @@ export class SearchBar {
     this._updateActions();
 
     // A host-filled cell value is only staged. Publishing an empty query cancels
-    // any active session and clears results/highlights from the previous cell.
+    // any active full-search session and clears results from the previous cell;
+    // the viewer may still render a lightweight visible-page highlight preview.
     this._emitQuery("");
   }
 

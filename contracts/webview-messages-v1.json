@@ -842,7 +842,7 @@
     },
 
     "SetSearchQueryMessage": {
-      "description": "Sent by the C# host when the active Excel cell changes while a document-viewer is open. The viewer replaces its search-bar value with the cell's displayed text without running a search. It clears any prior results so the user can explicitly run the new query with the search button or Enter. An empty query clears the current search.",
+      "description": "Sent by the C# host when the active Excel cell changes while a document-viewer is open. The viewer replaces its search-bar value with the cell's displayed text without running the full cross-document search or populating the results panel. It clears prior results and highlights indexed matches on every visible page of the currently selected PDF. Scrolling or changing documents refreshes that lightweight preview when the visible page set changes. An empty query clears the current search and preview highlights.",
       "type": "object",
       "required": ["type", "query"],
       "additionalProperties": false,

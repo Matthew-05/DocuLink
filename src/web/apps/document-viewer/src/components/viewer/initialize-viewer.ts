@@ -12,6 +12,7 @@ import { CharBboxOverlay } from "./char-bbox-overlay.js";
 import { createRectNavigator } from "./rect-navigator.js";
 import { attachExcelKeyBridge } from "./excel-key-bridge.js";
 import { createFitMode } from "./fit-mode.js";
+import { measureVisiblePages } from "./page-visibility.js";
 import { PdfTextSearcher } from "./pdf-text-searcher.js";
 import { SearchMatchRenderer } from "./search-match-renderer.js";
 import { createSearchNavigator } from "./search-navigator.js";
@@ -156,28 +157,44 @@ export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLEleme
     onVisiblePageChanged();
   };
 
-  const updatePageFromScroll = (): void => {
-    const layout = viewer.getPageLayout();
-    if (layout.length === 0) return;
-
+  const getVisiblePageMeasurements = (): Array<{ pageNumber: number; visibleHeight: number }> => {
     const viewerRect = viewer.element.getBoundingClientRect();
-    let mostVisiblePage = layout[0]!.pageNumber;
-    let maxVisibleHeight = 0;
-
-    for (const { pageNumber, wrapper } of layout) {
+    const pageBounds = viewer.getPageLayout().map(({ pageNumber, wrapper }) => {
       const wrapperRect = wrapper.getBoundingClientRect();
-      const visibleTop = Math.max(wrapperRect.top, viewerRect.top);
-      const visibleBottom = Math.min(wrapperRect.bottom, viewerRect.bottom);
-      const visibleHeight = Math.max(0, visibleBottom - visibleTop);
+      return { pageNumber, top: wrapperRect.top, bottom: wrapperRect.bottom };
+    });
+    return measureVisiblePages(viewerRect, pageBounds);
+  };
 
-      if (visibleHeight > maxVisibleHeight) {
-        maxVisibleHeight = visibleHeight;
-        mostVisiblePage = pageNumber;
-      }
+  const getVisiblePageIndices = (): number[] => {
+    const visiblePages = getVisiblePageMeasurements();
+    return visiblePages.length > 0
+      ? visiblePages.map(({ pageNumber }) => pageNumber - 1)
+      : [currentPage - 1];
+  };
+
+  let visiblePageSetKey = "";
+
+  const updatePageFromScroll = (): void => {
+    const visiblePages = getVisiblePageMeasurements();
+    if (visiblePages.length === 0) return;
+
+    let mostVisiblePage = visiblePages[0]!.pageNumber;
+    let maxVisibleHeight = visiblePages[0]!.visibleHeight;
+    for (const { pageNumber, visibleHeight } of visiblePages.slice(1)) {
+      if (visibleHeight <= maxVisibleHeight) continue;
+      maxVisibleHeight = visibleHeight;
+      mostVisiblePage = pageNumber;
     }
+
+    const nextVisiblePageSetKey = visiblePages.map(({ pageNumber }) => pageNumber).join(",");
+    const visiblePageSetChanged = nextVisiblePageSetKey !== visiblePageSetKey;
+    visiblePageSetKey = nextVisiblePageSetKey;
 
     if (mostVisiblePage !== currentPage) {
       onNavigateToPage(mostVisiblePage);
+    } else if (visiblePageSetChanged) {
+      onVisiblePageChanged();
     }
   };
 
@@ -246,17 +263,34 @@ export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLEleme
   };
 
   const getActivePdfHighlightMatches = (activePdfId: string): SearchMatch[] => {
+    const submittedQuery = search.getSubmittedQuery();
+    const entry = selector.getEntry(activePdfId);
+
+    const visiblePageIndices = getVisiblePageIndices();
+
+    // Cell-click text is staged rather than submitted. Search only the visible
+    // pages so selection changes stay cheap and never populate the cross-document
+    // results panel. Scroll and document changes call this again for the new view.
+    if (!submittedQuery) {
+      const stagedQuery = search.getQuery();
+      if (!stagedQuery || !entry) return [];
+
+      return visiblePageIndices.flatMap((pageIndex) =>
+        searcher.searchPage(stagedQuery, entry, pageIndex)
+      );
+    }
+
     const matches = new Map<string, SearchMatch>();
 
     for (const match of highlightSearchResults) {
       if (match.pdfId === activePdfId) matches.set(match.id, match);
     }
 
-    const query = search.getSubmittedQuery();
-    const entry = selector.getEntry(activePdfId);
-    if (query && entry) {
-      for (const match of searcher.searchPage(query, entry, currentPage - 1)) {
-        matches.set(match.id, match);
+    if (entry) {
+      for (const pageIndex of visiblePageIndices) {
+        for (const match of searcher.searchPage(submittedQuery, entry, pageIndex)) {
+          matches.set(match.id, match);
+        }
       }
     }
 
@@ -288,7 +322,7 @@ export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLEleme
   };
 
   onVisiblePageChanged = () => {
-    if (!search.getSubmittedQuery()) return;
+    if (!search.getQuery()) return;
     applyActivePdfHighlights();
   };
 
@@ -487,8 +521,7 @@ export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLEleme
 
     const finish = (): void => {
       charBboxDebug.refresh();
-      const query = search.getSubmittedQuery();
-      if (query) {
+      if (search.getQuery()) {
         applyActivePdfHighlights();
       }
     };
@@ -545,7 +578,11 @@ export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLEleme
       } else {
         search.enable();
         const query = search.getSubmittedQuery();
-        if (query) runSearch(query);
+        if (query) {
+          runSearch(query);
+        } else if (search.getQuery()) {
+          applyActivePdfHighlights();
+        }
       }
     },
     {
@@ -570,7 +607,12 @@ export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLEleme
       onClearRectangleHighlight: () => { renderer.clearHighlight(); },
       onHighlightRectangle: (id) => { renderer.highlightRectangle(id); },
       onLinkSelectionChanged: setLinkSelection,
-      onSetSearchQuery: (query) => { search.setQuery(query); },
+      onSetSearchQuery: (query) => {
+        // setQuery synchronously cancels any submitted search before the staged
+        // visible-page preview is rendered.
+        search.setQuery(query);
+        applyActivePdfHighlights();
+      },
       onLinkRectanglesRemoved: (ids) => {
         contextMenu.hide();
         renderer.removeRectangles(ids);
