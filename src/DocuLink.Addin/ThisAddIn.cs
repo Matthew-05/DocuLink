@@ -746,11 +746,7 @@ namespace DocuLink.Addin
         internal void PreloadFileManagerWindow()
 
         {
-            Excel.Workbook wb = Application?.ActiveWorkbook;
-            if (wb == null) return;
-
-            WorkbookFileManagerEntry entry = EnsureFileManagerFor(wb);
-            _ = entry.Window.Handle;
+            WarmUpFileManagerFor(Application?.ActiveWorkbook);
 
         }
 
@@ -1431,6 +1427,11 @@ namespace DocuLink.Addin
 
             ReconcileClosedWorkbooks();
 
+            // The startup eager-loader can run before Excel exposes ActiveWorkbook.
+            // Warm the manager for the workbook that actually became active so its
+            // workbook-bound WebView is ready before the user opens it.
+            WarmUpFileManagerFor(wb);
+
             EnsureLinkTracking(wb);
 
             // Pending undo belongs to whichever workbook is in front, so re-evaluate before
@@ -1490,6 +1491,8 @@ namespace DocuLink.Addin
 
             ReconcileClosedWorkbooks();
 
+            WarmUpFileManagerFor(wb);
+
             EnsureLinkTracking(wb);
 
             WarmUpTaskPaneFor(wb);
@@ -1540,6 +1543,8 @@ namespace DocuLink.Addin
 
         {
 
+            WarmUpFileManagerFor(wb);
+
             EnsureLinkTracking(wb);
 
             WarmUpTaskPaneFor(wb);
@@ -1586,6 +1591,26 @@ namespace DocuLink.Addin
 
             }
 
+        }
+
+        /// <summary>
+        /// Pre-creates the workbook-bound file manager invisibly and forces HWND creation
+        /// so its WebView2 shell loads before the user asks to show the window.
+        /// </summary>
+        private void WarmUpFileManagerFor(Excel.Workbook wb)
+        {
+            if (wb == null) return;
+
+            try
+            {
+                WorkbookFileManagerEntry entry = EnsureFileManagerFor(wb);
+                _ = entry.Window.Handle;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine(
+                    $"[DocuLink] WarmUpFileManagerFor failed: {ex.Message}");
+            }
         }
 
         /// <summary>
