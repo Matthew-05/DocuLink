@@ -24,6 +24,7 @@ await writeFile(outfile, transpiled.outputText, "utf8");
 
 const {
   buildSearchPageIndexFromEntries,
+  cleanAutoInsertedSearchQuery,
   normalizeMatcherQuery,
   normalizeSearchQuery,
   searchPage,
@@ -56,6 +57,13 @@ assert.equal(normalizeMatcherQuery("5 Mar 2026"), "3/5/2026");
 assert.equal(normalizeMatcherQuery("03/05/26"), "3/5/2026");
 assert.equal(normalizeMatcherQuery("03/05/30"), "3/5/2030");
 assert.equal(normalizeMatcherQuery("02/30/2026"), "02/30/2026");
+
+assert.equal(cleanAutoInsertedSearchQuery("       $1,234.56   "), "1,234.56");
+assert.equal(cleanAutoInsertedSearchQuery(" \u20ac 1.234,56 "), "1.234,56");
+assert.equal(cleanAutoInsertedSearchQuery("\t Invoice\r\n1042 \u00a0"), "Invoice 1042");
+assert.equal(cleanAutoInsertedSearchQuery("Acme\u200b\u2060 Corp"), "Acme Corp");
+assert.equal(cleanAutoInsertedSearchQuery("PO\u0000123"), "PO 123");
+assert.equal(cleanAutoInsertedSearchQuery("  March   5, 2026  "), "March 5, 2026");
 
 {
   const entries = entriesFromText("total 1,000 due");

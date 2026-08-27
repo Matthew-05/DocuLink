@@ -1,5 +1,6 @@
 import { SearchResultsPanel } from "./search-results-panel.js";
 import { normalizeSearchQuery } from "../viewer/pdf-text-searcher.js";
+import { cleanAutoInsertedSearchQuery } from "@doculink/shared";
 import type { SearchMatch } from "../../types/index.js";
 
 const DEBOUNCE_MS = 250;
@@ -122,7 +123,7 @@ export class SearchBar {
   setQuery(query: string): void {
     this._cancelDebounce();
 
-    this._input.value = query;
+    this._input.value = cleanAutoInsertedSearchQuery(query);
     this._resultsDismissed = false;
     this._submittedQuery = "";
     this._updateActions();

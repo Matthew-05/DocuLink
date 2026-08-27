@@ -7,6 +7,7 @@ export { buildCharEntriesFromGeometry } from "./char-entries.js";
 export {
   buildSearchPageIndex,
   buildSearchPageIndexFromEntries,
+  cleanAutoInsertedSearchQuery,
   normalizeMatcherQuery,
   normalizeSearchQuery,
   pageTextMatchesQuery,

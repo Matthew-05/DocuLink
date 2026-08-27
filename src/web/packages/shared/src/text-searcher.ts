@@ -245,6 +245,21 @@ export function normalizeSearchQuery(raw: string): string {
   return normalizeQuery(raw, false);
 }
 
+/**
+ * Cleans text supplied by an external host before showing it in a search input.
+ * Excel's formatted Range.Text can contain accounting-format padding, while
+ * formulas and copied data can contribute tabs, line breaks, non-breaking
+ * spaces, control characters, or invisible width characters.
+ */
+export function cleanAutoInsertedSearchQuery(raw: string): string {
+  return raw
+    .replace(/[\u200B-\u200D\u2060\uFEFF]/g, "")
+    .replace(/[\u0000-\u001F\u007F-\u009F]/g, " ")
+    .replace(/\p{Sc}/gu, "")
+    .replace(/\s+/gu, " ")
+    .trim();
+}
+
 export function normalizeMatcherQuery(raw: string): string {
   return normalizeQuery(raw, true);
 }
