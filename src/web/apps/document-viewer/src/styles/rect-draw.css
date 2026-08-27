@@ -113,14 +113,17 @@
 }
 
 .table-grid__line--dragging::before,
+.table-grid__line--remove-intent::before,
 .table-grid__line:not(.table-grid__preview):hover::before {
   background: rgb(91, 33, 182);
 }
 
+.table-grid__line--remove-intent.table-grid__line--column::before,
 .table-grid__line--column:not(.table-grid__preview):hover::before {
   width: 3px;
 }
 
+.table-grid__line--remove-intent.table-grid__line--row::before,
 .table-grid__line--row:not(.table-grid__preview):hover::before {
   height: 3px;
 }
@@ -322,6 +325,7 @@
 }
 
 .table-grid__line:hover > .table-grid__remove,
+.table-grid__line--remove-intent > .table-grid__remove,
 .table-grid__line:focus-within > .table-grid__remove {
   opacity: 1;
   pointer-events: auto;

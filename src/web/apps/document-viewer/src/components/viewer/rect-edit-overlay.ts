@@ -30,6 +30,8 @@ interface EditDragState {
 }
 
 const LINK_CLASS = "rect-draw__link";
+const INNER_GRID_CONTROL_SELECTOR =
+  ".table-grid__line, .table-grid__add, .table-grid__remove, .table-grid__axis-toggle";
 
 /**
  * Enables corner-only resize on persisted link rectangle overlays.
@@ -90,6 +92,12 @@ export class RectEditOverlay {
   private _onHoverMove(e: MouseEvent): void {
     if (this._dragState) return;
 
+    if (e.target instanceof Element && e.target.closest(INNER_GRID_CONTROL_SELECTOR)) {
+      if (this._hoveredLink) this._resetLinkCursor(this._hoveredLink);
+      this._hoveredLink = null;
+      return;
+    }
+
     const linkEl = this._linkUnderPointer(e.clientX, e.clientY);
 
     if (this._hoveredLink && this._hoveredLink !== linkEl) {
@@ -122,6 +130,7 @@ export class RectEditOverlay {
 
   private _onMouseDown(e: MouseEvent): void {
     if (e.button !== 0) return;
+    if (e.target instanceof Element && e.target.closest(INNER_GRID_CONTROL_SELECTOR)) return;
 
     const linkEl = this._linkUnderPointer(e.clientX, e.clientY);
     if (!linkEl) return;
@@ -237,6 +246,7 @@ export class RectEditOverlay {
 
   private _onClick(e: MouseEvent): void {
     if (!this._suppressNextClick) return;
+    if (e.target instanceof Element && e.target.closest(INNER_GRID_CONTROL_SELECTOR)) return;
     const linkEl = e.target instanceof Element
       ? e.target.closest(`.${LINK_CLASS}`)
       : null;

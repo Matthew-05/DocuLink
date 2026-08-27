@@ -13,6 +13,7 @@ interface BoundaryDrag {
   id: string;
   axis: Axis;
   index: number;
+  grabOffset: number;
   line: HTMLElement;
   rectElement: HTMLElement;
   original: TableGridData;
@@ -22,6 +23,8 @@ const TABLE_SELECTOR = ".rect-draw__link--table";
 const LINE_SELECTOR = ".table-grid__line";
 const PREVIEW_SELECTOR = ".table-grid__preview, .table-grid__add";
 const MIN_GAP = 0.01;
+const REMOVE_INTENT_ENTER_PX = 12;
+const REMOVE_INTENT_EXIT_PX = 18;
 
 function copyTable(table: TableGridData): TableGridData {
   return {
@@ -39,6 +42,11 @@ export class TableGridEditor {
   private _drag: BoundaryDrag | null = null;
   private _activeRect: HTMLElement | null = null;
   private _activeAxis: Axis = "column";
+  private _previewLine: HTMLElement | null = null;
+  private _previewAdd: HTMLButtonElement | null = null;
+  private _previewRect: HTMLElement | null = null;
+  private _previewAxis: Axis | null = null;
+  private _removeIntentLine: HTMLElement | null = null;
   private readonly _axisByRectId = new Map<string, Axis>();
   private readonly _callbacks: TableUpdatedCallback[] = [];
   private readonly _copyCallbacks: TableActionCallback[] = [];
@@ -68,7 +76,12 @@ export class TableGridEditor {
     if (event.button !== 0 || !(event.target instanceof Element)) return;
     if (event.target.closest(
       ".table-grid__add, .table-grid__remove, .table-grid__axis-toggle",
-    )) return;
+    )) {
+      // Keep the draw and outer-rectangle edit handlers from starting underneath
+      // a grid control while its click is still in progress.
+      event.stopImmediatePropagation();
+      return;
+    }
     const line = event.target.closest<HTMLElement>(LINE_SELECTOR);
     if (!line || line.classList.contains("table-grid__preview")) return;
 
@@ -90,11 +103,28 @@ export class TableGridEditor {
     event.stopImmediatePropagation();
     this._clearPreviews();
     line.classList.add("table-grid__line--dragging");
-    this._drag = { id, axis, index, line, rectElement, original: copyTable(entry.table) };
+    const grabOffset = position - this._positionForEvent(event, rectElement, axis);
+    this._drag = {
+      id, axis, index, grabOffset, line, rectElement, original: copyTable(entry.table),
+    };
+    document.addEventListener("mousemove", this._onDocumentMouseMove);
     document.addEventListener("mouseup", this._onDocumentMouseUp, true);
   }
 
+  private readonly _onDocumentMouseMove = (event: MouseEvent): void => {
+    const drag = this._drag;
+    if (!drag) return;
+    const position = this._dragPositionForEvent(event, drag);
+    const boundaries = drag.axis === "column"
+      ? drag.original.columnBoundaries
+      : drag.original.rowBoundaries;
+    const constrained = this._constrain(position, boundaries, drag.index);
+    if (drag.axis === "column") drag.line.style.left = `${constrained * 100}%`;
+    else drag.line.style.top = `${constrained * 100}%`;
+  };
+
   private readonly _onDocumentMouseUp = (event: MouseEvent): void => {
+    document.removeEventListener("mousemove", this._onDocumentMouseMove);
     document.removeEventListener("mouseup", this._onDocumentMouseUp, true);
     const drag = this._drag;
     this._drag = null;
@@ -102,25 +132,21 @@ export class TableGridEditor {
 
     event.preventDefault();
     event.stopImmediatePropagation();
-    const position = this._positionForEvent(event, drag.rectElement, drag.axis);
+    const position = this._dragPositionForEvent(event, drag);
     const table = copyTable(drag.original);
     const boundaries = drag.axis === "column" ? table.columnBoundaries : table.rowBoundaries;
-    boundaries[drag.index] = this._constrain(position, boundaries, drag.index);
+    const nextPosition = this._constrain(position, boundaries, drag.index);
+    if (Math.abs(nextPosition - boundaries[drag.index]!) < 0.000001) {
+      drag.line.classList.remove("table-grid__line--dragging");
+      return;
+    }
+    boundaries[drag.index] = nextPosition;
     boundaries.sort((a, b) => a - b);
     this._commit(drag.id, table);
   };
 
   private _onMouseMove(event: MouseEvent): void {
-    if (this._drag) {
-      const position = this._positionForEvent(event, this._drag.rectElement, this._drag.axis);
-      const boundaries = this._drag.axis === "column"
-        ? this._drag.original.columnBoundaries
-        : this._drag.original.rowBoundaries;
-      const constrained = this._constrain(position, boundaries, this._drag.index);
-      if (this._drag.axis === "column") this._drag.line.style.left = `${constrained * 100}%`;
-      else this._drag.line.style.top = `${constrained * 100}%`;
-      return;
-    }
+    if (this._drag) return;
 
     if (!(event.target instanceof Element)) return;
     const rectElement = event.target.closest<HTMLElement>(TABLE_SELECTOR);
@@ -132,21 +158,33 @@ export class TableGridEditor {
 
     this._activateTable(rectElement);
     if (rectElement.classList.contains("rect-draw__link--editing")) {
-      this._clearPreviews(rectElement);
+      this._clearPreviews();
+      this._clearRemoveIntent();
       return;
     }
-    // Keep the preview mounted while the pointer crosses onto its own add button.
-    // Removing it here makes the element disappear from under the pointer and causes
-    // a rapid remove/recreate flicker at the table edge.
-    if (event.target.closest(".table-grid__add")) return;
-    if (event.target.closest(
-      `${LINE_SELECTOR}, .table-grid__remove, .table-grid__axis-toggle`,
-    ) || getLinkResizeCorner(rectElement, event.clientX, event.clientY)) {
-      this._clearPreviews(rectElement);
+    if (event.target.closest(".table-grid__axis-toggle")) {
+      this._clearPreviews();
+      this._clearRemoveIntent();
       return;
     }
 
     const position = this._positionForEvent(event, rectElement, this._activeAxis);
+    const targetedLine = event.target.closest<HTMLElement>(
+      `${LINE_SELECTOR}:not(.table-grid__preview)`,
+    );
+    const removeIntentLine = targetedLine
+      ?? this._findRemoveIntentLine(rectElement, this._activeAxis, position);
+    if (removeIntentLine) {
+      this._setRemoveIntent(removeIntentLine);
+      this._clearPreviews();
+      return;
+    }
+
+    this._clearRemoveIntent();
+    if (getLinkResizeCorner(rectElement, event.clientX, event.clientY)) {
+      this._clearPreviews();
+      return;
+    }
     this._showPreview(rectElement, this._activeAxis, position);
   }
 
@@ -189,7 +227,8 @@ export class TableGridEditor {
         const id = rectElement.dataset["rectId"];
         if (id) this._axisByRectId.set(id, axis);
         this._applyActiveAxis();
-        this._clearPreviews(rectElement);
+        this._clearPreviews();
+        this._clearRemoveIntent();
         this._closeAxisMenu(rectElement);
       }
       return;
@@ -260,6 +299,7 @@ export class TableGridEditor {
   private _commit(id: string, table: TableGridData): void {
     const entry = this._renderer.getRectangle(id);
     if (!entry) return;
+    this._clearRemoveIntent();
     const extracted = withExtractedTableCells(
       this._cache.get(entry.pdfId, entry.page), entry.rect, table,
     );
@@ -276,38 +316,98 @@ export class TableGridEditor {
   }
 
   private _showPreview(rectElement: HTMLElement, axis: Axis, position: number): void {
-    this._clearPreviews(rectElement);
-    const line = document.createElement("div");
-    line.className = `table-grid__line table-grid__line--${axis} table-grid__preview`;
-    if (axis === "column") line.style.left = `${position * 100}%`;
-    else line.style.top = `${position * 100}%`;
-    rectElement.appendChild(line);
+    if (
+      !this._previewLine?.isConnected
+      || !this._previewAdd?.isConnected
+      || this._previewRect !== rectElement
+      || this._previewAxis !== axis
+    ) {
+      this._clearPreviews();
 
-    const add = document.createElement("button");
-    add.type = "button";
-    add.className = `table-grid__add table-grid__add--${axis}`;
-    add.textContent = "+";
-    add.title = `Add ${axis}`;
-    add.setAttribute("aria-label", `Add ${axis}`);
-    add.dataset["axis"] = axis;
-    add.dataset["position"] = String(position);
-    if (axis === "column") add.style.left = `${position * 100}%`;
-    else add.style.top = `${position * 100}%`;
-    rectElement.appendChild(add);
+      const line = document.createElement("div");
+      line.className = `table-grid__line table-grid__line--${axis} table-grid__preview`;
+      rectElement.appendChild(line);
+
+      const add = document.createElement("button");
+      add.type = "button";
+      add.className = `table-grid__add table-grid__add--${axis}`;
+      add.textContent = "+";
+      add.title = `Add ${axis}`;
+      add.setAttribute("aria-label", `Add ${axis}`);
+      add.dataset["axis"] = axis;
+      rectElement.appendChild(add);
+
+      this._previewLine = line;
+      this._previewAdd = add;
+      this._previewRect = rectElement;
+      this._previewAxis = axis;
+    }
+
+    const percent = `${position * 100}%`;
+    if (axis === "column") {
+      this._previewLine.style.left = percent;
+      this._previewAdd.style.left = percent;
+    } else {
+      this._previewLine.style.top = percent;
+      this._previewAdd.style.top = percent;
+    }
+    this._previewAdd.dataset["position"] = String(position);
   }
 
-  private _clearPreviews(except?: HTMLElement): void {
+  private _clearPreviews(): void {
     for (const element of Array.from(
       this._viewer.element.querySelectorAll<HTMLElement>(PREVIEW_SELECTOR),
-    )) {
-      if (except && element.parentElement === except) continue;
-      element.remove();
+    )) element.remove();
+    this._previewLine = null;
+    this._previewAdd = null;
+    this._previewRect = null;
+    this._previewAxis = null;
+  }
+
+  private _findRemoveIntentLine(
+    rectElement: HTMLElement,
+    axis: Axis,
+    position: number,
+  ): HTMLElement | null {
+    const axisClass = `.table-grid__line--${axis}:not(.table-grid__preview)`;
+    const lines = Array.from(rectElement.querySelectorAll<HTMLElement>(axisClass));
+    const axisSize = axis === "column"
+      ? rectElement.getBoundingClientRect().width
+      : rectElement.getBoundingClientRect().height;
+
+    const current = this._removeIntentLine;
+    if (current?.isConnected && current.closest(TABLE_SELECTOR) === rectElement) {
+      const currentPosition = Number(current.dataset["boundaryPosition"]);
+      if (
+        Number.isFinite(currentPosition)
+        && Math.abs(currentPosition - position) * axisSize <= REMOVE_INTENT_EXIT_PX
+      ) return current;
     }
-    if (except) {
-      for (const element of Array.from(
-        except.querySelectorAll<HTMLElement>(PREVIEW_SELECTOR),
-      )) element.remove();
+
+    let nearest: HTMLElement | null = null;
+    let nearestDistance = Number.POSITIVE_INFINITY;
+    for (const line of lines) {
+      const boundaryPosition = Number(line.dataset["boundaryPosition"]);
+      if (!Number.isFinite(boundaryPosition)) continue;
+      const distance = Math.abs(boundaryPosition - position) * axisSize;
+      if (distance < nearestDistance) {
+        nearest = line;
+        nearestDistance = distance;
+      }
     }
+    return nearestDistance <= REMOVE_INTENT_ENTER_PX ? nearest : null;
+  }
+
+  private _setRemoveIntent(line: HTMLElement): void {
+    if (this._removeIntentLine === line) return;
+    this._clearRemoveIntent();
+    this._removeIntentLine = line;
+    line.classList.add("table-grid__line--remove-intent");
+  }
+
+  private _clearRemoveIntent(): void {
+    this._removeIntentLine?.classList.remove("table-grid__line--remove-intent");
+    this._removeIntentLine = null;
   }
 
   private _activateTable(rectElement: HTMLElement): void {
@@ -326,6 +426,7 @@ export class TableGridEditor {
   private _deactivateTable(): void {
     if (this._drag) return;
     this._clearPreviews();
+    this._clearRemoveIntent();
     this._activeRect?.classList.remove("table-grid--editing-rows");
     this._activeRect?.querySelector(".table-grid__axis-toggle")?.remove();
     this._activeRect = null;
@@ -414,6 +515,11 @@ export class TableGridEditor {
       ? (event.clientX - bounds.left) / bounds.width
       : (event.clientY - bounds.top) / bounds.height;
     return Math.min(1 - MIN_GAP, Math.max(MIN_GAP, raw));
+  }
+
+  private _dragPositionForEvent(event: MouseEvent, drag: BoundaryDrag): number {
+    const position = this._positionForEvent(event, drag.rectElement, drag.axis) + drag.grabOffset;
+    return Math.min(1 - MIN_GAP, Math.max(MIN_GAP, position));
   }
 
   private _constrain(position: number, boundaries: number[], index: number): number {
