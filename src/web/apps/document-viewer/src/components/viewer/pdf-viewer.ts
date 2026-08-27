@@ -3,6 +3,7 @@ import type { ZoomLevel } from "../../types/index.js";
 import { loadPdfDocument } from "./pdf-loader.js";
 import { normalizeRotation, resolvePageRotation } from "./page-rotation.js";
 import { renderPage } from "./page-renderer.js";
+import { createEmptyState } from "../empty-state/empty-state.js";
 
 const ZOOM_DEBOUNCE_MS = 300;
 
@@ -31,6 +32,9 @@ export class PdfViewer {
 
   private readonly _onLoadedCallbacks: Array<(totalPages: number) => void> = [];
   private readonly _onDocumentChangedCallbacks: Array<() => void> = [];
+  private readonly _onDocumentAvailabilityChangedCallbacks: Array<(hasDocument: boolean) => void> = [];
+  private readonly _onManageFilesRequestedCallbacks: Array<() => void> = [];
+  private _hasDocument = false;
 
   constructor() {
     this.element = document.createElement("div");
@@ -50,6 +54,15 @@ export class PdfViewer {
     this._onDocumentChangedCallbacks.push(cb);
   }
 
+  onDocumentAvailabilityChanged(cb: (hasDocument: boolean) => void): void {
+    this._onDocumentAvailabilityChangedCallbacks.push(cb);
+    cb(this._hasDocument);
+  }
+
+  onManageFilesRequested(cb: () => void): void {
+    this._onManageFilesRequestedCallbacks.push(cb);
+  }
+
   getDocument(): pdfjsLib.PDFDocumentProxy | null {
     return this._doc;
   }
@@ -67,11 +80,21 @@ export class PdfViewer {
   }
 
   showNoPdfsState(): void {
+    ++this._loadGeneration;
+    ++this._renderGeneration;
+    this._cancelZoomDebounce();
+    this._activePdfId = null;
+    this._pageEntries = [];
+    this._pageRotations.clear();
+    void this._doc?.destroy();
+    this._doc = null;
+
     this.element.replaceChildren();
-    const placeholder = document.createElement("div");
-    placeholder.className = "viewer__placeholder";
-    placeholder.textContent = "No documents added";
-    this.element.appendChild(placeholder);
+    this.element.classList.add("viewer--empty");
+    this.element.appendChild(createEmptyState(() => {
+      for (const cb of this._onManageFilesRequestedCallbacks) cb();
+    }));
+    this._setDocumentAvailability(false);
   }
 
   getPageLayout(): Array<{ pageNumber: number; wrapper: HTMLDivElement }> {
@@ -96,6 +119,7 @@ export class PdfViewer {
         if (v !== 0) this._pageRotations.set(n, v);
       }
     }
+    this.element.classList.remove("viewer--empty");
     this.element.replaceChildren();
 
     let resolveLoad!: () => void;
@@ -109,6 +133,7 @@ export class PdfViewer {
     }
 
     this._doc = doc;
+    this._setDocumentAvailability(true);
 
     // Fetch all page dimensions in parallel — no canvas, just metadata.
     const pages = await Promise.all(
@@ -386,6 +411,14 @@ export class PdfViewer {
     if (this._zoomDebounce !== null) {
       clearTimeout(this._zoomDebounce);
       this._zoomDebounce = null;
+    }
+  }
+
+  private _setDocumentAvailability(hasDocument: boolean): void {
+    if (this._hasDocument === hasDocument) return;
+    this._hasDocument = hasDocument;
+    for (const cb of this._onDocumentAvailabilityChangedCallbacks) {
+      cb(hasDocument);
     }
   }
 

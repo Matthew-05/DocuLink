@@ -45,6 +45,19 @@
       ]
     },
 
+    "OpenFileManagerMessage": {
+      "description": "Sent by the document-viewer web app when the user asks to open the workbook's Manage Files window.",
+      "type": "object",
+      "required": ["type"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "const": "open-file-manager" }
+      },
+      "examples": [
+        { "type": "open-file-manager" }
+      ]
+    },
+
     "PdfPayload": {
       "description": "A single PDF document embedded in the workbook.",
       "type": "object",
@@ -1146,6 +1159,7 @@
     { "$ref": "#/definitions/ViewerReadyMessage" },
     { "$ref": "#/definitions/ViewerShellReadyMessage" },
     { "$ref": "#/definitions/ViewerContentReadyMessage" },
+    { "$ref": "#/definitions/OpenFileManagerMessage" },
     { "$ref": "#/definitions/PdfsLoadedMessage" },
     { "$ref": "#/definitions/PdfUpdatedMessage" },
     { "$ref": "#/definitions/PdfAddedMessage" },

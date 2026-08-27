@@ -212,6 +212,10 @@ namespace DocuLink.Addin.Modules.WebView
                             RevealWebView();
                         break;
 
+                    case "open-file-manager":
+                        HandleOpenFileManager();
+                        break;
+
                     case "link-rectangle-created":
                         HandleLinkRectangleCreated(raw);
                         break;
@@ -260,6 +264,15 @@ namespace DocuLink.Addin.Modules.WebView
         {
             if (_disposed) return;
             RestoreExcelFocus();
+        }
+
+        private void HandleOpenFileManager()
+        {
+            _invokeTarget.BeginInvoke(new Action(() =>
+            {
+                if (!TryActivateWorkbook()) return;
+                Globals.ThisAddIn.ShowManageFilesWindow();
+            }));
         }
 
         private void RestoreExcelFocus()

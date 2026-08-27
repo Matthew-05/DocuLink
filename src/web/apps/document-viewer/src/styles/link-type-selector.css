@@ -18,6 +18,10 @@
   pointer-events: auto;
 }
 
+.link-type-bar[hidden] {
+  display: none;
+}
+
 /* ── Segmented button group ─────────────────────────────────────────── */
 
 .link-type-selector {

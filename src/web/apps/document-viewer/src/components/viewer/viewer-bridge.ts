@@ -105,6 +105,7 @@ export function connectViewerToHostBridge(
     },
 
     onPdfUpdated: (entry) => {
+      const isFirstEntry = selector.getEntries().length === 0;
       selector.upsertEntry(entry);
 
       startIndexing();
@@ -113,7 +114,7 @@ export function connectViewerToHostBridge(
         await cache.buildForUrl(entry.id, entry.url, entry.geometryBase64);
       })().finally(endIndexing);
 
-      if (viewer.getActivePdfId() === entry.id) {
+      if (isFirstEntry || viewer.getActivePdfId() === entry.id) {
         void reloadEntry(entry);
       }
     },

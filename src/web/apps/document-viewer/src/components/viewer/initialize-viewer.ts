@@ -30,6 +30,7 @@ import {
   sendLinkRectangleDeleted,
   sendCacheBuildStarted,
   sendCacheBuildComplete,
+  sendOpenFileManager,
   sendRotatePage,
 } from "../../host-bridge.js";
 import type { SearchMatch, LinkedRectEntry, LinkSelectionEntry, ZoomLevel } from "../../types/index.js";
@@ -71,6 +72,7 @@ export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLEleme
     createToolbar();
 
   const linkTypeSelector = new LinkTypeSelector();
+  viewer.onManageFilesRequested(sendOpenFileManager);
 
   viewer.onLoaded((total) => {
     page.setTotal(total);
@@ -642,6 +644,11 @@ export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLEleme
   const viewerWrapper = document.createElement("div");
   viewerWrapper.className = "viewer-wrapper";
   viewerWrapper.append(viewer.element, linkTypeBar, selectionPanel.element);
+
+  viewer.onDocumentAvailabilityChanged((hasDocument) => {
+    toolbarElement.hidden = !hasDocument;
+    linkTypeBar.hidden = !hasDocument;
+  });
 
   return { toolbarElement, viewerWrapper };
 }

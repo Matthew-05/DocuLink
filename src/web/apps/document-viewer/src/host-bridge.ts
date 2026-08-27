@@ -492,3 +492,7 @@ export function sendCacheBuildComplete(): void {
 export function sendViewerContentReady(): void {
   postToHost({ type: "viewer-content-ready" });
 }
+
+export function sendOpenFileManager(): void {
+  postToHost({ type: "open-file-manager" });
+}

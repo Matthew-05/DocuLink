@@ -16,6 +16,10 @@
   user-select: none;
 }
 
+.toolbar[hidden] {
+  display: none;
+}
+
 .toolbar__left {
   display: flex;
   align-items: center;
