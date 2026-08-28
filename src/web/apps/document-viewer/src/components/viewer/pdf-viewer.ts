@@ -227,9 +227,19 @@ export class PdfViewer {
   getPageFitScale(pageNumber: number): ZoomLevel | null {
     const entry = this._pageEntries[pageNumber - 1];
     if (!entry) return null;
-    const w = this.element.clientWidth;
-    const h = this.element.clientHeight;
-    if (!w || !h) return null;
+    const documentElement = this.element.querySelector<HTMLElement>(".viewer__document");
+    const documentStyle = documentElement ? getComputedStyle(documentElement) : null;
+    const horizontalGutter = documentStyle
+      ? (parseFloat(documentStyle.paddingLeft) || 0) +
+        (parseFloat(documentStyle.paddingRight) || 0)
+      : 0;
+    const verticalGutter = documentStyle
+      ? (parseFloat(documentStyle.paddingTop) || 0) +
+        (parseFloat(documentStyle.paddingBottom) || 0)
+      : 0;
+    const w = this.element.clientWidth - horizontalGutter;
+    const h = this.element.clientHeight - verticalGutter;
+    if (w <= 0 || h <= 0) return null;
     return Math.min(w / entry.baseWidth, h / entry.baseHeight);
   }
 
