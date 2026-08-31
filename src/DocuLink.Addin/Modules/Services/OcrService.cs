@@ -152,6 +152,11 @@ namespace DocuLink.Addin.Modules.Services
             catch (Exception ex)
             {
                 metrics.UnhandledError = ex.GetType().Name + ": " + ex.Message;
+                int terminalJobs = metrics.Succeeded
+                    + metrics.Failed
+                    + metrics.Cancelled
+                    + metrics.Skipped;
+                metrics.Failed += Math.Max(0, metrics.Loaded - terminalJobs);
                 throw;
             }
             finally

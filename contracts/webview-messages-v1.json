@@ -950,7 +950,7 @@
     },
 
     "OcrStatusMessage": {
-      "description": "Sent by the C# host to the file-manager to report per-PDF OCR/Enhance progress. Transient values queued/processing/error are used during jobs; persisted status becomes ocr on success.",
+      "description": "Sent by the C# host to the file-manager to report per-PDF OCR/Enhance progress. Transient values queued/processing/error are used during jobs; persisted status becomes ocr on success. Cancellation restores the prior persisted none or text status.",
       "type": "object",
       "required": ["type", "pdfId", "status"],
       "additionalProperties": false,
@@ -959,8 +959,8 @@
         "pdfId":   { "type": "string", "description": "GUID of the PDF being processed." },
         "status":  {
           "type": "string",
-          "enum": ["queued", "processing", "ocr", "error"],
-          "description": "Job lifecycle state. ocr is sent when OCR or Enhance completes successfully."
+          "enum": ["queued", "processing", "ocr", "error", "none", "text"],
+          "description": "Job lifecycle state. ocr is sent when OCR or Enhance completes successfully; none or text restores the prior status after cancellation."
         },
         "message": { "type": "string", "description": "Optional human-readable detail for errors or the current processing stage." },
         "stage": { "type": "string", "description": "Optional stable identifier for the active processing stage, such as geometry, ocr, retry, table, or cache." },

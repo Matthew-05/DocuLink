@@ -262,7 +262,12 @@ export class FileTable {
     }
     for (const id of this._ocrProgress.keys()) {
       const file = files.find((entry) => entry.id === id);
-      if (!file || (file.status !== "queued" && file.status !== "processing")) {
+      if (
+        !file ||
+        (file.status !== "queued" &&
+          file.status !== "processing" &&
+          file.status !== "error")
+      ) {
         this._ocrProgress.delete(id);
       }
     }
@@ -281,7 +286,11 @@ export class FileTable {
     const previousStatus = entry?.status;
     if (entry) entry.status = status;
 
-    if (status === "queued" || status === "processing") {
+    if (
+      status === "queued" ||
+      status === "processing" ||
+      (status === "error" && progress.message)
+    ) {
       this._ocrProgress.set(fileId, progress);
     } else {
       this._ocrProgress.delete(fileId);

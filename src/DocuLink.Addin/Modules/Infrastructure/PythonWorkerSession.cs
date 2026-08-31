@@ -27,6 +27,7 @@ namespace DocuLink.Addin.Modules.Infrastructure
     internal sealed class PythonWorkerSession : IDisposable
     {
         private static readonly object RuntimeSync = new object();
+        private const int RuntimeCacheKeyLength = 24;
         private static string _resolvedWorkerDir;
 
         private Process _process;
@@ -262,11 +263,17 @@ namespace DocuLink.Addin.Modules.Infrastructure
                     throw new FileNotFoundException(NotBuiltMessage, archivePath);
 
                 string archiveHash = ComputeSha256(archivePath);
+                // Keep the on-disk cache key deliberately shorter than the full SHA-256.
+                // The runtime contains dependency paths longer than 100 characters, and
+                // .NET Framework file APIs still enforce MAX_PATH.  The former extraction
+                // path added a 64-character hash and a 32-character staging GUID, which
+                // made valid archive entries exceed 260 characters before Python started.
+                string cacheKey = archiveHash.Substring(0, RuntimeCacheKeyLength);
                 string runtimeRoot = Path.Combine(
                     Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                     "DocuLink",
                     "Runtime");
-                string targetDir = Path.Combine(runtimeRoot, archiveHash);
+                string targetDir = Path.Combine(runtimeRoot, cacheKey);
                 string readyMarker = Path.Combine(targetDir, ".ready");
 
                 // Multiple Excel processes can start simultaneously. Serialize
@@ -291,7 +298,7 @@ namespace DocuLink.Addin.Modules.Infrastructure
 
                     try
                     {
-                        if (!HasExpandedWorker(targetDir) || !File.Exists(readyMarker))
+                        if (!IsRuntimeReady(targetDir, readyMarker, archiveHash))
                             ExtractRuntimeArchive(archivePath, runtimeRoot, targetDir, archiveHash);
                     }
                     finally
@@ -316,6 +323,29 @@ namespace DocuLink.Addin.Modules.Infrastructure
                 && File.Exists(Path.Combine(directory, "worker.py"));
         }
 
+        private static bool IsRuntimeReady(
+            string targetDir,
+            string readyMarker,
+            string archiveHash)
+        {
+            if (!HasExpandedWorker(targetDir) || !File.Exists(readyMarker))
+                return false;
+
+            try
+            {
+                // The complete hash guards against the already-improbable event that
+                // two archives share the shortened directory key.
+                return string.Equals(
+                    File.ReadAllText(readyMarker).Trim(),
+                    archiveHash,
+                    StringComparison.OrdinalIgnoreCase);
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
         private static string ComputeSha256(string path)
         {
             using (var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read))
@@ -338,7 +368,7 @@ namespace DocuLink.Addin.Modules.Infrastructure
             Directory.CreateDirectory(runtimeRoot);
             string stagingDir = Path.Combine(
                 runtimeRoot,
-                ".extract-" + archiveHash + "-" + Guid.NewGuid().ToString("N"));
+                ".tmp-" + Guid.NewGuid().ToString("N").Substring(0, 12));
 
             try
             {

@@ -588,6 +588,8 @@ namespace DocuLink.Addin.Modules.WebView
                 _activeOcrIds.Add(id);
 
             bool anyComplete = false;
+            var pendingIds = new HashSet<string>(req.PdfIds, StringComparer.Ordinal);
+            var errorMessages = new Dictionary<string, string>(StringComparer.Ordinal);
 
             SetFileAddLocked(true);
 
@@ -601,12 +603,48 @@ namespace DocuLink.Addin.Modules.WebView
                         string json = FileManagerMessageSerializer.BuildOcrStatus(pdfId, status, message);
                         PostToWebView(json);
 
+                        if (status != "queued" && status != "processing")
+                            pendingIds.Remove(pdfId);
+
+                        if (status == "error")
+                            errorMessages[pdfId] = message ?? "OCR failed.";
+
                         if (status == PdfStatus.Ocr)
                         {
                             anyComplete = true;
                             Globals.ThisAddIn.RefreshTaskPanePdf(_workbook, pdfId);
                         }
                     });
+
+                // A requested ID can disappear between the web selection and the
+                // workbook read. The service has no job to report in that case, so
+                // close the optimistic UI state here instead of leaving the manager
+                // locked with no active status rows.
+                foreach (string pdfId in pendingIds.ToArray())
+                {
+                    const string message =
+                        "OCR could not process this document because it could not be loaded from the workbook.";
+                    errorMessages[pdfId] = message;
+                    PostToWebView(FileManagerMessageSerializer.BuildOcrStatus(
+                        pdfId, "error", message));
+                    pendingIds.Remove(pdfId);
+                }
+            }
+            catch (Exception ex)
+            {
+                // RunOcrAsync reports normal worker/job failures through its callback.
+                // An exception outside that path (for example runtime extraction) used
+                // to leave every queued row spinning forever because this handler is
+                // launched fire-and-forget. Give each unfinished row a terminal state.
+                string message = "OCR could not continue: " + ex.Message;
+                DocuLinkLog.Trace($"HandleOcrPdfsAsync failed: {ex}");
+                foreach (string pdfId in pendingIds.ToArray())
+                {
+                    errorMessages[pdfId] = message;
+                    PostToWebView(FileManagerMessageSerializer.BuildOcrStatus(
+                        pdfId, "error", message));
+                    pendingIds.Remove(pdfId);
+                }
             }
             finally
             {
@@ -617,6 +655,15 @@ namespace DocuLink.Addin.Modules.WebView
             if (anyComplete)
             {
                 SendFilesToWebView();
+
+                // Refreshing metadata after successful files restores persisted status
+                // for the whole table. Replay transient failures so mixed-result batches
+                // still show which files need attention and why.
+                foreach (KeyValuePair<string, string> error in errorMessages)
+                {
+                    PostToWebView(FileManagerMessageSerializer.BuildOcrStatus(
+                        error.Key, "error", error.Value));
+                }
             }
         }
 
