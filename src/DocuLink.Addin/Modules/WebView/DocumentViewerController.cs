@@ -117,6 +117,17 @@ namespace DocuLink.Addin.Modules.WebView
             }
             catch (Exception ex)
             {
+                // Workbook-bound viewer surfaces can be eagerly initialized and then disposed
+                // when Excel replaces its temporary blank workbook with the file being opened.
+                // WebView2 reports that expected in-flight cancellation as E_ABORT.
+                if (_disposed)
+                {
+                    DocuLinkLog.Trace(
+                        $"CANCEL initialization after dispose surface={_loadFailureSurfaceName} " +
+                        $"{ex.GetType().FullName}: {ex.Message}");
+                    return;
+                }
+
                 DocuLinkLog.Trace($"EXCEPTION surface={_loadFailureSurfaceName} {ex.GetType().FullName}: {ex.Message}");
                 MessageBox.Show(
                     $"DocuLink {_loadFailureSurfaceName} failed to load:\n\n{ex.Message}",

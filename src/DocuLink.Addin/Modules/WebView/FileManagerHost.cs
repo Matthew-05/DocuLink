@@ -162,6 +162,18 @@ namespace DocuLink.Addin.Modules.WebView
             }
             catch (Exception ex)
             {
+                // Closing a workbook disposes its eagerly-created file manager. If WebView2
+                // is still starting, disposal completes EnsureCoreWebView2Async with E_ABORT.
+                // That cancellation is expected and belongs to a window that no longer exists;
+                // reporting it as a load failure produces a spurious dialog while another
+                // workbook is opening.
+                if (_disposed)
+                {
+                    DocuLinkLog.Trace(
+                        $"CANCEL file manager init after dispose {ex.GetType().FullName}: {ex.Message}");
+                    return;
+                }
+
                 DocuLinkLog.Trace($"EXCEPTION file manager init {ex.GetType().FullName}: {ex.Message}");
                 MessageBox.Show(
                     $"DocuLink file manager failed to load:\n\n{ex.Message}",
