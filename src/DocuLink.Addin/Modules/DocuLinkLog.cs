@@ -23,6 +23,8 @@ namespace DocuLink.Addin.Modules
 
         private static readonly object _lock = new object();
 
+        internal static string DirectoryPath => _directory;
+
         /// <summary>
         /// Included in every line because more than one Excel can be writing here: a
         /// conversion spawns a second EXCEL.EXE, and without the pid its lines are

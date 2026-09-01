@@ -1505,7 +1505,7 @@ namespace DocuLink.Addin
 
         {
 
-            if (string.Equals(AppVersion.Current, "dev", StringComparison.Ordinal))
+            if (AppVersion.IsDevelopment)
                 return Task.CompletedTask;
 
             if ((DateTime.UtcNow - Settings.Default.LastUpdateCheck).TotalHours < 24)

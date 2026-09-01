@@ -122,7 +122,7 @@ Write-Host "  Expanded OCR runtime built OK"
 # ── Step 3: C# add-in Release build ──────────────────────────────────────────
 Step "Building C# add-in (Release)"
 
-& $MSBuild $AddinProj /t:Rebuild /p:Configuration=Release /p:Platform=AnyCPU /p:AppVersion=$Version /nologo /v:minimal
+& $MSBuild $AddinProj /t:Rebuild /p:Configuration=Release /p:Platform=AnyCPU /p:AppVersion=$Version /p:BetaMode=true /nologo /v:minimal
 if ($LASTEXITCODE -ne 0) { Fail "MSBuild failed (exit $LASTEXITCODE)." }
 
 $addinDll = Join-Path $ReleaseDir "DocuLink.Addin.dll"

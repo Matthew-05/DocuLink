@@ -354,10 +354,12 @@
   <PropertyGroup>
     <!-- "dev" for normal builds; installer passes /p:AppVersion=x.y.z -->
     <AppVersion Condition="'$(AppVersion)' == ''">dev</AppVersion>
+    <!-- Release packaging currently opts into beta mode explicitly. -->
+    <BetaMode Condition="'$(BetaMode)' == ''">false</BetaMode>
     <GeneratedVersionPath>$(MSBuildProjectDirectory)\Properties\GeneratedVersion.cs</GeneratedVersionPath>
   </PropertyGroup>
   <Target Name="GenerateVersionFile" BeforeTargets="CoreCompile">
-    <Exec Command="powershell -NonInteractive -ExecutionPolicy Bypass -File &quot;$(MSBuildProjectDirectory)\generate-version.ps1&quot; -Version &quot;$(AppVersion)&quot; -OutputPath &quot;$(GeneratedVersionPath)&quot;" />
+    <Exec Command="powershell -NonInteractive -ExecutionPolicy Bypass -File &quot;$(MSBuildProjectDirectory)\generate-version.ps1&quot; -Version &quot;$(AppVersion)&quot; -Beta &quot;$(BetaMode)&quot; -OutputPath &quot;$(GeneratedVersionPath)&quot;" />
   </Target>
   <!-- ── Web asset build ── -->
   <PropertyGroup>

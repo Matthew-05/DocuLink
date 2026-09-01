@@ -61,7 +61,7 @@ namespace DocuLink.Addin.Modules.Services
 
         internal static async Task<UpdateCheckResult> CheckAsync()
         {
-            bool isDevBuild = AppVersion.Current == "dev";
+            bool isDevBuild = AppVersion.IsDevelopment;
             return await CheckCoreAsync(isDevBuild).ConfigureAwait(false);
         }
 

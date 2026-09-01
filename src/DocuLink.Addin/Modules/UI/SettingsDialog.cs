@@ -1,5 +1,7 @@
 using System;
+using System.Diagnostics;
 using System.Drawing;
+using System.IO;
 using System.Windows.Forms;
 using DocuLink.Addin.Modules.Services;
 
@@ -12,8 +14,10 @@ namespace DocuLink.Addin.Modules.UI
 
         internal SettingsDialog()
         {
+            bool showDevelopmentSection = AppVersion.IsDevelopment || AppVersion.IsBeta;
+
             Text = "DocuLink Settings";
-            ClientSize = new Size(640, 590);
+            ClientSize = new Size(640, showDevelopmentSection ? 665 : 590);
             FormBorderStyle = FormBorderStyle.FixedDialog;
             MaximizeBox = false;
             MinimizeBox = false;
@@ -61,15 +65,55 @@ namespace DocuLink.Addin.Modules.UI
             };
             Controls.Add(_updateHistory);
 
+            if (showDevelopmentSection)
+            {
+                Controls.Add(new Label
+                {
+                    Text = "Development",
+                    AutoSize = true,
+                    Location = new Point(20, 528),
+                    Font = new Font("Segoe UI", 12f, FontStyle.Bold)
+                });
+
+                var openLogsBtn = new Button
+                {
+                    Text = "Open Log Folder",
+                    Size = new Size(130, 28),
+                    Location = new Point(20, 558),
+                    Font = new Font("Segoe UI", 9f)
+                };
+                openLogsBtn.Click += OpenLogFolder;
+                Controls.Add(openLogsBtn);
+            }
+
             var closeBtn = new Button
             {
                 Text = "Close",
                 DialogResult = DialogResult.Cancel,
                 Size = new Size(80, 28),
-                Location = new Point(540, 548)
+                Location = new Point(540, showDevelopmentSection ? 623 : 548)
             };
             Controls.Add(closeBtn);
             CancelButton = closeBtn;
+        }
+
+        private void OpenLogFolder(object sender, EventArgs e)
+        {
+            try
+            {
+                Directory.CreateDirectory(DocuLinkLog.DirectoryPath);
+                Process.Start("explorer.exe", $"\"{DocuLinkLog.DirectoryPath}\"");
+            }
+            catch (Exception ex)
+            {
+                DocuLinkLog.Trace($"Could not open log folder: {ex}");
+                MessageBox.Show(
+                    this,
+                    "The DocuLink log folder could not be opened.",
+                    "DocuLink",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Error);
+            }
         }
 
         protected override async void OnShown(EventArgs e)
