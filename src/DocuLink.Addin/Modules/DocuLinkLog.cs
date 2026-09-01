@@ -7,8 +7,9 @@ namespace DocuLink.Addin.Modules
 {
     /// <summary>
     /// Lightweight persistent logger for diagnosing runtime and endpoint-security
-    /// incidents without a debugger attached. Keeps seven daily files under
-    /// %LOCALAPPDATA%\DocuLink\Logs so an Excel restart does not erase evidence.
+    /// incidents without a debugger attached. Keeps session-specific files for
+    /// seven days under %LOCALAPPDATA%\DocuLink\Logs\yyyy-MM-dd so each Excel
+    /// restart has an independent timeline.
     /// </summary>
     internal static class DocuLinkLog
     {
@@ -17,20 +18,25 @@ namespace DocuLink.Addin.Modules
             "DocuLink",
             "Logs");
 
-        private static readonly string _path = Path.Combine(
+        private static readonly DateTime _sessionStartedAt = DateTime.Now;
+
+        /// <summary>
+        /// Included in every line and in the file name because more than one Excel can
+        /// be running at once (a conversion can spawn another EXCEL.EXE).
+        /// </summary>
+        private static readonly int _processId = GetProcessId();
+
+        private static readonly string _sessionDirectory = Path.Combine(
             _directory,
-            $"doculink-{DateTime.Now:yyyyMMdd}.log");
+            _sessionStartedAt.ToString("yyyy-MM-dd"));
+
+        private static readonly string _path = Path.Combine(
+            _sessionDirectory,
+            $"doculink-{_sessionStartedAt:yyyyMMdd-HHmmss-fff}-p{_processId}.log");
 
         private static readonly object _lock = new object();
 
         internal static string DirectoryPath => _directory;
-
-        /// <summary>
-        /// Included in every line because more than one Excel can be writing here: a
-        /// conversion spawns a second EXCEL.EXE, and without the pid its lines are
-        /// indistinguishable from the host's — which reads as an impossible timeline.
-        /// </summary>
-        private static readonly int _processId = GetProcessId();
 
         private static int GetProcessId()
         {
@@ -48,7 +54,7 @@ namespace DocuLink.Addin.Modules
                 string entry = $"{DateTime.Now:HH:mm:ss.fff} [{_processId}] [{member}:{line}] {message}";
                 lock (_lock)
                 {
-                    Directory.CreateDirectory(_directory);
+                    Directory.CreateDirectory(_sessionDirectory);
                     File.AppendAllText(_path, entry + Environment.NewLine);
                 }
             }
@@ -73,14 +79,20 @@ namespace DocuLink.Addin.Modules
             }
         }
 
-        /// <summary>Starts a durable session and removes logs older than seven days.</summary>
+        /// <summary>
+        /// Starts this Excel process's durable log session and removes log files older
+        /// than seven days, including files created by the previous flat layout.
+        /// </summary>
         internal static void StartSession()
         {
             try
             {
-                Directory.CreateDirectory(_directory);
+                Directory.CreateDirectory(_sessionDirectory);
                 DateTime cutoff = DateTime.UtcNow.AddDays(-7);
-                foreach (string path in Directory.GetFiles(_directory, "doculink-*.log"))
+                foreach (string path in Directory.GetFiles(
+                    _directory,
+                    "doculink-*.log",
+                    SearchOption.AllDirectories))
                 {
                     try
                     {
