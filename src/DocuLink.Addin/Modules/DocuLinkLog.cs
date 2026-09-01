@@ -8,8 +8,8 @@ namespace DocuLink.Addin.Modules
     /// <summary>
     /// Lightweight persistent logger for diagnosing runtime and endpoint-security
     /// incidents without a debugger attached. Keeps session-specific files for
-    /// seven days under %LOCALAPPDATA%\DocuLink\Logs\yyyy-MM-dd so each Excel
-    /// restart has an independent timeline.
+    /// seven days under %LOCALAPPDATA%\DocuLink\Logs so each Excel restart has
+    /// an independent timeline.
     /// </summary>
     internal static class DocuLinkLog
     {
@@ -26,12 +26,8 @@ namespace DocuLink.Addin.Modules
         /// </summary>
         private static readonly int _processId = GetProcessId();
 
-        private static readonly string _sessionDirectory = Path.Combine(
-            _directory,
-            _sessionStartedAt.ToString("yyyy-MM-dd"));
-
         private static readonly string _path = Path.Combine(
-            _sessionDirectory,
+            _directory,
             $"doculink-{_sessionStartedAt:yyyyMMdd-HHmmss-fff}-p{_processId}.log");
 
         private static readonly object _lock = new object();
@@ -54,7 +50,7 @@ namespace DocuLink.Addin.Modules
                 string entry = $"{DateTime.Now:HH:mm:ss.fff} [{_processId}] [{member}:{line}] {message}";
                 lock (_lock)
                 {
-                    Directory.CreateDirectory(_sessionDirectory);
+                    Directory.CreateDirectory(_directory);
                     File.AppendAllText(_path, entry + Environment.NewLine);
                 }
             }
@@ -81,13 +77,13 @@ namespace DocuLink.Addin.Modules
 
         /// <summary>
         /// Starts this Excel process's durable log session and removes log files older
-        /// than seven days, including files created by the previous flat layout.
+        /// than seven days, including any files left in date folders by earlier builds.
         /// </summary>
         internal static void StartSession()
         {
             try
             {
-                Directory.CreateDirectory(_sessionDirectory);
+                Directory.CreateDirectory(_directory);
                 DateTime cutoff = DateTime.UtcNow.AddDays(-7);
                 foreach (string path in Directory.GetFiles(
                     _directory,
