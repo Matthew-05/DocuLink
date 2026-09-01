@@ -9,7 +9,7 @@
         Override tool locations with $env:TESSERACT_DIR or $env:GHOSTSCRIPT_DIR.
 
     Output:
-      src/python/dist/worker-runtime.zip (Python + scripts + tool binaries)
+      src/python/dist/worker/ (Python + scripts + tool binaries)
 
     The dist/ folder is gitignored. After building, the C# project copies
     the worker to the addin output directory automatically on the next build.
@@ -170,8 +170,9 @@ if (Test-Path $outputExe) {
     $prunePaths += Get-ChildItem $sitePackages -Directory -ErrorAction SilentlyContinue |
         Where-Object { $_.Name -match '^(pip|setuptools|wheel)-.*\.dist-info$' } |
         ForEach-Object { $_.FullName }
-    $prunePaths += Get-ChildItem (Join-Path $workerDir "Scripts") -File -Filter "pip*.exe" -ErrorAction SilentlyContinue |
-        ForEach-Object { $_.FullName }
+    # Console-script launchers are build-time conveniences. The worker imports
+    # packages directly and resolves Tesseract/Ghostscript explicitly.
+    $prunePaths += (Join-Path $workerDir "Scripts")
     $prunePaths += Get-ChildItem (Join-Path $workerDir "tesseract") -File -Filter "*.exe" -ErrorAction SilentlyContinue |
         Where-Object { $_.Name -ne "tesseract.exe" } |
         ForEach-Object { $_.FullName }
@@ -190,58 +191,19 @@ if (Test-Path $outputExe) {
     Get-ChildItem -LiteralPath $workerDir -File -Recurse -Filter "*.pyc" -ErrorAction SilentlyContinue |
         Remove-Item -Force
 
-    $archivePath = Join-Path $scriptDir "dist\worker-runtime.zip"
-    if (Test-Path -LiteralPath $archivePath) {
-        Remove-Item -LiteralPath $archivePath -Force
+    # Excel must never unpack executable content. The MSI harvests this expanded
+    # directory so Windows Installer owns every deployed runtime file.
+    $legacyArchivePath = Join-Path $scriptDir "dist\worker-runtime.zip"
+    if (Test-Path -LiteralPath $legacyArchivePath) {
+        Remove-Item -LiteralPath $legacyArchivePath -Force
     }
 
-    Write-Host "Packing OCR runtime into a single installer payload..." -ForegroundColor Cyan
-    Add-Type -AssemblyName System.IO.Compression
-    Add-Type -AssemblyName System.IO.Compression.FileSystem
-
-    # Create a deterministic archive: stable ordering and timestamps make its
-    # SHA-256 (and therefore the runtime cache key) stay unchanged when the
-    # runtime contents have not changed between DocuLink releases.
-    $archiveStream = [System.IO.File]::Open(
-        $archivePath,
-        [System.IO.FileMode]::CreateNew,
-        [System.IO.FileAccess]::Write,
-        [System.IO.FileShare]::None)
-    $archive = New-Object System.IO.Compression.ZipArchive(
-        $archiveStream,
-        [System.IO.Compression.ZipArchiveMode]::Create,
-        $false)
-    $fixedTimestamp = New-Object System.DateTimeOffset(
-        2000, 1, 1, 0, 0, 0, [System.TimeSpan]::Zero)
-
-    try {
-        $runtimeFiles = Get-ChildItem -LiteralPath $workerDir -File -Recurse |
-            Sort-Object FullName
-
-        foreach ($file in $runtimeFiles) {
-            $relativePath = $file.FullName.Substring($workerDir.Length + 1).Replace('\', '/')
-            $entry = $archive.CreateEntry(
-                $relativePath,
-                [System.IO.Compression.CompressionLevel]::Optimal)
-            $entry.LastWriteTime = $fixedTimestamp
-
-            $input = $file.OpenRead()
-            $output = $entry.Open()
-            try {
-                $input.CopyTo($output)
-            } finally {
-                $output.Dispose()
-                $input.Dispose()
-            }
-        }
-    } finally {
-        $archive.Dispose()
-        $archiveStream.Dispose()
-    }
-
-    $archiveSizeMb = [math]::Round((Get-Item -LiteralPath $archivePath).Length / 1MB, 1)
-    Write-Host "`nBuild complete: $archivePath ($archiveSizeMb MB)" -ForegroundColor Green
-    Write-Host "Build the C# project to copy the runtime archive into the add-in output."
+    $runtimeSizeMb = [math]::Round(
+        ((Get-ChildItem -LiteralPath $workerDir -File -Recurse |
+            Measure-Object -Property Length -Sum).Sum / 1MB),
+        1)
+    Write-Host "`nBuild complete: $workerDir ($runtimeSizeMb MB)" -ForegroundColor Green
+    Write-Host "Build the C# project to copy the expanded runtime into the add-in output."
 } else {
     throw "Build appeared to succeed but python.exe not found at: $outputExe"
 }

@@ -6,14 +6,20 @@ using System.Runtime.CompilerServices;
 namespace DocuLink.Addin.Modules
 {
     /// <summary>
-    /// Lightweight file logger for diagnosing runtime issues without a debugger attached.
-    /// Writes timestamped lines to %TEMP%\doculink-debug.log.
-    /// Remove call sites once the issue is resolved.
+    /// Lightweight persistent logger for diagnosing runtime and endpoint-security
+    /// incidents without a debugger attached. Keeps seven daily files under
+    /// %LOCALAPPDATA%\DocuLink\Logs so an Excel restart does not erase evidence.
     /// </summary>
     internal static class DocuLinkLog
     {
+        private static readonly string _directory = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "DocuLink",
+            "Logs");
+
         private static readonly string _path = Path.Combine(
-            Path.GetTempPath(), "doculink-debug.log");
+            _directory,
+            $"doculink-{DateTime.Now:yyyyMMdd}.log");
 
         private static readonly object _lock = new object();
 
@@ -39,7 +45,10 @@ namespace DocuLink.Addin.Modules
             {
                 string entry = $"{DateTime.Now:HH:mm:ss.fff} [{_processId}] [{member}:{line}] {message}";
                 lock (_lock)
+                {
+                    Directory.CreateDirectory(_directory);
                     File.AppendAllText(_path, entry + Environment.NewLine);
+                }
             }
             catch { }
         }
@@ -62,10 +71,26 @@ namespace DocuLink.Addin.Modules
             }
         }
 
-        /// <summary>Deletes the log file so a fresh session starts clean.</summary>
-        internal static void Clear()
+        /// <summary>Starts a durable session and removes logs older than seven days.</summary>
+        internal static void StartSession()
         {
-            try { File.Delete(_path); } catch { }
+            try
+            {
+                Directory.CreateDirectory(_directory);
+                DateTime cutoff = DateTime.UtcNow.AddDays(-7);
+                foreach (string path in Directory.GetFiles(_directory, "doculink-*.log"))
+                {
+                    try
+                    {
+                        if (File.GetLastWriteTimeUtc(path) < cutoff)
+                            File.Delete(path);
+                    }
+                    catch { }
+                }
+
+                Trace($"session start log={_path}");
+            }
+            catch { }
         }
     }
 }

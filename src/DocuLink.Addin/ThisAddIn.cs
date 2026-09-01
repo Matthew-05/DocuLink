@@ -1079,7 +1079,7 @@ namespace DocuLink.Addin
 
         {
 
-            Modules.DocuLinkLog.Clear();
+            Modules.DocuLinkLog.StartSession();
 
             Modules.DocuLinkLog.Trace("addin startup");
 

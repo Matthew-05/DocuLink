@@ -398,13 +398,17 @@
   </Target>
   <!-- ── Python OCR worker copy ── -->
   <PropertyGroup>
-    <PythonWorkerArchive>$(MSBuildProjectDirectory)\..\python\dist\worker-runtime.zip</PythonWorkerArchive>
-    <PythonWorkerOutput>$(OutputPath)python\worker-runtime.zip</PythonWorkerOutput>
+    <PythonWorkerDir>$(MSBuildProjectDirectory)\..\python\dist\worker</PythonWorkerDir>
   </PropertyGroup>
   <Target Name="CopyPythonWorkerToOutput" AfterTargets="CopyWebUiToOutput">
-    <Warning Condition="!Exists('$(PythonWorkerArchive)')" Text="[DocuLink] Python OCR runtime not built — $(PythonWorkerArchive) not found. Run src/python/build-worker.ps1 to build it. OCR will not work until the runtime is present." />
-    <Message Condition="Exists('$(PythonWorkerArchive)')" Text="[DocuLink] Copying Python OCR runtime archive to output…" Importance="high" />
-    <Copy Condition="Exists('$(PythonWorkerArchive)')" SourceFiles="$(PythonWorkerArchive)" DestinationFiles="$(PythonWorkerOutput)" SkipUnchangedFiles="true" />
+    <Warning Condition="!Exists('$(PythonWorkerDir)\python.exe')" Text="[DocuLink] Python OCR runtime not built — $(PythonWorkerDir)\python.exe not found. Run src/python/build-worker.ps1 to build it. OCR will not work until the runtime is present." />
+    <Message Condition="Exists('$(PythonWorkerDir)\python.exe')" Text="[DocuLink] Copying expanded Python OCR runtime to output…" Importance="high" />
+    <ItemGroup Condition="Exists('$(PythonWorkerDir)\python.exe')">
+      <PythonWorkerFiles Include="$(PythonWorkerDir)\**\*.*" />
+    </ItemGroup>
+    <RemoveDir Directories="$(OutputPath)python\worker" />
+    <Delete Files="$(OutputPath)python\worker-runtime.zip" />
+    <Copy Condition="Exists('$(PythonWorkerDir)\python.exe')" SourceFiles="@(PythonWorkerFiles)" DestinationFiles="@(PythonWorkerFiles->'$(OutputPath)python\worker\%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
   </Target>
   <!-- This section defines VSTO properties that describe the host-changeable project properties. -->
   <ProjectExtensions>

@@ -24,6 +24,7 @@ import time
 
 from engines.conversion_engine import ConversionError, convert_to_pdf
 from engines.geometry_engine import extract_text_geometry, geometry_to_base64
+from engines.pdf_security import sanitize_pdf_bytes
 from engines.table_cell_engine import has_recoverable_ruled_table, recover_table_cells
 from engines.ocr_engine import (
     MODE_FORCE,
@@ -203,6 +204,9 @@ def _handle_job(job: OcrJob) -> None:
     legacy_table_required = False
     geometry_cache_key = ""
     geometry_cache_hit = False
+    pdf_sanitized = False
+    removed_embedded_files = 0
+    removed_links = 0
 
     def _elapsed_ms(since: float) -> int:
         return int((time.perf_counter() - since) * 1000)
@@ -274,6 +278,9 @@ def _handle_job(job: OcrJob) -> None:
             "table_detection_ms": table_detection_ms,
             "geometry_cache_hit": geometry_cache_hit,
             "geometry_cache_version": _GEOMETRY_CACHE_VERSION,
+            "pdf_sanitized": pdf_sanitized,
+            "removed_embedded_files": removed_embedded_files,
+            "removed_links": removed_links,
         }
         if ocr_ran:
             d["ocr_ms"] = ocr_ms
@@ -304,6 +311,9 @@ def _handle_job(job: OcrJob) -> None:
         nonlocal output_bytes
         nonlocal geometry_encode_ms
         nonlocal pdf_encode_ms
+        nonlocal pdf_sanitized
+        nonlocal removed_embedded_files
+        nonlocal removed_links
 
         final_summary = summarize_geometry_quality(geometry)
         final_characters = final_summary["total_characters"]
@@ -317,6 +327,13 @@ def _handle_job(job: OcrJob) -> None:
         quality_warning = needs_adaptive_retry(
             final_summary
         ) or needs_garbled_text_retry(final_summary)
+
+        if result_bytes is not None and not job.preserve_source_pdf:
+            sanitized = sanitize_pdf_bytes(result_bytes)
+            result_bytes = sanitized.pdf_bytes
+            removed_embedded_files += sanitized.removed_embedded_files
+            removed_links += sanitized.removed_links
+            pdf_sanitized = True
 
         output_bytes = len(result_bytes) if result_bytes is not None else 0
         geometry_encode_started = time.perf_counter()
@@ -351,6 +368,14 @@ def _handle_job(job: OcrJob) -> None:
         pdf_bytes = base64.b64decode(job.pdf_base64)
         decode_ms = _elapsed_ms(decode_started)
         input_bytes = len(pdf_bytes)
+
+        # OCR works on a passive copy. This strips attachments, JavaScript and
+        # interactive actions before third-party PDF engines inspect the file.
+        sanitized_source = sanitize_pdf_bytes(pdf_bytes)
+        pdf_bytes = sanitized_source.pdf_bytes
+        removed_embedded_files = sanitized_source.removed_embedded_files
+        removed_links = sanitized_source.removed_links
+        pdf_sanitized = True
 
         inspect_started = time.perf_counter()
         import pymupdf as fitz

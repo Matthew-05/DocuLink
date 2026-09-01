@@ -604,7 +604,9 @@ namespace DocuLink.Addin.Modules.Services
                     InputBytes = Base64DecodedLength(base64),
                     LoadMs = loadClock.ElapsedMilliseconds,
                     Mode = "full",
-                    PreserveSourcePdf = true,
+                    // Store the worker's normalized OCR PDF rather than retaining
+                    // the original active-content container in the workbook.
+                    PreserveSourcePdf = false,
                     OriginalStatus = status,
                 });
             }

@@ -159,6 +159,9 @@
         "table_detection_ms": { "type": "integer", "minimum": 0, "description": "Milliseconds spent deciding whether ruled-table compatibility requires the legacy OCR PDF pipeline." },
         "geometry_cache_hit": { "type": "boolean", "description": "True when identical PDF geometry was reused from this worker process." },
         "geometry_cache_version": { "type": "string", "description": "Version tag included in the geometry cache key so OCR pipeline changes invalidate prior entries." },
+        "pdf_sanitized": { "type": "boolean", "description": "True when the returned PDF was rewritten as passive content before workbook storage." },
+        "removed_embedded_files": { "type": "integer", "minimum": 0, "description": "Embedded or attached files removed while normalizing the returned PDF." },
+        "removed_links": { "type": "integer", "minimum": 0, "description": "Interactive PDF links and actions removed while normalizing the returned PDF." },
         "ocr_ms":      { "type": "integer", "minimum": 0, "description": "Milliseconds spent inside OCRmyPDF. Omitted when no OCR ran." },
         "geometry_ms": { "type": "integer", "minimum": 0, "description": "Milliseconds spent extracting character geometry." },
         "total_ms":    { "type": "integer", "minimum": 0, "description": "Milliseconds from the start of inbound base64 decoding through response payload preparation, measured inside the worker. Excludes final JSON serialization, stdout transfer, and host-side workbook storage." }

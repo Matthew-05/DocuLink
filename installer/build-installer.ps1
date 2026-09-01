@@ -6,8 +6,7 @@
 .DESCRIPTION
     Runs every build step from scratch in order:
       1. Clean all previous build artifacts
-      2. Build the Python OCR runtime (downloads Ghostscript + Tesseract if needed,
-         then packages the complete runtime as one archive)
+      2. Build the Python OCR runtime (downloads Ghostscript + Tesseract if needed)
       3. Build the C# add-in in Release mode (also builds TypeScript web apps and
          copies the worker into bin\Release\)
       4. Harvest the Release output into a WiX component group (doculink-files.wxs)
@@ -116,9 +115,9 @@ if (-not (Test-Path $buildWorker)) { Fail "build-worker.ps1 not found at $buildW
 & powershell.exe -NonInteractive -ExecutionPolicy Bypass -File $buildWorker
 if ($LASTEXITCODE -ne 0) { Fail "build-worker.ps1 failed (exit $LASTEXITCODE)." }
 
-$workerArchive = Join-Path $PythonDist "worker-runtime.zip"
-if (-not (Test-Path $workerArchive)) { Fail "Worker archive not found after build: $workerArchive" }
-Write-Host "  OCR runtime archive built OK"
+$workerExe = Join-Path $PythonDist "worker\python.exe"
+if (-not (Test-Path $workerExe)) { Fail "Worker runtime not found after build: $workerExe" }
+Write-Host "  Expanded OCR runtime built OK"
 
 # ── Step 3: C# add-in Release build ──────────────────────────────────────────
 Step "Building C# add-in (Release)"
