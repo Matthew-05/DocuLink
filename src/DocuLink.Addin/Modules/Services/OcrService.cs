@@ -249,7 +249,12 @@ namespace DocuLink.Addin.Modules.Services
                         buildClock.Stop();
 
                         var sendClock = Stopwatch.StartNew();
-                        session.SendJob(jobJson);
+                        session.SendJob(
+                            jobJson,
+                            (current, total) => Invoke(() => onStatusUpdate(
+                                job.PdfId,
+                                "processing",
+                                $"Sending PDF chunk {current} of {total}…")));
                         sendClock.Stop();
 
                         // Read lines until we get a terminal result for this job_id
@@ -478,8 +483,34 @@ namespace DocuLink.Addin.Modules.Services
             string value = message ?? string.Empty;
             if (value.StartsWith("Extracting geometry", StringComparison.OrdinalIgnoreCase))
                 return "geometry";
+            if (value.StartsWith("Checking source text", StringComparison.OrdinalIgnoreCase))
+                return "source-check";
+            if (value.StartsWith("Securing PDF", StringComparison.OrdinalIgnoreCase))
+                return "security";
+            if (value.StartsWith("Sending PDF", StringComparison.OrdinalIgnoreCase))
+                return "transfer";
+            if (value.StartsWith("Inspecting PDF", StringComparison.OrdinalIgnoreCase))
+                return "pdf-analysis";
+            if (value.StartsWith("Checking image quality", StringComparison.OrdinalIgnoreCase))
+                return "quality-check";
+            if (value.StartsWith("Building OCR PDF", StringComparison.OrdinalIgnoreCase))
+                return "ocr-output";
+            if (value.StartsWith("Transferring OCR result", StringComparison.OrdinalIgnoreCase))
+                return "result-transfer";
+            if (value.StartsWith("Finalizing PDF", StringComparison.OrdinalIgnoreCase))
+                return "finalizing";
+            if (value.StartsWith("Evaluating OCR layout", StringComparison.OrdinalIgnoreCase))
+                return "adaptive-evaluation";
+            if (value.StartsWith("Recognizing text", StringComparison.OrdinalIgnoreCase))
+                return "ocr";
+            if (value.StartsWith("Processing images", StringComparison.OrdinalIgnoreCase))
+                return "ocr";
+            if (value.StartsWith("Converting PDF", StringComparison.OrdinalIgnoreCase))
+                return "finalizing";
             if (value.StartsWith("Direct OCR", StringComparison.OrdinalIgnoreCase))
                 return "ocr";
+            if (value.StartsWith("Retrying OCR", StringComparison.OrdinalIgnoreCase))
+                return "adaptive-ocr";
             if (value.StartsWith("Retrying", StringComparison.OrdinalIgnoreCase))
                 return "retry";
             if (value.StartsWith("Identical PDF", StringComparison.OrdinalIgnoreCase))
@@ -488,8 +519,6 @@ namespace DocuLink.Addin.Modules.Services
                 return "source";
             if (value.IndexOf("high-resolution layout", StringComparison.OrdinalIgnoreCase) >= 0)
                 return "adaptive-evaluation";
-            if (value.StartsWith("Retrying OCR", StringComparison.OrdinalIgnoreCase))
-                return "adaptive-ocr";
             if (value.IndexOf("table", StringComparison.OrdinalIgnoreCase) >= 0
                 || value.StartsWith("Recovering", StringComparison.OrdinalIgnoreCase))
                 return "table-recovery";

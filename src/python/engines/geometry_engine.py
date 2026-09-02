@@ -78,6 +78,7 @@ def extract_text_geometry(
     pdf_bytes: bytes,
     language: str = "eng",
     progress_callback: Callable[[str], None] | None = None,
+    progress_label: str = "Extracting geometry",
 ) -> dict:
     """
     Extract per-character boxes from each page's PDF text layer.
@@ -96,7 +97,7 @@ def extract_text_geometry(
         for page_index in range(page_count):
             if progress_callback:
                 progress_callback(
-                    f"Extracting geometry page {page_index + 1} of {page_count}…"
+                    f"{progress_label} page {page_index + 1} of {page_count}…"
                 )
 
             page = doc.load_page(page_index)

@@ -903,6 +903,11 @@ def recover_table_cells(
     page_tables: dict[int, list[dict]] = {}
     try:
         for page_index in range(min(source_doc.page_count, output_doc.page_count)):
+            if progress_callback:
+                progress_callback(
+                    f"Scanning tables page {page_index + 1} "
+                    f"of {min(source_doc.page_count, output_doc.page_count)}…"
+                )
             source_page = source_doc.load_page(page_index)
             seen_xrefs: set[int] = set()
             for image_info in source_page.get_images(full=True):

@@ -82,13 +82,34 @@ namespace DocuLink.Addin.Modules.Infrastructure
             _stdout = new StreamReader(_process.StandardOutput.BaseStream, Encoding.UTF8);
         }
 
-        /// <summary>Writes one job line to the worker's stdin.</summary>
-        public void SendJob(string jobJson)
+        /// <summary>
+        /// Writes one job line to the worker's stdin. Large OCR payloads can report
+        /// completed chunks so the UI remains determinate while the pipe is filled.
+        /// </summary>
+        public void SendJob(string jobJson, Action<int, int> onProgress = null)
         {
             if (_stdin == null)
                 throw new InvalidOperationException("Worker session not started.");
 
-            _stdin.WriteLine(jobJson);
+            if (onProgress == null || string.IsNullOrEmpty(jobJson))
+            {
+                _stdin.WriteLine(jobJson);
+                return;
+            }
+
+            const int chunkSize = 1024 * 1024;
+            int totalChunks = (jobJson.Length + chunkSize - 1) / chunkSize;
+            var buffer = new char[Math.Min(chunkSize, jobJson.Length)];
+            for (int offset = 0, chunk = 1; offset < jobJson.Length; chunk++)
+            {
+                int count = Math.Min(buffer.Length, jobJson.Length - offset);
+                jobJson.CopyTo(offset, buffer, 0, count);
+                _stdin.Write(buffer, 0, count);
+                _stdin.Flush();
+                offset += count;
+                onProgress(chunk, totalChunks);
+            }
+            _stdin.WriteLine();
         }
 
         /// <summary>

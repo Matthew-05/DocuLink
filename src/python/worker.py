@@ -146,6 +146,8 @@ def _handle_job(job: OcrJob) -> None:
     output_bytes = 0
     page_count = 0
     decode_ms = 0
+    input_sanitize_ms = 0
+    output_sanitize_ms = 0
     inspect_ms = 0
     preflight_geometry_ms = 0
     ocr_ms = 0
@@ -223,6 +225,8 @@ def _handle_job(job: OcrJob) -> None:
             "input_bytes": input_bytes,
             "output_bytes": output_bytes,
             "decode_ms": decode_ms,
+            "input_sanitize_ms": input_sanitize_ms,
+            "output_sanitize_ms": output_sanitize_ms,
             "inspect_ms": inspect_ms,
             "preflight_geometry_ms": preflight_geometry_ms,
             "primary_ocr_ms": primary_ocr_ms,
@@ -284,6 +288,7 @@ def _handle_job(job: OcrJob) -> None:
         }
         if ocr_ran:
             d["ocr_ms"] = ocr_ms
+            d["ocr_optimize"] = 0
             if ocr_mode != "direct":
                 d["use_threads"] = resolve_use_threads()
         if escalation_reason:
@@ -302,7 +307,12 @@ def _handle_job(job: OcrJob) -> None:
             d["table_text_recovery_error"] = table_text_recovery_error
         return d
 
-    def _emit_success(geometry: dict, result_bytes: bytes | None = None) -> None:
+    def _emit_success(
+        geometry: dict,
+        result_bytes: bytes | None = None,
+        *,
+        result_is_sanitized: bool = False,
+    ) -> None:
         nonlocal final_characters
         nonlocal final_non_whitespace_characters
         nonlocal final_alphanumeric_ratio
@@ -312,6 +322,7 @@ def _handle_job(job: OcrJob) -> None:
         nonlocal geometry_encode_ms
         nonlocal pdf_encode_ms
         nonlocal pdf_sanitized
+        nonlocal output_sanitize_ms
         nonlocal removed_embedded_files
         nonlocal removed_links
 
@@ -328,8 +339,14 @@ def _handle_job(job: OcrJob) -> None:
             final_summary
         ) or needs_garbled_text_retry(final_summary)
 
-        if result_bytes is not None and not job.preserve_source_pdf:
+        if (
+            result_bytes is not None
+            and not job.preserve_source_pdf
+            and not result_is_sanitized
+        ):
+            output_sanitize_started = time.perf_counter()
             sanitized = sanitize_pdf_bytes(result_bytes)
+            output_sanitize_ms = _elapsed_ms(output_sanitize_started)
             result_bytes = sanitized.pdf_bytes
             removed_embedded_files += sanitized.removed_embedded_files
             removed_links += sanitized.removed_links
@@ -371,7 +388,9 @@ def _handle_job(job: OcrJob) -> None:
 
         # OCR works on a passive copy. This strips attachments, JavaScript and
         # interactive actions before third-party PDF engines inspect the file.
-        sanitized_source = sanitize_pdf_bytes(pdf_bytes)
+        input_sanitize_started = time.perf_counter()
+        sanitized_source = sanitize_pdf_bytes(pdf_bytes, progress_callback=on_progress)
+        input_sanitize_ms = _elapsed_ms(input_sanitize_started)
         pdf_bytes = sanitized_source.pdf_bytes
         removed_embedded_files = sanitized_source.removed_embedded_files
         removed_links = sanitized_source.removed_links
@@ -511,7 +530,11 @@ def _handle_job(job: OcrJob) -> None:
         # lets a provably broken character map bypass redo entirely. Clean pages
         # are left untouched while only the corrupt page numbers are force-OCR'd.
         preflight_started = time.perf_counter()
-        preflight_geometry = extract_text_geometry(pdf_bytes)
+        preflight_geometry = extract_text_geometry(
+            pdf_bytes,
+            progress_callback=on_progress,
+            progress_label="Checking source text",
+        )
         preflight_geometry_ms = _elapsed_ms(preflight_started)
         preflight_summary = summarize_geometry_quality(preflight_geometry)
         preflight_garbled = needs_garbled_text_retry(preflight_summary)
@@ -894,7 +917,10 @@ def _handle_job(job: OcrJob) -> None:
         # triggered three profile evaluations even for dense, high-quality text.
         adaptive_detection_started = time.perf_counter()
         sparse_result = needs_adaptive_retry(current_summary)
-        low_resolution_scan = needs_high_resolution_retry(pdf_bytes)
+        low_resolution_scan = needs_high_resolution_retry(
+            pdf_bytes,
+            progress_callback=on_progress,
+        )
         low_resolution_quality_risk = needs_low_resolution_quality_retry(
             current_summary,
             low_resolution_scan,
@@ -914,7 +940,10 @@ def _handle_job(job: OcrJob) -> None:
                     )
                 evaluation_started = time.perf_counter()
                 try:
-                    evaluations = evaluate_adaptive_profiles(pdf_bytes)
+                    evaluations = evaluate_adaptive_profiles(
+                        pdf_bytes,
+                        progress_callback=on_progress,
+                    )
                 finally:
                     adaptive_evaluation_ms = _elapsed_ms(evaluation_started)
                 chosen = select_best_adaptive_profile(evaluations)
@@ -1050,7 +1079,11 @@ def _handle_job(job: OcrJob) -> None:
             if table_text_recovery_ms == 0:
                 table_text_recovery_ms = date_recovery_ms
 
-        _emit_success(geometry, result_bytes)
+        # result_bytes is derived exclusively from the already-scrubbed pdf_bytes
+        # and locally generated OCR text. A second scrub repeats the expensive PDF
+        # rewrite without removing any additional active content.
+        on_progress("Transferring OCR result…")
+        _emit_success(geometry, result_bytes, result_is_sanitized=True)
     except Exception as exc:  # noqa: BLE001
         _write(
             OcrResult(

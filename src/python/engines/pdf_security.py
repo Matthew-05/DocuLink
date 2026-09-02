@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 
 import pymupdf
@@ -14,7 +15,10 @@ class PdfSanitizationResult:
     removed_links: int
 
 
-def sanitize_pdf_bytes(pdf_bytes: bytes) -> PdfSanitizationResult:
+def sanitize_pdf_bytes(
+    pdf_bytes: bytes,
+    progress_callback: Callable[[str], None] | None = None,
+) -> PdfSanitizationResult:
     """
     Rewrite a PDF while removing content that can perform actions or carry files.
 
@@ -28,7 +32,14 @@ def sanitize_pdf_bytes(pdf_bytes: bytes) -> PdfSanitizationResult:
     document = pymupdf.open(stream=pdf_bytes, filetype="pdf")
     try:
         embedded_files = document.embfile_count()
-        links = sum(len(page.get_links()) for page in document)
+        links = 0
+        page_count = document.page_count
+        for page_index, page in enumerate(document):
+            links += len(page.get_links())
+            if progress_callback:
+                progress_callback(
+                    f"Securing PDF page {page_index + 1} of {page_count}…"
+                )
 
         document.scrub(
             attached_files=True,
@@ -45,6 +56,10 @@ def sanitize_pdf_bytes(pdf_bytes: bytes) -> PdfSanitizationResult:
             thumbnails=True,
             xml_metadata=True,
         )
+        if progress_callback and page_count > 0:
+            progress_callback(
+                f"Securing PDF page {page_count} of {page_count} — rewriting…"
+            )
 
         normalized = document.tobytes(
             garbage=4,

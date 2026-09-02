@@ -6,6 +6,8 @@ import re
 import statistics
 import sys
 import tempfile
+import threading
+import time
 import unicodedata
 import xml.etree.ElementTree as ET
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -66,6 +68,10 @@ def _configure_bundled_tools() -> None:
 _configure_bundled_tools()
 
 import ocrmypdf  # noqa: E402 — must come after env setup
+from engines.ocr_progress_plugin import (  # noqa: E402
+    configure_progress_callback,
+    progress_message_with_elapsed,
+)
 
 
 _ENGINE_DESCRIPTION_CACHE: str | None = None
@@ -85,6 +91,7 @@ _ENGINE_DESCRIPTION_CACHE: str | None = None
 # instance — that is the configuration that could make pypdfium2 competitive.
 _DEFAULT_RASTERIZER = "ghostscript"
 _DEFAULT_USE_THREADS = True
+_OCR_PROGRESS_HEARTBEAT_SECONDS = 10.0
 
 
 def resolve_rasterizer() -> str:
@@ -993,31 +1000,42 @@ def merge_geometry_pages(
     }
 
 
-def needs_high_resolution_retry(pdf_bytes: bytes) -> bool:
+def needs_high_resolution_retry(
+    pdf_bytes: bytes,
+    progress_callback: "callable[[str], None] | None" = None,
+) -> bool:
     """Detect materially sized scan images whose effective DPI is too low for OCR."""
     import pymupdf as fitz
 
     doc = fitz.open(stream=pdf_bytes, filetype="pdf")
     try:
-        for page in doc:
+        found_low_resolution_scan = False
+        page_count = doc.page_count
+        for page_index, page in enumerate(doc):
             page_area = page.rect.get_area()
-            if page_area <= 0:
-                continue
-            for image in page.get_image_info(xrefs=True):
-                bbox = fitz.Rect(image["bbox"])
-                displayed_area = bbox.get_area()
-                if displayed_area <= 0:
-                    continue
-                coverage = displayed_area / page_area
-                if coverage < _MINIMUM_SCAN_IMAGE_COVERAGE:
-                    continue
-                pixel_area = int(image.get("width", 0)) * int(image.get("height", 0))
-                if pixel_area <= 0:
-                    continue
-                effective_dpi = 72.0 * (pixel_area / displayed_area) ** 0.5
-                if effective_dpi < _LOW_RESOLUTION_SCAN_DPI:
-                    return True
-        return False
+            if page_area > 0:
+                for image in page.get_image_info(xrefs=True):
+                    bbox = fitz.Rect(image["bbox"])
+                    displayed_area = bbox.get_area()
+                    if displayed_area <= 0:
+                        continue
+                    coverage = displayed_area / page_area
+                    if coverage < _MINIMUM_SCAN_IMAGE_COVERAGE:
+                        continue
+                    pixel_area = int(image.get("width", 0)) * int(
+                        image.get("height", 0)
+                    )
+                    if pixel_area <= 0:
+                        continue
+                    effective_dpi = 72.0 * (pixel_area / displayed_area) ** 0.5
+                    if effective_dpi < _LOW_RESOLUTION_SCAN_DPI:
+                        found_low_resolution_scan = True
+            if progress_callback:
+                progress_callback(
+                    f"Checking image quality page {page_index + 1} "
+                    f"of {page_count}…"
+                )
+        return found_low_resolution_scan
     finally:
         doc.close()
 
@@ -1068,7 +1086,11 @@ def select_best_adaptive_profile(evaluations: list[dict]) -> dict:
     return max(evaluations, key=score)
 
 
-def evaluate_adaptive_profiles(pdf_bytes: bytes, language: str = "eng") -> list[dict]:
+def evaluate_adaptive_profiles(
+    pdf_bytes: bytes,
+    language: str = "eng",
+    progress_callback: "callable[[str], None] | None" = None,
+) -> list[dict]:
     """
     Score high-resolution Tesseract layouts at 300 DPI before committing to a retry.
 
@@ -1090,6 +1112,8 @@ def evaluate_adaptive_profiles(pdf_bytes: bytes, language: str = "eng") -> list[
     }
     doc = fitz.open(stream=pdf_bytes, filetype="pdf")
     try:
+        evaluation_count = 0
+        evaluation_total = doc.page_count * len(_ADAPTIVE_PROFILE_PSMS)
         for page_index in range(doc.page_count):
             page = doc.load_page(page_index)
             pixmap = page.get_pixmap(dpi=_ADAPTIVE_OVERSAMPLE_DPI, alpha=False)
@@ -1126,6 +1150,12 @@ def evaluate_adaptive_profiles(pdf_bytes: bytes, language: str = "eng") -> list[
                             data.get("par_num", [0])[index],
                             data.get("line_num", [0])[index],
                         )
+                    )
+                evaluation_count += 1
+                if progress_callback:
+                    progress_callback(
+                        f"Evaluating OCR layout {evaluation_count} "
+                        f"of {evaluation_total}…"
                     )
     finally:
         doc.close()
@@ -1197,16 +1227,46 @@ def ocr_pdf_bytes(
         if progress_callback:
             progress_callback("Starting OCR…")
 
+        configure_progress_callback(progress_callback)
+
+        heartbeat_stop = threading.Event()
+        heartbeat_thread: threading.Thread | None = None
+        if progress_callback:
+            heartbeat_started = time.monotonic()
+
+            def report_elapsed_time() -> None:
+                while not heartbeat_stop.wait(_OCR_PROGRESS_HEARTBEAT_SECONDS):
+                    elapsed_seconds = int(time.monotonic() - heartbeat_started)
+                    minutes, seconds = divmod(elapsed_seconds, 60)
+                    elapsed = (
+                        f"{minutes}m {seconds:02d}s"
+                        if minutes
+                        else f"{seconds}s"
+                    )
+                    progress_callback(progress_message_with_elapsed(elapsed))
+
+            heartbeat_thread = threading.Thread(
+                target=report_elapsed_time,
+                name="doculink-ocr-progress",
+                daemon=True,
+            )
+            heartbeat_thread.start()
+
         options = {
             "language": language,
             "mode": mode,
             "rotate_pages": auto_rotate_pages,
-            "progress_bar": False,
+            "progress_bar": progress_callback is not None,
             # See the tuning knobs above. Both are environment-overridable so the
             # rasterizer/concurrency matrix can be benchmarked without a rebuild.
             "rasterizer": resolve_rasterizer(),
             "use_threads": resolve_use_threads(),
             "output_type": "pdf",
+            # Recognition is complete before OCRmyPDF optimizes the output. The
+            # worker already normalizes the input, so repeating size optimization
+            # here adds latency without improving OCR quality.
+            "optimize": 0,
+            "fast_web_view": 0,
         }
         if auto_rotate_pages:
             options["rotate_pages_threshold"] = rotate_pages_threshold
@@ -1216,8 +1276,16 @@ def ocr_pdf_bytes(
             options["oversample"] = oversample
         if pages:
             options["pages"] = pages
+        if progress_callback:
+            options["plugins"] = ["engines.ocr_progress_plugin"]
 
-        ocrmypdf.ocr(src_path, dst_path, **options)
+        try:
+            ocrmypdf.ocr(src_path, dst_path, **options)
+        finally:
+            heartbeat_stop.set()
+            if heartbeat_thread is not None:
+                heartbeat_thread.join()
+            configure_progress_callback(None)
 
         if progress_callback:
             progress_callback("OCR complete, reading output…")

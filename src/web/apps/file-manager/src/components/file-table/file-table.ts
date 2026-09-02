@@ -706,17 +706,24 @@ function formatStatusLabel(status: string): string {
 }
 
 /**
- * Builds the status pill for a row. Processing rows get an indefinite spinner
- * ahead of the label; OCR has no measurable progress, so the spinner is a
- * liveness cue rather than a progress bar. Queued rows show a plain label —
- * nothing is actively running yet, so a spinner would be misleading.
+ * Builds the status pill for a row. Stages with real work-unit totals use a
+ * determinate fill; stages whose underlying tool exposes no count retain the
+ * spinner as an honest liveness cue.
  */
 function formatProgressLabel(status: string, progress?: OcrProgress): string {
   const stageLabels: Record<string, string> = {
     queue: "Queued",
     worker: "Starting",
+    transfer: "Sending",
+    security: "Securing",
+    "pdf-analysis": "Inspecting",
+    "source-check": "Checking text",
     geometry: "Analyzing",
+    "quality-check": "Quality check",
     ocr: "OCR",
+    "ocr-output": "Building PDF",
+    "result-transfer": "Saving",
+    finalizing: "Finalizing",
     retry: "Refining",
     "adaptive-evaluation": "Evaluating",
     "adaptive-ocr": "Refining",

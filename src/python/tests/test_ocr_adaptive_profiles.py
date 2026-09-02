@@ -1,4 +1,5 @@
 import io
+import time
 import unittest
 from unittest.mock import patch
 
@@ -520,6 +521,62 @@ class AdaptiveProfileSelectionTests(unittest.TestCase):
         self.assertEqual(result, b"ocr-result")
         self.assertEqual(mock_ocr.call_args.kwargs["tesseract_pagesegmode"], 6)
         self.assertEqual(mock_ocr.call_args.kwargs["oversample"], 300)
+
+    @patch("engines.ocr_engine.ocrmypdf.ocr")
+    def test_ocr_pdf_disables_accuracy_neutral_output_optimization(
+        self,
+        mock_ocr,
+    ) -> None:
+        def write_output(_source, destination, **_options):
+            with open(destination, "wb") as stream:
+                stream.write(b"ocr-result")
+
+        mock_ocr.side_effect = write_output
+
+        result = ocr_pdf_bytes(b"source-pdf")
+
+        self.assertEqual(result, b"ocr-result")
+        self.assertEqual(mock_ocr.call_args.kwargs["optimize"], 0)
+        self.assertEqual(mock_ocr.call_args.kwargs["fast_web_view"], 0)
+
+    @patch("engines.ocr_engine._OCR_PROGRESS_HEARTBEAT_SECONDS", 0.001)
+    @patch("engines.ocr_engine.ocrmypdf.ocr")
+    def test_ocr_pdf_reports_elapsed_time_during_long_pass(
+        self,
+        mock_ocr,
+    ) -> None:
+        def write_output(_source, destination, **_options):
+            time.sleep(0.02)
+            with open(destination, "wb") as stream:
+                stream.write(b"ocr-result")
+
+        mock_ocr.side_effect = write_output
+        messages: list[str] = []
+
+        ocr_pdf_bytes(b"source-pdf", progress_callback=messages.append)
+
+        self.assertTrue(
+            any(message.startswith("OCR running ") for message in messages)
+        )
+
+    @patch("engines.ocr_engine.ocrmypdf.ocr")
+    def test_ocr_pdf_enables_doculink_progress_plugin_when_callback_present(
+        self,
+        mock_ocr,
+    ) -> None:
+        def write_output(_source, destination, **_options):
+            with open(destination, "wb") as stream:
+                stream.write(b"ocr-result")
+
+        mock_ocr.side_effect = write_output
+
+        ocr_pdf_bytes(b"source-pdf", progress_callback=lambda _message: None)
+
+        self.assertTrue(mock_ocr.call_args.kwargs["progress_bar"])
+        self.assertEqual(
+            mock_ocr.call_args.kwargs["plugins"],
+            ["engines.ocr_progress_plugin"],
+        )
 
     @patch("engines.ocr_engine.ocrmypdf.ocr")
     def test_ocr_pdf_forwards_selected_pages(self, mock_ocr) -> None:

@@ -963,7 +963,7 @@
           "description": "Job lifecycle state. ocr is sent when OCR or Enhance completes successfully; none or text restores the prior status after cancellation."
         },
         "message": { "type": "string", "description": "Optional human-readable detail for errors or the current processing stage." },
-        "stage": { "type": "string", "description": "Optional stable identifier for the active processing stage, such as geometry, ocr, retry, table, or cache." },
+        "stage": { "type": "string", "description": "Optional stable identifier for the active processing stage, such as transfer, security, pdf-analysis, source-check, ocr, quality-check, geometry, table-recovery, result-transfer, retry, or cache." },
         "current": { "type": "integer", "minimum": 0, "description": "Optional completed units within the active stage." },
         "total": { "type": "integer", "minimum": 1, "description": "Optional total units within the active stage. When present with current, the file manager renders determinate progress." }
       },
