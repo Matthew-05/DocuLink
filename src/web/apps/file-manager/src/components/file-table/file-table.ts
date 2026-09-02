@@ -700,7 +700,7 @@ function formatStatusLabel(status: string): string {
     case "none":       return "None";
     case "queued":     return "Queued";
     case "processing": return "Processing";
-    case "error":      return "Error";
+    case "error":      return "Failed";
     default:           return status;
   }
 }
@@ -726,7 +726,9 @@ function formatProgressLabel(status: string, progress?: OcrProgress): string {
     cache: "Cached",
     source: "Using text",
   };
-  const base = progress?.stage ? stageLabels[progress.stage] : undefined;
+  const base = ACTIVE_OCR_STATUSES.has(status) && progress?.stage
+    ? stageLabels[progress.stage]
+    : undefined;
   const label = base ?? formatStatusLabel(status);
   if (
     typeof progress?.current === "number" &&

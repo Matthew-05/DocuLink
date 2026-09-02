@@ -78,18 +78,23 @@ namespace DocuLink.Addin.Modules.WebView
                 sb.Append(",\"message\":");
                 AppendString(sb, message);
 
-                string stage = string.Equals(status, "queued", StringComparison.Ordinal)
-                    ? "queue"
-                    : OcrService.ProgressStage(message);
-                sb.Append(",\"stage\":");
-                AppendString(sb, stage);
-
-                if (OcrService.TryParseProgressCount(message, out int current, out int total))
+                bool isActive = string.Equals(status, "queued", StringComparison.Ordinal)
+                    || string.Equals(status, "processing", StringComparison.Ordinal);
+                if (isActive)
                 {
-                    sb.Append(",\"current\":");
-                    sb.Append(Math.Min(Math.Max(current, 0), total).ToString(CultureInfo.InvariantCulture));
-                    sb.Append(",\"total\":");
-                    sb.Append(total.ToString(CultureInfo.InvariantCulture));
+                    string stage = string.Equals(status, "queued", StringComparison.Ordinal)
+                        ? "queue"
+                        : OcrService.ProgressStage(message);
+                    sb.Append(",\"stage\":");
+                    AppendString(sb, stage);
+
+                    if (OcrService.TryParseProgressCount(message, out int current, out int total))
+                    {
+                        sb.Append(",\"current\":");
+                        sb.Append(Math.Min(Math.Max(current, 0), total).ToString(CultureInfo.InvariantCulture));
+                        sb.Append(",\"total\":");
+                        sb.Append(total.ToString(CultureInfo.InvariantCulture));
+                    }
                 }
             }
             sb.Append('}');
