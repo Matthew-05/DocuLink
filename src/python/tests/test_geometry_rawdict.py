@@ -1,6 +1,11 @@
 import unittest
 
-from engines.geometry_engine import _extract_page_characters_from_rawdict
+import pymupdf as fitz
+
+from engines.geometry_engine import (
+    _extract_page_characters,
+    _extract_page_characters_from_rawdict,
+)
 
 
 def _char(rawdict: dict, page_w: float, page_h: float) -> list[str]:
@@ -124,6 +129,63 @@ class ExtractPageCharactersFromRawdictTests(unittest.TestCase):
         rawdict = {"blocks": [_text_block([("q", (10, 10, 10, 30))])]}
 
         self.assertEqual(_extract_page_characters_from_rawdict(rawdict, self.PAGE_W, self.PAGE_H), [])
+
+    def test_intrinsic_page_rotation_is_applied_before_normalizing(self) -> None:
+        document = fitz.open()
+        try:
+            page = document.new_page(width=self.PAGE_W, height=self.PAGE_H)
+            page.insert_text((60, 80), "Z", fontsize=20)
+            page = document.reload_page(page)
+            page.set_rotation(90)
+            page = document.reload_page(page)
+
+            raw = page.get_text("rawdict")
+            raw_character = next(
+                character
+                for block in raw["blocks"]
+                if block["type"] == 0
+                for line in block["lines"]
+                for span in line["spans"]
+                for character in span["chars"]
+                if character["c"] == "Z"
+            )
+            displayed_box = fitz.Rect(raw_character["bbox"]) * page.rotation_matrix
+
+            characters = _extract_page_characters(page)
+
+            self.assertEqual(len(characters), 1)
+            character = characters[0]
+            self.assertAlmostEqual(character["x"], displayed_box.x0 / page.rect.width)
+            self.assertAlmostEqual(character["y"], displayed_box.y0 / page.rect.height)
+            self.assertAlmostEqual(
+                character["width"], displayed_box.width / page.rect.width
+            )
+            self.assertAlmostEqual(
+                character["height"], displayed_box.height / page.rect.height
+            )
+            self.assertLessEqual(character["x"] + character["width"], 1.0)
+            self.assertLessEqual(character["y"] + character["height"], 1.0)
+        finally:
+            document.close()
+
+    def test_rotated_page_retains_displayed_reading_order(self) -> None:
+        document = fitz.open()
+        try:
+            page = document.new_page(width=self.PAGE_W, height=self.PAGE_H)
+            # After 90 degrees clockwise, A is visually left of B. Sorting in
+            # unrotated y coordinates would incorrectly reverse them.
+            page.insert_text((60, 700), "A", fontsize=20)
+            page.insert_text((60, 100), "B", fontsize=20)
+            page = document.reload_page(page)
+            page.set_rotation(90)
+            page = document.reload_page(page)
+
+            characters = _extract_page_characters(page)
+
+            self.assertEqual([item["char"] for item in characters], ["A", "B"])
+            self.assertLess(characters[0]["x"], characters[1]["x"])
+        finally:
+            document.close()
 
 
 if __name__ == "__main__":

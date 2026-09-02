@@ -12,10 +12,12 @@ from engines.ocr_engine import (
     PROFILE_HIGH_RESOLUTION_AUTO,
     PROFILE_TABLE_SINGLE_BLOCK,
     PROFILE_TABLE_SPARSE,
+    detect_direct_page_rotations,
     _dominant_image_clip,
     _geometry_page_from_hocr,
     _prepare_faint_ink_image,
     _remap_cropped_page_geometry,
+    _remap_rotated_page_geometry,
     merge_geometry_pages,
     merge_missing_text_lines,
     needs_adaptive_retry,
@@ -27,6 +29,7 @@ from engines.ocr_engine import (
     select_pages_requiring_ocr,
     select_best_adaptive_profile,
     should_merge_faint_ink_retry,
+    should_select_rotated_retry,
     summarize_geometry_quality,
 )
 
@@ -337,6 +340,86 @@ class DirectGeometryTests(unittest.TestCase):
         self.assertAlmostEqual(character["y"], 0.50)
         self.assertAlmostEqual(character["width"], 1 / 15)
         self.assertAlmostEqual(character["height"], 0.20)
+
+    def test_rotated_geometry_maps_back_to_original_page(self) -> None:
+        expected_by_rotation = {
+            90: (0.30, 0.70, 0.05, 0.10),
+            180: (0.70, 0.65, 0.10, 0.05),
+            270: (0.65, 0.20, 0.05, 0.10),
+        }
+        for rotation, expected in expected_by_rotation.items():
+            with self.subTest(rotation=rotation):
+                page = {
+                    "pageIndex": 0,
+                    "characters": [
+                        {
+                            "char": "A",
+                            "x": 0.20,
+                            "y": 0.30,
+                            "width": 0.10,
+                            "height": 0.05,
+                            "lineIndex": 0,
+                        }
+                    ],
+                }
+
+                _remap_rotated_page_geometry(page, rotation)
+
+                character = page["characters"][0]
+                actual = (
+                    character["x"],
+                    character["y"],
+                    character["width"],
+                    character["height"],
+                )
+                for value, expected_value in zip(actual, expected):
+                    self.assertAlmostEqual(value, expected_value)
+
+    def test_rotated_retry_requires_material_recognition_improvement(self) -> None:
+        primary = {
+            "mean_confidence": 28.0,
+            "word_count": 200,
+            "character_count": 1000,
+        }
+
+        self.assertTrue(
+            should_select_rotated_retry(
+                primary,
+                {
+                    "mean_confidence": 82.0,
+                    "word_count": 280,
+                    "character_count": 1700,
+                },
+            )
+        )
+        self.assertFalse(
+            should_select_rotated_retry(
+                primary,
+                {
+                    "mean_confidence": 35.0,
+                    "word_count": 300,
+                    "character_count": 1800,
+                },
+            )
+        )
+
+    @patch("engines.ocr_engine._detect_direct_page_rotation")
+    def test_rotation_detection_ignores_weak_and_upright_suggestions(
+        self,
+        mock_detect,
+    ) -> None:
+        detections = {
+            1: (90, 14.8),
+            2: (270, 3.0),
+            3: (0, 16.4),
+        }
+        mock_detect.side_effect = (
+            lambda _pdf, page_number, _dpi: detections[page_number]
+        )
+
+        rotations = detect_direct_page_rotations(b"pdf", [1, 2, 3])
+
+        self.assertEqual(rotations, {1: 90})
 
     def test_dominant_inset_scan_is_selected_as_ocr_clip(self) -> None:
         pdf_bytes = _pdf_with_image((600, 1600), fitz.Rect(150, 0, 450, 800))

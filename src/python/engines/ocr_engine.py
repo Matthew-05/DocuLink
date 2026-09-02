@@ -92,6 +92,8 @@ _ENGINE_DESCRIPTION_CACHE: str | None = None
 _DEFAULT_RASTERIZER = "ghostscript"
 _DEFAULT_USE_THREADS = True
 _OCR_PROGRESS_HEARTBEAT_SECONDS = 10.0
+_DIRECT_ROTATION_DETECTION_DPI = 150
+_DIRECT_ROTATION_MINIMUM_CONFIDENCE = 10.0
 
 
 def resolve_rasterizer() -> str:
@@ -595,6 +597,7 @@ def _direct_ocr_page(
     psm: int,
     crop_to_dominant_image: bool,
     preprocessing: str,
+    rotation: int,
 ) -> tuple[dict, dict]:
     configure_tesseract()
 
@@ -625,6 +628,11 @@ def _direct_ocr_page(
     elif preprocessing != "none":
         raise ValueError(f"Unknown direct OCR preprocessing: {preprocessing}")
 
+    if rotation not in (0, 90, 180, 270):
+        raise ValueError(f"Unsupported direct OCR rotation: {rotation}")
+    if rotation:
+        image = image.rotate(-rotation, expand=True)
+
     hocr_bytes = pytesseract.image_to_pdf_or_hocr(
         image,
         lang=language,
@@ -636,12 +644,15 @@ def _direct_ocr_page(
         page_number - 1,
         image.size,
     )
+    if rotation:
+        _remap_rotated_page_geometry(page_geometry, rotation)
     if clip is not None:
         _remap_cropped_page_geometry(page_geometry, clip, page_rect)
     stats["dpi"] = dpi
     stats["psm"] = psm
     stats["cropped"] = clip is not None
     stats["preprocessing"] = preprocessing
+    stats["rotation"] = rotation
     return page_geometry, stats
 
 
@@ -719,6 +730,112 @@ def _remap_cropped_page_geometry(
         character["height"] = float(character["height"]) * y_scale
 
 
+def _remap_rotated_page_geometry(page_geometry: dict, rotation: int) -> None:
+    """Map clockwise-rotated OCR boxes back into the rendered page space.
+
+    Tesseract needs upright pixels for recognition, while the viewer still uses
+    the original source page. Character rectangles are therefore transformed
+    through the inverse of the PIL rotation before any crop-to-page remapping.
+    """
+    if rotation not in (90, 180, 270):
+        if rotation == 0:
+            return
+        raise ValueError(f"Unsupported direct OCR rotation: {rotation}")
+
+    for character in page_geometry.get("characters", []):
+        x = float(character["x"])
+        y = float(character["y"])
+        width = float(character["width"])
+        height = float(character["height"])
+        if rotation == 90:
+            mapped = (y, 1.0 - x - width, height, width)
+        elif rotation == 180:
+            mapped = (1.0 - x - width, 1.0 - y - height, width, height)
+        else:
+            mapped = (1.0 - y - height, x, height, width)
+        character["x"], character["y"], character["width"], character["height"] = (
+            mapped
+        )
+
+
+def _detect_direct_page_rotation(
+    pdf_bytes: bytes,
+    page_number: int,
+    dpi: int,
+) -> tuple[int, float]:
+    """Return Tesseract's clockwise page correction and confidence."""
+    configure_tesseract()
+
+    import pymupdf as fitz
+    import pytesseract
+    from PIL import Image
+
+    doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+    try:
+        page = doc.load_page(page_number - 1)
+        pixmap = page.get_pixmap(dpi=dpi, alpha=False)
+        image = Image.frombytes(
+            "RGB",
+            (pixmap.width, pixmap.height),
+            pixmap.samples,
+        )
+    finally:
+        doc.close()
+
+    osd = pytesseract.image_to_osd(
+        image,
+        output_type=pytesseract.Output.DICT,
+    )
+    rotation = int(osd.get("rotate", 0))
+    confidence = float(osd.get("orientation_conf", 0.0))
+    if rotation not in (0, 90, 180, 270):
+        return 0, confidence
+    return rotation, confidence
+
+
+def detect_direct_page_rotations(
+    pdf_bytes: bytes,
+    page_numbers: list[int],
+    *,
+    dpi: int = _DIRECT_ROTATION_DETECTION_DPI,
+    minimum_confidence: float = _DIRECT_ROTATION_MINIMUM_CONFIDENCE,
+    progress_callback: "callable[[str], None] | None" = None,
+) -> dict[int, int]:
+    """Detect trustworthy non-zero rotations for selected direct-OCR pages."""
+    if not page_numbers:
+        return {}
+
+    unique_pages = sorted(set(page_numbers))
+    worker_count = min(len(unique_pages), max(1, (os.cpu_count() or 1) // 3))
+    rotations: dict[int, int] = {}
+    with ThreadPoolExecutor(max_workers=worker_count) as executor:
+        futures = {
+            executor.submit(
+                _detect_direct_page_rotation,
+                pdf_bytes,
+                page_number,
+                dpi,
+            ): page_number
+            for page_number in unique_pages
+        }
+        completed = 0
+        for future in as_completed(futures):
+            page_number = futures[future]
+            completed += 1
+            try:
+                rotation, confidence = future.result()
+            except Exception:  # noqa: BLE001 - orientation is an optional retry
+                rotation, confidence = 0, 0.0
+            if rotation and confidence >= minimum_confidence:
+                rotations[page_number] = rotation
+            if progress_callback:
+                progress_callback(
+                    f"Checking page orientation ({completed} of "
+                    f"{len(unique_pages)})…"
+                )
+    return rotations
+
+
 def extract_direct_text_geometry(
     pdf_bytes: bytes,
     page_numbers: list[int],
@@ -728,6 +845,7 @@ def extract_direct_text_geometry(
     psm: int = 3,
     crop_to_dominant_image: bool = False,
     preprocessing: str = "none",
+    page_rotations: dict[int, int] | None = None,
     progress_callback: "callable[[str], None] | None" = None,
 ) -> tuple[dict[int, dict], dict[int, dict]]:
     """OCR selected pages directly to geometry without constructing a PDF."""
@@ -756,6 +874,7 @@ def extract_direct_text_geometry(
                     psm,
                     crop_to_dominant_image,
                     preprocessing,
+                    (page_rotations or {}).get(page_number, 0),
                 ): page_number
                 for page_number in unique_pages
             }
@@ -777,6 +896,21 @@ def extract_direct_text_geometry(
         else:
             os.environ["OMP_THREAD_LIMIT"] = previous_thread_limit
     return pages, stats
+
+
+def should_select_rotated_retry(primary: dict, candidate: dict) -> bool:
+    """Accept orientation correction only when recognition clearly improves."""
+    primary_confidence = float(primary.get("mean_confidence", 0.0))
+    candidate_confidence = float(candidate.get("mean_confidence", 0.0))
+    primary_words = int(primary.get("word_count", 0))
+    candidate_words = int(candidate.get("word_count", 0))
+    primary_characters = int(primary.get("character_count", 0))
+    candidate_characters = int(candidate.get("character_count", 0))
+    return (
+        candidate_confidence >= max(50.0, primary_confidence + 8.0)
+        and candidate_words >= max(5, primary_words * 0.5)
+        and candidate_characters >= max(20, primary_characters * 0.5)
+    )
 
 
 def should_merge_faint_ink_retry(primary: dict, candidate: dict) -> bool:

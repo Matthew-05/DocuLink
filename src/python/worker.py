@@ -32,6 +32,7 @@ from engines.ocr_engine import (
     PROFILE_DEFAULT,
     active_ocr_engine,
     active_rasterizer,
+    detect_direct_page_rotations,
     evaluate_adaptive_profiles,
     extract_direct_text_geometry,
     merge_geometry_pages,
@@ -46,6 +47,7 @@ from engines.ocr_engine import (
     select_pages_requiring_ocr,
     select_best_adaptive_profile,
     should_merge_faint_ink_retry,
+    should_select_rotated_retry,
     summarize_geometry_quality,
 )
 from ocrmypdf.exceptions import DigitalSignatureError, InputFileError
@@ -81,7 +83,7 @@ _PROTOCOL_OUT = _claim_protocol_stream()
 from schemas.models import ConvertJob, ConvertResult, OcrJob, OcrProgress, OcrResult
 
 
-_GEOMETRY_CACHE_VERSION = "direct-hocr-v3"
+_GEOMETRY_CACHE_VERSION = "direct-hocr-v5"
 _GEOMETRY_CACHE_MAX_ENTRIES = 16
 _GEOMETRY_CACHE: OrderedDict[str, dict] = OrderedDict()
 
@@ -200,6 +202,7 @@ def _handle_job(job: OcrJob) -> None:
     direct_ocr_page_numbers: list[int] = []
     direct_retry_page_numbers: list[int] = []
     direct_400_selected_page_numbers: list[int] = []
+    direct_rotated_page_numbers: list[int] = []
     direct_mean_confidence: float | None = None
     direct_ocr_error = ""
     table_detection_ms = 0
@@ -279,6 +282,7 @@ def _handle_job(job: OcrJob) -> None:
             "direct_retry_page_count": len(direct_retry_page_numbers),
             "direct_retry_page_numbers": direct_retry_page_numbers,
             "direct_400_selected_page_numbers": direct_400_selected_page_numbers,
+            "direct_rotated_page_numbers": direct_rotated_page_numbers,
             "table_detection_ms": table_detection_ms,
             "geometry_cache_hit": geometry_cache_hit,
             "geometry_cache_version": _GEOMETRY_CACHE_VERSION,
@@ -611,6 +615,43 @@ def _handle_job(job: OcrJob) -> None:
                         progress_callback=on_progress,
                     )
                     primary_ocr_ms = _elapsed_ms(direct_started)
+
+                    orientation_check_page_numbers = [
+                        page_number
+                        for page_number, stats in direct_stats.items()
+                        if float(stats["mean_confidence"]) < 75.0
+                        or int(stats["character_count"]) < 40
+                    ]
+                    detected_rotations = detect_direct_page_rotations(
+                        pdf_bytes,
+                        orientation_check_page_numbers,
+                        progress_callback=on_progress,
+                    )
+                    if detected_rotations:
+                        evaluated_profiles.append("direct-hocr-oriented-300")
+                        on_progress(
+                            f"Retrying {len(detected_rotations)} confidently "
+                            "sideways page(s) upright…"
+                        )
+                        rotation_retry_started = time.perf_counter()
+                        rotated_pages, rotated_stats = (
+                            extract_direct_text_geometry(
+                                pdf_bytes,
+                                list(detected_rotations),
+                                dpi=300,
+                                page_rotations=detected_rotations,
+                                progress_callback=on_progress,
+                            )
+                        )
+                        adaptive_ocr_ms += _elapsed_ms(rotation_retry_started)
+                        for page_number in sorted(detected_rotations):
+                            first = direct_stats[page_number]
+                            retry = rotated_stats[page_number]
+                            if not should_select_rotated_retry(first, retry):
+                                continue
+                            direct_pages[page_number] = rotated_pages[page_number]
+                            direct_stats[page_number] = retry
+                            direct_rotated_page_numbers.append(page_number)
 
                     direct_retry_page_numbers = [
                         page_number

@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "http://doculink.dev/schemas/text-geometry/1",
   "title": "DocuLink Text Geometry v1",
-  "description": "Per-character bounding boxes in normalized page coordinates (top-left origin, 0–1). Stored gzip-compressed and base64-encoded at persistence boundaries.",
+  "description": "Per-character bounding boxes in normalized displayed-page coordinates after applying the PDF page's intrinsic rotation (top-left origin, 0–1). Stored gzip-compressed and base64-encoded at persistence boundaries.",
 
   "definitions": {
 
@@ -52,7 +52,7 @@
         "coordinateSpace": {
           "type": "string",
           "const": "normalized",
-          "description": "Boxes use top-left origin with x/y/width/height in 0–1 page fractions."
+          "description": "Boxes use the displayed PDF page after intrinsic rotation, with a top-left origin and x/y/width/height in 0–1 page fractions. User-applied DocuLink page rotation is not included."
         },
         "pages": {
           "type": "array",

@@ -12,8 +12,9 @@ import pymupdf as fitz
 # We discard image blocks (type != 0), so on an OCR'd scan — where each page is
 # one full-page raster — that decode is pure waste. Clearing TEXT_PRESERVE_IMAGES
 # measured ~210x faster over an 80-page scan (46.2s -> 0.22s) with byte-identical
-# character output. Sorting is retained: it costs ~0.03s across 80 pages and
-# determines the character order downstream search relies on.
+# character output. PyMuPDF sorts in unrotated page coordinates, so sorting is
+# used only for intrinsically upright pages. Rotated pages retain PDF content-
+# stream order, which OCRmyPDF writes in recognized reading order.
 _RAWDICT_FLAGS = fitz.TEXTFLAGS_RAWDICT & ~fitz.TEXT_PRESERVE_IMAGES
 
 
@@ -21,8 +22,12 @@ def _extract_page_characters_from_rawdict(
     raw: dict,
     page_w: float,
     page_h: float,
+    *,
+    coordinate_transform: fitz.Matrix | None = None,
+    page_x0: float = 0.0,
+    page_y0: float = 0.0,
 ) -> list[dict]:
-    """Convert a PyMuPDF rawdict page dict to text-geometry-v1 character boxes."""
+    """Convert a PyMuPDF rawdict page dict to displayed-page character boxes."""
     if page_w <= 0 or page_h <= 0:
         return []
 
@@ -39,7 +44,13 @@ def _extract_page_characters_from_rawdict(
                     if not bbox or len(bbox) < 4:
                         continue
 
-                    x0, y0, x1, y1 = bbox
+                    box = fitz.Rect(bbox)
+                    if coordinate_transform is not None:
+                        box = box * coordinate_transform
+                    x0 = box.x0 - page_x0
+                    y0 = box.y0 - page_y0
+                    x1 = box.x1 - page_x0
+                    y1 = box.y1 - page_y0
                     char = ch.get("c", "")
                     if not char:
                         continue
@@ -65,12 +76,19 @@ def _extract_page_characters_from_rawdict(
 
 
 def _extract_page_characters(page: fitz.Page) -> list[dict]:
-    raw = page.get_text("rawdict", flags=_RAWDICT_FLAGS, sort=True)
+    raw = page.get_text(
+        "rawdict",
+        flags=_RAWDICT_FLAGS,
+        sort=page.rotation == 0,
+    )
     page_rect = page.rect
     return _extract_page_characters_from_rawdict(
         raw,
         page_rect.width,
         page_rect.height,
+        coordinate_transform=page.rotation_matrix if page.rotation else None,
+        page_x0=page_rect.x0,
+        page_y0=page_rect.y0,
     )
 
 
