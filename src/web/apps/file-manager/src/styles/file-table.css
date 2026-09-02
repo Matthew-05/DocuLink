@@ -56,10 +56,12 @@
   font-size: 11.5px;
 }
 
-/* Sized against the widest pill, "◌ Processing" (~89px at 900px window width:
-   20% of a ~616px table = ~123px, less 20px cell padding = ~103px of content).
-   Narrower than this and the pill spills into the Size column, because the
-   table is table-layout: fixed and the pill is nowrap. */
+/* Sized against the widest active label, "● Quality check" (~96px of content:
+   a 7px dot, a 7px gap, and the label — and .file-status--processing holds a
+   96px floor so the progress bar keeps one length across stages). At 900px
+   window width, 20% of a ~616px table = ~123px, less 20px cell padding =
+   ~103px of content. Narrower and the status spills into the Size column,
+   because the table is table-layout: fixed and the status is nowrap. */
 .file-table col.col-status {
   width: 20%;
 }
@@ -388,127 +390,158 @@
   font-size: 12px;
 }
 
-/* ── Status badge ─────────────────────────────────────────────────────────── */
+/* ── Status indicator ──────────────────────────────────────── */
 
-/* Fixed height so rows don't shift by a pixel as a status changes mid-run.
-   Every metric here is a whole pixel: WebView2 renders at the host's DPI, and
-   fractional heights/borders land on half-pixels that Chromium antialiases into
-   the fuzzy edges this pill had at 10.5px/19px. Width is left to content —
-   a min-width wide enough to align every label overflows the cell. */
-.status-badge {
+/* A coloured dot carries the state; the label stays in the table's own text
+   colour so a column of statuses reads as data rather than as a row of chips.
+   Fixed height so rows don't shift by a pixel as a status changes mid-run, and
+   every metric is a whole pixel: WebView2 renders at the host's DPI, and
+   fractional heights land on half-pixels that Chromium antialiases into fuzzy
+   edges. Width is left to content — a min-width wide enough to align every
+   label overflows the cell. */
+.file-status {
   position: relative;
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  gap: 5px;
+  gap: 7px;
   box-sizing: border-box;
   max-width: 100%;
   height: 20px;
-  padding: 0 8px;
-  border: 1px solid transparent;
-  border-radius: 10px;
-  font-size: 11px;
-  font-weight: 600;
-  /* Scale with the font while leaving room for descenders (for example, “g”
-     in “Processing”) across the host's DPI and font rendering settings. */
-  line-height: 1.3;
+  color: var(--color-text-muted);
+  font-size: 12px;
+  font-weight: 500;
   white-space: nowrap;
-  /* Keep transformed children, notably the processing spinner, free to paint
-     into the pill's padding. The progress fill clips itself below instead. */
-  overflow: visible;
 }
 
-.status-badge__label {
-  position: relative;
-  z-index: 1;
+.file-status__label {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
+/* ── Dot ───────────────────────────────────────────────────── */
+
+/* currentColor is set per status below, so the dot, the progress fill and any
+   emphasised label text all derive from one declaration. */
+.file-status__dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+/* Terminal-but-inert states read as outlines rather than filled marks, which
+   keeps "nothing has happened here" visually quieter than a finished run. */
+.file-status--none .file-status__dot,
+.file-status--queued .file-status__dot {
+  background: transparent;
+  box-shadow: inset 0 0 0 2px currentColor;
+}
+
+/* will-change promotes the dot onto its own compositor layer. Without it
+   Chromium animates on the main thread, and WebView2 hosted in WinForms only
+   ticks the main thread when something forces a paint — which is why the old
+   spinner advanced for ~0.1s on row hover/unhover (the row's background
+   transition) and sat frozen the rest of the time. */
+.file-status--processing .file-status__dot {
+  will-change: opacity, transform;
+  animation: file-status-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes file-status-pulse {
+  0%, 100% { opacity: 1;    transform: scale(1); }
+  50%      { opacity: 0.45; transform: scale(0.78); }
+}
+
+/* ── Progress bar ─────────────────────────────────────────── */
+
+/* The bar sits under the label, out of the text's way, so the label can name
+   the stage while the bar shows that stage's own completion. A minimum width
+   keeps the track a constant length as the label changes from "Queued" to
+   "Building PDF", so the fill doesn't appear to jump backwards between
+   stages. */
+.file-status--processing {
+  min-width: 96px;
+}
+
+.file-status__track {
+  position: absolute;
+  z-index: 0;
+  right: 0;
+  bottom: 0;
+  /* Dot (7px) + gap (7px): the track starts where the label starts. */
+  left: 14px;
+  height: 3px;
+  border-radius: 2px;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.file-status__track::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: currentColor;
+  opacity: 0.18;
+  border-radius: inherit;
+}
+
 /* Stage-local determinate fill. The label identifies the stage, so resetting
    from a completed analysis pass to page 1 of OCR is explicit rather than
    looking like the overall job moved backwards. */
-.status-badge__progress-fill {
+.file-status__bar {
   position: absolute;
-  z-index: 0;
   inset: 0 auto 0 0;
   width: 0;
   background: currentColor;
   border-radius: inherit;
-  opacity: 0.16;
   transition: width 0.18s ease-out;
-  pointer-events: none;
 }
 
-/* ── Indefinite spinner (processing) ──────────────────────────────────────── */
-
-/* will-change promotes the spinner onto its own compositor layer. Without it
-   Chromium animates on the main thread, and WebView2 hosted in WinForms only
-   ticks the main thread when something forces a paint — which is why the
-   spinner previously advanced for ~0.1s on row hover/unhover (the row's
-   background transition) and sat frozen the rest of the time. */
-.status-badge__spinner {
-  position: relative;
-  z-index: 1;
-  flex: none;
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  border: 2px solid currentColor;
-  border-top-color: transparent;
-  border-right-color: transparent;
-  opacity: 0.85;
+/* Stages whose underlying tool exposes no work-unit count get a sweeping
+   segment — an honest liveness cue that claims no particular completion.
+   Animated with transform only, for the compositor reason noted above. */
+.file-status__bar--indeterminate {
+  width: 40%;
   will-change: transform;
-  animation: status-spin 0.7s linear infinite;
+  animation: file-status-sweep 1.4s ease-in-out infinite;
 }
 
-@keyframes status-spin {
-  from { transform: rotate(0deg); }
-  to   { transform: rotate(360deg); }
+@keyframes file-status-sweep {
+  from { transform: translateX(-100%); }
+  to   { transform: translateX(250%); }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .status-badge__spinner {
-    animation-duration: 2.4s;
-  }
+  .file-status--processing .file-status__dot { animation-duration: 3s; }
+  .file-status__bar--indeterminate           { animation-duration: 4s; }
 }
 
-.status-badge--text {
-  background: rgba(90, 140, 255, 0.13);
-  border-color: rgba(90, 140, 255, 0.32);
-  color: #5a8cff;
+/* ── Per-status colour ─────────────────────────────────────── */
+
+/* Only the dot takes the status hue by default; the label overrides back to a
+   neutral so the column stays readable. Active and failed rows are the two
+   the eye should catch, so those keep colour in the text as well. */
+.file-status__label {
+  color: var(--color-text-muted);
 }
 
-.status-badge--none {
-  background: rgba(130, 130, 130, 0.12);
-  border-color: rgba(130, 130, 130, 0.28);
-  color: var(--color-text-muted, #888);
+.file-status--text   { color: #4b76d8; }
+.file-status--ocr    { color: var(--color-success); }
+.file-status--none   { color: #9a9aa8; }
+.file-status--queued { color: #8b7bc4; }
+
+.file-status--processing { color: #b07a00; }
+.file-status--processing .file-status__label {
+  color: var(--color-text);
+  font-weight: 600;
 }
 
-.status-badge--ocr {
-  background: rgba(62, 207, 110, 0.13);
-  border-color: rgba(62, 207, 110, 0.3);
-  color: var(--color-success);
-}
-
-.status-badge--queued {
-  background: rgba(170, 140, 230, 0.13);
-  border-color: rgba(170, 140, 230, 0.34);
-  color: #a98ce0;
-}
-
-/* The row actively being worked — strongest tint of the set. */
-.status-badge--processing {
-  background: rgba(220, 160, 40, 0.16);
-  border-color: rgba(220, 160, 40, 0.42);
-  color: #b07a00;
-}
-
-.status-badge--error {
-  background: rgba(224, 85, 85, 0.13);
-  border-color: rgba(224, 85, 85, 0.32);
+.file-status--error { color: var(--color-danger); }
+.file-status--error .file-status__label {
   color: var(--color-danger);
+  font-weight: 600;
 }
 
 /* ── Context menu ─────────────────────────────────────────────────────────── */

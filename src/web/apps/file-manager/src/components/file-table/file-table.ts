@@ -275,7 +275,7 @@ export class FileTable {
   }
 
   /**
-   * Repaints one row's status pill in place, leaving every other row's DOM
+   * Repaints one row's status indicator in place, leaving every other row's DOM
    * untouched. OCR progress arrives one message at a time, and a full re-render
    * per message would rebuild every spinner element and restart its animation
    * from 0°, so the spinners would visibly stutter for the whole run.
@@ -307,7 +307,7 @@ export class FileTable {
     const cell = row?.querySelector<HTMLTableCellElement>("td.col-status");
     if (!cell) return;
 
-    cell.replaceChildren(buildStatusBadge(status, this._ocrProgress.get(fileId)));
+    cell.replaceChildren(buildStatusIndicator(status, this._ocrProgress.get(fileId)));
   }
 
   setFilter(text: string): void {
@@ -589,7 +589,7 @@ export class FileTable {
     // Status cell
     const statusTd = document.createElement("td");
     statusTd.className = "col-status";
-    statusTd.appendChild(buildStatusBadge(file.status, this._ocrProgress.get(file.id)));
+    statusTd.appendChild(buildStatusIndicator(file.status, this._ocrProgress.get(file.id)));
 
     // Size cell
     const sizeTd = document.createElement("td");
@@ -706,9 +706,9 @@ function formatStatusLabel(status: string): string {
 }
 
 /**
- * Builds the status pill for a row. Stages with real work-unit totals use a
- * determinate fill; stages whose underlying tool exposes no count retain the
- * spinner as an honest liveness cue.
+ * Builds the visible text for a row's status. Active stages name the stage
+ * rather than the status, and append a work-unit count when the underlying
+ * tool exposes one.
  */
 function formatProgressLabel(status: string, progress?: OcrProgress): string {
   const stageLabels: Record<string, string> = {
@@ -747,45 +747,60 @@ function formatProgressLabel(status: string, progress?: OcrProgress): string {
   return label;
 }
 
-function buildStatusBadge(status: string, progress?: OcrProgress): HTMLSpanElement {
-  const badge = document.createElement("span");
-  badge.className = `status-badge status-badge--${status}`;
-  if (progress?.message) badge.title = progress.message;
+/**
+ * Builds the status indicator for a row: a state-coloured dot plus a label,
+ * with a progress bar beneath while work is running. Stages with real
+ * work-unit totals fill the bar; stages whose underlying tool exposes no count
+ * get a sweeping segment as an honest liveness cue.
+ */
+function buildStatusIndicator(status: string, progress?: OcrProgress): HTMLSpanElement {
+  const root = document.createElement("span");
+  root.className = `file-status file-status--${status}`;
+  if (progress?.message) root.title = progress.message;
 
-  const determinate =
-    status === "processing" &&
-    typeof progress?.current === "number" &&
-    typeof progress.total === "number" &&
-    progress.total > 0;
+  const dot = document.createElement("span");
+  dot.className = "file-status__dot";
+  dot.setAttribute("aria-hidden", "true");
+  root.appendChild(dot);
 
-  if (determinate) {
-    const current = Math.min(Math.max(progress.current!, 0), progress.total!);
-    const fill = document.createElement("span");
-    fill.className = "status-badge__progress-fill";
-    fill.style.width = `${(current / progress.total!) * 100}%`;
-    fill.setAttribute("aria-hidden", "true");
-    badge.appendChild(fill);
-    badge.setAttribute("role", "progressbar");
-    badge.setAttribute("aria-valuemin", "0");
-    badge.setAttribute("aria-valuenow", String(current));
-    badge.setAttribute("aria-valuemax", String(progress.total));
-  }
-
-  if (ACTIVE_OCR_STATUSES.has(status) && !determinate) {
-    const spinner = document.createElement("span");
-    spinner.className = "status-badge__spinner";
-    spinner.setAttribute("aria-hidden", "true");
-    badge.appendChild(spinner);
-    badge.setAttribute("role", "status");
-    badge.setAttribute("aria-live", "polite");
-  }
-
+  const text = formatProgressLabel(status, progress);
   const label = document.createElement("span");
-  label.className = "status-badge__label";
-  label.textContent = formatProgressLabel(status, progress);
-  badge.appendChild(label);
+  label.className = "file-status__label";
+  label.textContent = text;
+  root.appendChild(label);
 
-  return badge;
+  if (ACTIVE_OCR_STATUSES.has(status)) {
+    const determinate =
+      typeof progress?.current === "number" &&
+      typeof progress.total === "number" &&
+      progress.total > 0;
+
+    const track = document.createElement("span");
+    track.className = "file-status__track";
+    track.setAttribute("aria-hidden", "true");
+
+    const bar = document.createElement("span");
+    bar.className = "file-status__bar";
+
+    if (determinate) {
+      const current = Math.min(Math.max(progress!.current!, 0), progress!.total!);
+      bar.style.width = `${(current / progress!.total!) * 100}%`;
+      root.setAttribute("role", "progressbar");
+      root.setAttribute("aria-label", text);
+      root.setAttribute("aria-valuemin", "0");
+      root.setAttribute("aria-valuenow", String(current));
+      root.setAttribute("aria-valuemax", String(progress!.total));
+    } else {
+      bar.classList.add("file-status__bar--indeterminate");
+      root.setAttribute("role", "status");
+      root.setAttribute("aria-live", "polite");
+    }
+
+    track.appendChild(bar);
+    root.appendChild(track);
+  }
+
+  return root;
 }
 
 function formatBytes(bytes: number): string {
