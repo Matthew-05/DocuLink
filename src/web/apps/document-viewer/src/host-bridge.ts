@@ -26,6 +26,7 @@ export interface HostMessageHandlers {
   onLinkSelectionChanged?: (entries: LinkSelectionEntry[]) => void;
   onSetSearchQuery?: (query: string) => void;
   onSetCharBboxesVisible?: (visible: boolean) => void;
+  onSetTableSuggestionsVisible?: (visible: boolean) => void;
   onPdfUpdated?: (entry: PdfEntry) => void;
   onLinkRectanglesRemoved?: (ids: string[]) => void;
   onPdfNameUpdated?: (id: string, name: string) => void;
@@ -40,6 +41,7 @@ interface PdfPayload {
   base64: string;
   folderId?: string;
   geometryBase64?: string;
+  tableStructureBase64?: string;
   pageRotations?: Record<string, number>;
 }
 
@@ -189,9 +191,10 @@ function toPdfEntry(pdf: PdfPayload): PdfEntry {
     id:   pdf.id,
     name: pdf.name || pdf.id,
     url,
-    folderId: pdf.folderId,
-    geometryBase64: pdf.geometryBase64,
-    pageRotations,
+    ...(pdf.folderId !== undefined ? { folderId: pdf.folderId } : {}),
+    ...(pdf.geometryBase64 !== undefined ? { geometryBase64: pdf.geometryBase64 } : {}),
+    ...(pdf.tableStructureBase64 !== undefined ? { tableStructureBase64: pdf.tableStructureBase64 } : {}),
+    ...(pageRotations !== undefined ? { pageRotations } : {}),
   };
 }
 
@@ -213,6 +216,11 @@ interface SetSearchQueryMessage {
 
 interface SetCharBboxesVisibleMessage {
   type: "set-char-bboxes-visible";
+  visible: boolean;
+}
+
+interface SetTableSuggestionsVisibleMessage {
+  type: "set-table-suggestions-visible";
   visible: boolean;
 }
 
@@ -239,6 +247,7 @@ function handleMessage(raw: unknown, handlers: HostMessageHandlers): void {
     onLinkSelectionChanged,
     onSetSearchQuery,
     onSetCharBboxesVisible,
+    onSetTableSuggestionsVisible,
     onPdfUpdated,
     onLinkRectanglesRemoved,
     onPdfNameUpdated,
@@ -347,6 +356,13 @@ function handleMessage(raw: unknown, handlers: HostMessageHandlers): void {
       return;
     }
 
+    if (type === "set-table-suggestions-visible") {
+      if (!onSetTableSuggestionsVisible) return;
+      const msg = parsed as SetTableSuggestionsVisibleMessage;
+      onSetTableSuggestionsVisible(msg.visible === true);
+      return;
+    }
+
     if (type === "clear-rectangle-highlight") {
       onClearRectangleHighlight?.();
       return;
@@ -408,6 +424,15 @@ function postToHost(message: object): void {
   _webview?.postMessage(JSON.stringify(message));
 }
 
+/** Keep detector-only editing hints inside the viewer; the host contract stores the grid. */
+function toHostTable(table: TableGridData): TableGridData {
+  return {
+    columnBoundaries: [...table.columnBoundaries],
+    rowBoundaries: [...table.rowBoundaries],
+    ...(table.cells ? { cells: table.cells.map((row) => [...row]) } : {}),
+  };
+}
+
 /**
  * Registers a listener for host messages from the WebView2 C# add-in.
  * The provided callback is invoked with a fresh set of PdfEntry objects
@@ -461,7 +486,7 @@ export function sendLinkRectangleCreated(payload: LinkRectPayload): void {
     text:     payload.text,
     linkType: payload.linkType ?? "auto",
     appendToActiveSum: payload.appendToActiveSum === true,
-    ...(payload.table ? { table: payload.table } : {}),
+    ...(payload.table ? { table: toHostTable(payload.table) } : {}),
   });
 }
 
@@ -473,7 +498,7 @@ export function sendLinkRectangleUpdated(payload: LinkRectUpdatedPayload): void 
     page:  payload.page,
     rect:  payload.rect,
     text:  payload.text,
-    ...(payload.table ? { table: payload.table } : {}),
+    ...(payload.table ? { table: toHostTable(payload.table) } : {}),
   });
 }
 

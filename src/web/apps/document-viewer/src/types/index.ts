@@ -13,6 +13,8 @@ export interface PdfEntry {
   folderId?: string | undefined;
   /** Gzip-compressed text-geometry-v1 JSON, base64-encoded. */
   geometryBase64?: string;
+  /** Gzip-compressed table-structure-v1 JSON, base64-encoded. */
+  tableStructureBase64?: string;
   linkCount?: number;
   /** Per-page clockwise rotation in degrees (0, 90, 180, 270). Absent entries default to 0. */
   pageRotations?: Record<number, number>;
@@ -41,6 +43,10 @@ export interface TableGridData {
   rowBoundaries: number[];
   /** Row-major text extracted for the current boundaries. */
   cells?: string[][];
+  /** Number of leading detected header rows collapsed into one displayed grid row. */
+  headerRowCount?: number;
+  /** Original source-line split positions for each displayed row, as rectangle fractions. */
+  textLineBoundaries?: number[][];
 }
 
 export interface LinkRectPayload {

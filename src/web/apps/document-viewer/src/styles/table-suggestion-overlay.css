@@ -1,0 +1,50 @@
+.table-suggestions {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+}
+
+.table-suggestions__region {
+  position: absolute;
+  display: block;
+  box-sizing: border-box;
+  padding: 0;
+  border: 2px solid rgba(20, 139, 116, 0.9);
+  background: rgba(20, 139, 116, 0.05);
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.table-suggestions__region:hover {
+  background: rgba(20, 139, 116, 0.12);
+  box-shadow: 0 0 0 2px rgba(20, 139, 116, 0.18);
+}
+
+.table-suggestions__line {
+  position: absolute;
+  display: block;
+  background: rgba(20, 139, 116, 0.55);
+  pointer-events: none;
+}
+
+.table-suggestions__line--column {
+  top: 0;
+  bottom: 0;
+  width: 1px;
+}
+
+.table-suggestions__line--row {
+  left: 0;
+  right: 0;
+  height: 1px;
+}
+
+.table-suggestions__header {
+  position: absolute;
+  inset: 0 0 auto;
+  display: block;
+  background: rgba(65, 105, 225, 0.12);
+  border-bottom: 2px solid rgba(65, 105, 225, 0.75);
+  pointer-events: none;
+}

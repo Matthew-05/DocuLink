@@ -1,5 +1,6 @@
 import type { CharacterEntry } from "./text-content-cache.js";
 import type { NormalizedRect, TableGridData } from "../types/index.js";
+import type { DetectedTable, TableRow } from "@doculink/shared";
 
 const MIN_CHAR_OVERLAP = 0.3;
 const MIN_BOUNDARY_DISTANCE = 0.005;
@@ -246,7 +247,9 @@ function extractIncludedTableCells(
 export function detectTableGrid(
   entries: CharacterEntry[] | null,
   rect: NormalizedRect,
+  detectedTable?: DetectedTable | null,
 ): TableGridData {
+  if (detectedTable) return gridFromTableStructure(detectedTable, rect, entries);
   const included = (entries ?? []).filter((entry) => overlapsRect(entry, rect));
   const visualRows = buildVisualRows(included);
   const columnBoundaries = detectColumnBoundaries(visualRows, rect);
@@ -255,6 +258,54 @@ export function detectTableGrid(
     columnBoundaries,
     rowBoundaries,
     cells: extractIncludedTableCells(included, rect, columnBoundaries, rowBoundaries),
+  };
+}
+
+function relativeX(pageX: number, rect: NormalizedRect): number {
+  return (pageX - rect.x) / rect.width;
+}
+
+function relativeY(pageY: number, rect: NormalizedRect): number {
+  return (pageY - rect.y) / rect.height;
+}
+
+function sourceLineBoundaries(rows: TableRow[], rect: NormalizedRect): number[] {
+  const lines = rows.flatMap((row) => row.textLines).sort((a, b) => a.y0 - b.y0);
+  const boundaries: number[] = [];
+  for (let index = 1; index < lines.length; index++) {
+    const pagePosition = (lines[index - 1]!.y1 + lines[index]!.y0) / 2;
+    boundaries.push(relativeY(pagePosition, rect));
+  }
+  return normalizeBoundaries(boundaries);
+}
+
+/** Converts absolute page table bands into the existing rectangle-relative grid shape. */
+export function gridFromTableStructure(
+  table: DetectedTable,
+  rect: NormalizedRect,
+  entries: CharacterEntry[] | null = null,
+): TableGridData {
+  const columnBoundaries = normalizeBoundaries(
+    table.columns.slice(0, -1).map((column) => relativeX(column.x1, rect)),
+  );
+  const headerRowCount = Math.min(table.header?.rowCount ?? 0, table.rows.length);
+  const displayedGroups: TableRow[][] = [];
+  if (headerRowCount > 0) displayedGroups.push(table.rows.slice(0, headerRowCount));
+  for (const row of table.rows.slice(headerRowCount)) displayedGroups.push([row]);
+
+  const rowBoundaries = normalizeBoundaries(
+    displayedGroups.slice(0, -1).map((group) => relativeY(group[group.length - 1]!.y1, rect)),
+  );
+  const textLineBoundaries = displayedGroups.map((group) => sourceLineBoundaries(group, rect));
+  const included = (entries ?? []).filter((entry) => overlapsRect(entry, rect));
+  return {
+    columnBoundaries,
+    rowBoundaries,
+    cells: extractIncludedTableCells(included, rect, columnBoundaries, rowBoundaries),
+    ...(headerRowCount > 0 ? { headerRowCount } : {}),
+    ...(textLineBoundaries.some((boundaries) => boundaries.length > 0)
+      ? { textLineBoundaries }
+      : {}),
   };
 }
 
@@ -290,5 +341,9 @@ export function withExtractedTableCells(
     columnBoundaries,
     rowBoundaries,
     cells: extractIncludedTableCells(included, rect, columnBoundaries, rowBoundaries),
+    ...(table.headerRowCount ? { headerRowCount: table.headerRowCount } : {}),
+    ...(table.textLineBoundaries
+      ? { textLineBoundaries: table.textLineBoundaries.map((row) => [...row]) }
+      : {}),
   };
 }

@@ -1,6 +1,7 @@
 import { initHostBridge, sendViewerContentReady } from "../../host-bridge.js";
 import type { HostMessageHandlers } from "../../host-bridge.js";
 import type { TextContentCache } from "../../services/text-content-cache.js";
+import type { TableStructureCache } from "../../services/table-structure-cache.js";
 import type { FolderEntry, PdfEntry } from "../../types/index.js";
 import type { FolderFilter } from "../toolbar/folder-filter.js";
 import type { PdfSelector } from "../toolbar/pdf-selector.js";
@@ -17,11 +18,16 @@ function pickEntryToLoad(entries: PdfEntry[], activeId: string | null): PdfEntry
 
 async function indexAllPdfs(
   cache: TextContentCache,
+  tableCache: TableStructureCache,
   entries: PdfEntry[],
 ): Promise<void> {
   cache.clear();
+  tableCache.clear();
   await Promise.all(
-    entries.map((entry) => cache.buildForUrl(entry.id, entry.url, entry.geometryBase64)),
+    entries.flatMap((entry) => [
+      cache.buildForUrl(entry.id, entry.url, entry.geometryBase64),
+      tableCache.build(entry.id, entry.tableStructureBase64),
+    ]),
   );
 }
 
@@ -52,7 +58,9 @@ export function connectViewerToHostBridge(
   selector: PdfSelector,
   folderFilter: FolderFilter,
   cache: TextContentCache,
+  tableCache: TableStructureCache,
   onIndexingStateChange: (indexing: boolean) => void,
+  onTableStructureChanged: () => void,
   handlers: ViewerHostHandlers = {},
 ): void {
   let indexingCount = 0;
@@ -89,7 +97,8 @@ export function connectViewerToHostBridge(
           folderFilter.setFolders(folders);
 
           startIndexing();
-          void indexAllPdfs(cache, entries)
+          void indexAllPdfs(cache, tableCache, entries)
+            .then(onTableStructureChanged)
             .finally(endIndexing);
 
           const target = pickEntryToLoad(entries, viewer.getActivePdfId());
@@ -111,7 +120,12 @@ export function connectViewerToHostBridge(
       startIndexing();
       void (async () => {
         cache.clearPdf(entry.id);
-        await cache.buildForUrl(entry.id, entry.url, entry.geometryBase64);
+        tableCache.clearPdf(entry.id);
+        await Promise.all([
+          cache.buildForUrl(entry.id, entry.url, entry.geometryBase64),
+          tableCache.build(entry.id, entry.tableStructureBase64),
+        ]);
+        onTableStructureChanged();
       })().finally(endIndexing);
 
       if (isFirstEntry || viewer.getActivePdfId() === entry.id) {
@@ -134,6 +148,7 @@ export function connectViewerToHostBridge(
 
     onPdfRemoved: (id) => {
       cache.clearPdf(id);
+      tableCache.clearPdf(id);
       selector.removeEntry(id);
       if (viewer.getActivePdfId() === id) {
         const next = selector.getEntries()[0];

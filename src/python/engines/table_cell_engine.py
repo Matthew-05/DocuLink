@@ -17,9 +17,9 @@ from engines.table_date_engine import (
     _map_image_rect,
     _prepare_cell,
     _recognize_date,
-    detect_ruled_grid,
     normalize_date,
 )
+from engines.table.rulings import detect_ruled_grid
 
 
 _MIN_TABLE_IMAGE_PAGE_COVERAGE = 0.05

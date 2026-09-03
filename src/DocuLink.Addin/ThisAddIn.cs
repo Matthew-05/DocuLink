@@ -1034,6 +1034,32 @@ namespace DocuLink.Addin
             }
         }
 
+        private void OnTableSuggestionsChanged(object sender, bool visible)
+        {
+            foreach (WorkbookPaneEntry entry in _workbookPanes.ToArray())
+            {
+                try { entry.Host?.SendTableSuggestionsVisible(visible); }
+                catch (Exception ex)
+                {
+                    Modules.DocuLinkLog.Trace(
+                        $"OnTableSuggestionsChanged skipping pane: {ex.Message}");
+                }
+            }
+            foreach (WorkbookViewerEntry entry in _workbookViewers.ToArray())
+            {
+                try
+                {
+                    if (entry.Window != null && !entry.Window.IsDisposed)
+                        entry.Window.SendTableSuggestionsVisible(visible);
+                }
+                catch (Exception ex)
+                {
+                    Modules.DocuLinkLog.Trace(
+                        $"OnTableSuggestionsChanged skipping viewer window: {ex.Message}");
+                }
+            }
+        }
+
         /// <summary>Finds the standalone viewer owned by a workbook using COM identity.</summary>
         private WorkbookViewerEntry FindViewerEntryFor(Excel.Workbook wb)
         {
@@ -1141,6 +1167,8 @@ namespace DocuLink.Addin
 
             Modules.Infrastructure.DevSettings.CharBoundingBoxesChanged +=
                 OnCharBoundingBoxesChanged;
+            Modules.Infrastructure.DevSettings.TableSuggestionsChanged +=
+                OnTableSuggestionsChanged;
 
             _ = CheckForUpdateOnOpenAsync();
 
@@ -1162,6 +1190,8 @@ namespace DocuLink.Addin
 
             Modules.Infrastructure.DevSettings.CharBoundingBoxesChanged -=
                 OnCharBoundingBoxesChanged;
+            Modules.Infrastructure.DevSettings.TableSuggestionsChanged -=
+                OnTableSuggestionsChanged;
 
             Application.SheetSelectionChange -= Application_SheetSelectionChange;
 
@@ -2221,5 +2251,4 @@ namespace DocuLink.Addin
     }
 
 }
-
 

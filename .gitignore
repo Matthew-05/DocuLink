@@ -158,3 +158,4 @@ installer/doculink-files.wxs
 *.tmp
 *.temp
 ~$*
+/src/python/tests

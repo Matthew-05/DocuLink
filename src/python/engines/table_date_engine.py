@@ -11,81 +11,10 @@ import pymupdf as fitz
 from PIL import Image, ImageOps
 
 from engines.ocr_engine import configure_tesseract
+from engines.table.rulings import detect_ruled_grid
 
 
-_GRID_DARKNESS_LEVELS = (110, 140, 170, 200, 220)
-_MIN_IMAGE_WIDTH = 400
-_MIN_IMAGE_HEIGHT = 200
 _DATE_PATTERN = re.compile(r"\d{1,2}/\d{1,2}/\d{4}")
-
-
-def _pixel_values(image: Image.Image) -> list[int]:
-    """Read a one-band image across supported Pillow versions without warnings."""
-    flattened = getattr(image, "get_flattened_data", None)
-    return list(flattened() if flattened is not None else image.getdata())
-
-
-def _line_centers(
-    counts: list[int],
-    minimum: int,
-    *,
-    merge_distance: int = 1,
-) -> list[int]:
-    """Collapse adjacent qualifying pixels into one grid-line coordinate."""
-    runs: list[list[int]] = []
-    for index, count in enumerate(counts):
-        if count < minimum:
-            continue
-        if not runs or index > runs[-1][-1] + merge_distance:
-            runs.append([index])
-        else:
-            runs[-1].append(index)
-    centers: list[int] = []
-    for run in runs:
-        weights = [counts[index] for index in run]
-        total_weight = sum(weights)
-        centers.append(
-            round(
-                sum(index * weight for index, weight in zip(run, weights))
-                / max(1, total_weight)
-            )
-        )
-    return centers
-
-
-def detect_ruled_grid(image: Image.Image) -> tuple[list[int], list[int]]:
-    """Return strong full-table vertical and horizontal line centers."""
-    gray = ImageOps.grayscale(image)
-    width, height = gray.size
-    if width < _MIN_IMAGE_WIDTH or height < _MIN_IMAGE_HEIGHT:
-        return [], []
-
-    # Scanners and image-to-PDF converters encode nominally identical grid lines
-    # anywhere from near-black to pale gray. Try increasingly permissive masks and
-    # stop at the first coherent grid, which avoids treating page shading as rules.
-    # Projection remains in native Pillow code, so this threshold ladder is much
-    # cheaper than even one OCR pass.
-    for darkness in _GRID_DARKNESS_LEVELS:
-        dark = gray.point(lambda value, limit=darkness: 255 if value < limit else 0)
-        vertical_density = _pixel_values(
-            dark.resize((width, 1), Image.Resampling.BOX)
-        )
-        horizontal_density = _pixel_values(
-            dark.resize((1, height), Image.Resampling.BOX)
-        )
-        x_lines = _line_centers(
-            vertical_density,
-            round(255 * 0.70),
-            merge_distance=max(1, round(width * 0.008)),
-        )
-        y_lines = _line_centers(
-            horizontal_density,
-            round(255 * 0.50),
-            merge_distance=max(1, round(height * 0.008)),
-        )
-        if len(x_lines) >= 3 and len(y_lines) >= 3:
-            return x_lines, y_lines
-    return [], []
 
 
 def normalize_date(raw: str) -> str | None:

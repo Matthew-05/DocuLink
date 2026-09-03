@@ -38,7 +38,7 @@ const sharedOptions = {
 
 await esbuild.build({
   ...sharedOptions,
-  entryPoints: ["src/main.ts"],
+  entryPoints: ["./src/main.ts"],
   outdir: "dist",
   entryNames: "index",
   chunkNames: "chunks/[name]-[hash]",
@@ -49,7 +49,7 @@ await esbuild.build({
 
 await esbuild.build({
   ...sharedOptions,
-  entryPoints: ["src/styles/main.css"],
+  entryPoints: ["./src/styles/main.css"],
   outfile: "dist/index.css",
 });
 

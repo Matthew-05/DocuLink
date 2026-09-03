@@ -1,0 +1,88 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "http://doculink.dev/schemas/table-structure/1",
+  "title": "DocuLink Table Structure v1",
+  "description": "Detected per-page table regions. Coordinates use the same normalized displayed-page, top-left-origin 0–1 space as text-geometry-v1.",
+  "type": "object",
+  "required": ["version", "coordinateSpace", "pages"],
+  "additionalProperties": false,
+  "properties": {
+    "version": { "const": 1 },
+    "coordinateSpace": { "const": "normalized" },
+    "pages": { "type": "array", "items": { "$ref": "#/definitions/PageTables" } }
+  },
+  "definitions": {
+    "Bounds": {
+      "type": "object", "required": ["x", "y", "width", "height"], "additionalProperties": false,
+      "properties": {
+        "x": { "type": "number", "minimum": 0, "maximum": 1 },
+        "y": { "type": "number", "minimum": 0, "maximum": 1 },
+        "width": { "type": "number", "exclusiveMinimum": 0, "maximum": 1 },
+        "height": { "type": "number", "exclusiveMinimum": 0, "maximum": 1 }
+      }
+    },
+    "Column": {
+      "type": "object", "required": ["x0", "x1"], "additionalProperties": false,
+      "properties": {
+        "x0": { "type": "number", "minimum": 0, "maximum": 1 },
+        "x1": { "type": "number", "minimum": 0, "maximum": 1 }
+      }
+    },
+    "TextLineBand": {
+      "type": "object", "required": ["y0", "y1"], "additionalProperties": false,
+      "properties": {
+        "y0": { "type": "number", "minimum": 0, "maximum": 1 },
+        "y1": { "type": "number", "minimum": 0, "maximum": 1 }
+      }
+    },
+    "Row": {
+      "type": "object",
+      "required": ["y0", "y1", "kind", "textLines", "merged", "mergeConfidence"],
+      "additionalProperties": false,
+      "properties": {
+        "y0": { "type": "number", "minimum": 0, "maximum": 1 },
+        "y1": { "type": "number", "minimum": 0, "maximum": 1 },
+        "kind": { "type": "string", "enum": ["header", "body"] },
+        "textLines": { "type": "array", "items": { "$ref": "#/definitions/TextLineBand" } },
+        "merged": { "type": "boolean" },
+        "mergeConfidence": { "type": "number", "minimum": 0, "maximum": 1 }
+      }
+    },
+    "Header": {
+      "type": "object", "required": ["rowCount", "labels"], "additionalProperties": false,
+      "properties": {
+        "rowCount": { "type": "integer", "minimum": 1 },
+        "labels": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "Rulings": {
+      "type": "object", "required": ["vertical", "horizontal"], "additionalProperties": false,
+      "properties": {
+        "vertical": { "type": "array", "items": { "type": "number", "minimum": 0, "maximum": 1 } },
+        "horizontal": { "type": "array", "items": { "type": "number", "minimum": 0, "maximum": 1 } }
+      }
+    },
+    "Table": {
+      "type": "object",
+      "required": ["id", "bounds", "evidence", "confidence", "columns", "rows", "header", "rulings"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "bounds": { "$ref": "#/definitions/Bounds" },
+        "evidence": { "type": "string", "enum": ["ruled", "whitespace", "mixed"] },
+        "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+        "columns": { "type": "array", "minItems": 2, "items": { "$ref": "#/definitions/Column" } },
+        "rows": { "type": "array", "minItems": 2, "items": { "$ref": "#/definitions/Row" } },
+        "header": { "anyOf": [{ "$ref": "#/definitions/Header" }, { "type": "null" }] },
+        "rulings": { "$ref": "#/definitions/Rulings" }
+      }
+    },
+    "PageTables": {
+      "type": "object", "required": ["pageIndex", "tables"], "additionalProperties": false,
+      "properties": {
+        "pageIndex": { "type": "integer", "minimum": 0 },
+        "tables": { "type": "array", "items": { "$ref": "#/definitions/Table" } }
+      }
+    }
+  }
+}

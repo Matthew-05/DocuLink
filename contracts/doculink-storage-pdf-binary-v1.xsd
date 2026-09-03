@@ -13,12 +13,14 @@
     Root element: PdfData (namespace varies per PDF — schema is illustrative).
     Base64: required — base64-encoded PDF bytes.
     GeometryBase64: optional — gzip-compressed text-geometry-v1 JSON, base64-encoded.
+    TableStructureBase64: optional — gzip-compressed table-structure-v1 JSON, base64-encoded.
   -->
   <xs:element name="PdfData">
     <xs:complexType>
       <xs:sequence>
         <xs:element name="Base64"         type="xs:string" />
-        <xs:element name="GeometryBase64" type="xs:string" minOccurs="0" />
+        <xs:element name="GeometryBase64"      type="xs:string" minOccurs="0" />
+        <xs:element name="TableStructureBase64" type="xs:string" minOccurs="0" />
       </xs:sequence>
     </xs:complexType>
   </xs:element>

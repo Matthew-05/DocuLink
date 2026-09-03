@@ -1,5 +1,6 @@
 import type { PdfViewer } from "./pdf-viewer.js";
 import type { TextContentCache } from "../../services/text-content-cache.js";
+import type { TableStructureCache } from "../../services/table-structure-cache.js";
 import type { RectRenderer } from "./rect-renderer.js";
 import { extractText } from "../../services/text-extractor.js";
 import { detectTableGrid } from "../../services/table-extractor.js";
@@ -55,6 +56,7 @@ export class RectEditOverlay {
   constructor(
     private readonly _viewer: PdfViewer,
     private readonly _cache: TextContentCache,
+    private readonly _tableCache: TableStructureCache,
     private readonly _renderer: RectRenderer,
   ) {
     this._autoScroller = new DragAutoScroller(this._viewer.element);
@@ -233,7 +235,11 @@ export class RectEditOverlay {
 
     this._suppressNextClick = true;
     const table = existing?.linkType === "table" && existing.table
-      ? detectTableGrid(entries, finalRect)
+      ? detectTableGrid(
+          entries,
+          finalRect,
+          this._tableCache.tableAt(pdfId, pageIndex, finalRect),
+        )
       : undefined;
     if (table) this._renderer.updateTable(id, table);
 

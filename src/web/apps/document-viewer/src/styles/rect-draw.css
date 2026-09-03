@@ -11,6 +11,7 @@
 
 .rect-draw__link {
   position: absolute;
+  z-index: 1;
   background: var(--rect-link-fill, rgba(37, 99, 235, 0.14));
   border: 1px solid var(--rect-link-border, rgba(37, 99, 235, 0.42));
   pointer-events: auto;

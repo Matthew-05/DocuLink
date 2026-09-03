@@ -31,6 +31,10 @@ function copyTable(table: TableGridData): TableGridData {
     columnBoundaries: [...table.columnBoundaries],
     rowBoundaries: [...table.rowBoundaries],
     ...(table.cells ? { cells: table.cells.map((row) => [...row]) } : {}),
+    ...(table.headerRowCount ? { headerRowCount: table.headerRowCount } : {}),
+    ...(table.textLineBoundaries
+      ? { textLineBoundaries: table.textLineBoundaries.map((row) => [...row]) }
+      : {}),
   };
 }
 
@@ -211,7 +215,11 @@ export class TableGridEditor {
       const id = rectElement?.dataset["rectId"];
       if (!id) return;
       this._closeAxisMenu(rectElement);
-      for (const callback of this._copyCallbacks) callback(id);
+      if (menuAction.dataset["action"] === "split-detected-rows") {
+        this._splitDetectedRows(id);
+      } else {
+        for (const callback of this._copyCallbacks) callback(id);
+      }
       return;
     }
 
@@ -293,6 +301,24 @@ export class TableGridEditor {
     const index = boundaries.findIndex((value) => Math.abs(value - position) < 0.000001);
     if (index < 0) return;
     boundaries.splice(index, 1);
+    this._commit(id, table);
+  }
+
+  private _splitDetectedRows(id: string): void {
+    const entry = this._renderer.getRectangle(id);
+    if (!entry?.table?.textLineBoundaries) return;
+    const detectedBoundaries = entry.table.textLineBoundaries.flat();
+    const table = copyTable(entry.table);
+    for (const boundary of detectedBoundaries) {
+      if (typeof boundary !== "number") continue;
+      if (boundary <= MIN_GAP || boundary >= 1 - MIN_GAP) continue;
+      if (!table.rowBoundaries.some((value) => Math.abs(value - boundary) < MIN_GAP)) {
+        table.rowBoundaries.push(boundary);
+      }
+    }
+    table.rowBoundaries.sort((a, b) => a - b);
+    delete table.headerRowCount;
+    delete table.textLineBoundaries;
     this._commit(id, table);
   }
 
@@ -468,6 +494,11 @@ export class TableGridEditor {
     const divider = document.createElement("div");
     divider.className = "table-grid__menu-divider";
     options.appendChild(divider);
+    const id = rectElement.dataset["rectId"];
+    const table = id ? this._renderer.getRectangle(id)?.table : undefined;
+    if (table?.textLineBoundaries?.some((boundaries) => boundaries.length > 0)) {
+      options.append(this._menuAction("split-detected-rows", "Split detected rows"));
+    }
     const copyAction = this._menuAction("copy", "Copy table selection…");
     if ((this._viewer.getDocument()?.numPages ?? 0) < 2) {
       copyAction.disabled = true;

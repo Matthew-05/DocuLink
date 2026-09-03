@@ -26,6 +26,7 @@ from engines.conversion_engine import ConversionError, convert_to_pdf
 from engines.geometry_engine import extract_text_geometry, geometry_to_base64
 from engines.pdf_security import sanitize_pdf_bytes
 from engines.table_cell_engine import has_recoverable_ruled_table, recover_table_cells
+from engines.table.detector import detect_tables, structure_to_base64
 from engines.ocr_engine import (
     MODE_FORCE,
     MODE_REDO,
@@ -83,7 +84,7 @@ _PROTOCOL_OUT = _claim_protocol_stream()
 from schemas.models import ConvertJob, ConvertResult, OcrJob, OcrProgress, OcrResult
 
 
-_GEOMETRY_CACHE_VERSION = "direct-hocr-v5"
+_GEOMETRY_CACHE_VERSION = "direct-hocr-v6-table-structure"
 _GEOMETRY_CACHE_MAX_ENTRIES = 16
 _GEOMETRY_CACHE: OrderedDict[str, dict] = OrderedDict()
 
@@ -196,6 +197,8 @@ def _handle_job(job: OcrJob) -> None:
     table_grid_candidates = 0
     table_text_recovery_ms = 0
     table_text_recovery_error = ""
+    table_structure_ms = 0
+    table_structure_error = ""
     page_text_regions_detected = 0
     page_text_words_resolved = 0
     native_pages_reused = 0
@@ -274,6 +277,7 @@ def _handle_job(job: OcrJob) -> None:
             "table_images_skipped_small": table_images_skipped_small,
             "table_grid_candidates": table_grid_candidates,
             "table_text_recovery_ms": table_text_recovery_ms,
+            "table_structure_ms": table_structure_ms,
             "page_text_regions_detected": page_text_regions_detected,
             "page_text_words_resolved": page_text_words_resolved,
             "native_pages_reused": native_pages_reused,
@@ -309,6 +313,8 @@ def _handle_job(job: OcrJob) -> None:
             d["date_recovery_error"] = date_recovery_error
         if table_text_recovery_error:
             d["table_text_recovery_error"] = table_text_recovery_error
+        if table_structure_error:
+            d["table_structure_error"] = table_structure_error
         return d
 
     def _emit_success(
@@ -329,6 +335,8 @@ def _handle_job(job: OcrJob) -> None:
         nonlocal output_sanitize_ms
         nonlocal removed_embedded_files
         nonlocal removed_links
+        nonlocal table_structure_ms
+        nonlocal table_structure_error
 
         final_summary = summarize_geometry_quality(geometry)
         final_characters = final_summary["total_characters"]
@@ -360,6 +368,22 @@ def _handle_job(job: OcrJob) -> None:
         geometry_encode_started = time.perf_counter()
         geometry_b64 = geometry_to_base64(geometry)
         geometry_encode_ms = _elapsed_ms(geometry_encode_started)
+        table_structure_b64 = ""
+        table_structure_started = time.perf_counter()
+        try:
+            on_progress("Detecting table structure…")
+            detection_pdf = pdf_bytes if job.preserve_source_pdf or result_bytes is None else result_bytes
+            table_structure = detect_tables(
+                detection_pdf,
+                geometry,
+                progress_callback=on_progress,
+            )
+            table_structure_b64 = structure_to_base64(table_structure)
+        except Exception as exc:  # noqa: BLE001 — optional stage must preserve OCR
+            table_structure_error = str(exc)
+            on_progress("Table structure detection unavailable; keeping OCR result…")
+        finally:
+            table_structure_ms = _elapsed_ms(table_structure_started)
         result_b64 = ""
         if result_bytes is not None and not job.preserve_source_pdf:
             pdf_encode_started = time.perf_counter()
@@ -371,12 +395,14 @@ def _handle_job(job: OcrJob) -> None:
                 status="success",
                 pdf_base64=result_b64,
                 geometry_base64=geometry_b64,
+                table_structure_base64=table_structure_b64,
                 diagnostics=_diagnostics(len(geometry["pages"])),
             ).to_dict()
         )
         if geometry_cache_key and job.preserve_source_pdf and job.mode == "full":
             _GEOMETRY_CACHE[geometry_cache_key] = {
                 "geometry_base64": geometry_b64,
+                "table_structure_base64": table_structure_b64,
                 "summary": final_summary,
                 "quality_warning": quality_warning,
             }
@@ -445,6 +471,7 @@ def _handle_job(job: OcrJob) -> None:
                         job_id=job.job_id,
                         status="success",
                         geometry_base64=cached["geometry_base64"],
+                        table_structure_base64=cached.get("table_structure_base64", ""),
                         diagnostics=_diagnostics(page_count),
                     ).to_dict()
                 )

@@ -9,6 +9,7 @@ import { TableGridEditor } from "./table-grid-editor.js";
 import { RectContextMenu } from "./rect-context-menu.js";
 import { LinkSelectionPanel } from "./link-selection-panel.js";
 import { CharBboxOverlay } from "./char-bbox-overlay.js";
+import { TableSuggestionOverlay } from "./table-suggestion-overlay.js";
 import { createRectNavigator } from "./rect-navigator.js";
 import { attachExcelKeyBridge } from "./excel-key-bridge.js";
 import { createFitMode } from "./fit-mode.js";
@@ -18,6 +19,8 @@ import { SearchMatchRenderer } from "./search-match-renderer.js";
 import { createSearchNavigator } from "./search-navigator.js";
 import { TableCopyModal } from "../table-copy-modal/table-copy-modal.js";
 import { TextContentCache } from "../../services/text-content-cache.js";
+import { TableStructureCache } from "../../services/table-structure-cache.js";
+import { extractText } from "../../services/text-extractor.js";
 import {
   detectCopiedTable,
   detectTableGrid,
@@ -59,6 +62,9 @@ interface DocuLinkDebugApi {
   toggleCharBboxes: () => boolean;
   showCharBboxes: () => void;
   hideCharBboxes: () => void;
+  toggleTableSuggestions: () => boolean;
+  showTableSuggestions: () => void;
+  hideTableSuggestions: () => void;
 }
 
 /**
@@ -219,19 +225,44 @@ export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLEleme
   };
 
   const cache           = new TextContentCache();
+  const tableCache      = new TableStructureCache();
   const renderer        = new RectRenderer(viewer);
   const contextMenu     = new RectContextMenu();
   const selectionPanel  = new LinkSelectionPanel();
   const overlay         = new RectDrawOverlay(viewer, cache);
-  const editOverlay     = new RectEditOverlay(viewer, cache, renderer);
+  const editOverlay     = new RectEditOverlay(viewer, cache, tableCache, renderer);
   const tableGridEditor = new TableGridEditor(viewer, cache, renderer);
   const tableCopyModal  = new TableCopyModal();
   const charBboxDebug   = new CharBboxOverlay(viewer, cache);
+  const tableSuggestions = new TableSuggestionOverlay(viewer, tableCache);
   const matchRenderer   = new SearchMatchRenderer(viewer);
   const searcher        = new PdfTextSearcher(cache);
   const searchNavigator = createSearchNavigator(
     viewer, selector, matchRenderer, applyFitZoom, onNavigateToPage,
   );
+
+  const enrichTableMetadata = (entry: LinkedRectEntry): LinkedRectEntry => {
+    if (entry.linkType !== "table" || !entry.table) return entry;
+    const detected = tableCache.tableAt(entry.pdfId, entry.page, entry.rect);
+    if (!detected) return entry;
+    const modelGrid = detectTableGrid(cache.get(entry.pdfId, entry.page), entry.rect, detected);
+    return {
+      ...entry,
+      table: {
+        ...entry.table,
+        ...(modelGrid.headerRowCount ? { headerRowCount: modelGrid.headerRowCount } : {}),
+        ...(modelGrid.textLineBoundaries
+          ? { textLineBoundaries: modelGrid.textLineBoundaries }
+          : {}),
+      },
+    };
+  };
+
+  const refreshTableMetadata = (): void => {
+    _currentRects = _currentRects.map(enrichTableMetadata);
+    renderer.setRectangles(_currentRects);
+    tableSuggestions.refresh();
+  };
 
   /** Rectangle the viewer is currently showing; marked as active in the panel. */
   let _focusedRectId: string | null = null;
@@ -444,7 +475,11 @@ export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLEleme
   overlay.onRectCreated((payload) => {
     const linkType = linkTypeSelector.getLinkType();
     const table = linkType === "table"
-      ? detectTableGrid(cache.get(payload.pdfId, payload.page), payload.rect)
+      ? detectTableGrid(
+          cache.get(payload.pdfId, payload.page),
+          payload.rect,
+          tableCache.tableAt(payload.pdfId, payload.page, payload.rect),
+        )
       : undefined;
     sendLinkRectangleCreated({ ...payload, linkType, ...(table ? { table } : {}) });
     renderer.addRectangle({
@@ -454,6 +489,28 @@ export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLEleme
       rect:  payload.rect,
       linkType,
       ...(table ? { table } : {}),
+    });
+  });
+
+  tableSuggestions.onSuggestionClicked((pdfId, page, detectedTable) => {
+    const rect = detectedTable.bounds;
+    const entries = cache.get(pdfId, page);
+    const table = detectTableGrid(entries, rect, detectedTable);
+    sendLinkRectangleCreated({
+      pdfId,
+      page,
+      rect,
+      text: extractText(entries, rect),
+      linkType: "table",
+      table,
+    });
+    renderer.addRectangle({
+      id: `temp-${Date.now()}`,
+      pdfId,
+      page,
+      rect,
+      linkType: "table",
+      table,
     });
   });
 
@@ -556,6 +613,9 @@ export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLEleme
     toggleCharBboxes: () => charBboxDebug.toggle(),
     showCharBboxes:   () => charBboxDebug.show(),
     hideCharBboxes:   () => charBboxDebug.hide(),
+    toggleTableSuggestions: () => tableSuggestions.toggle(),
+    showTableSuggestions: () => tableSuggestions.show(),
+    hideTableSuggestions: () => tableSuggestions.hide(),
   };
 
   // ── Host bridge ───────────────────────────────────────────────────────────
@@ -574,6 +634,7 @@ export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLEleme
     selector,
     folderFilter,
     cache,
+    tableCache,
     (indexing) => {
       if (indexing) {
         search.disable();
@@ -587,17 +648,19 @@ export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLEleme
         }
       }
     },
+    refreshTableMetadata,
     {
       onLinkedRectangles: (rects) => {
         contextMenu.hide();
-        _currentRects = rects;
-        renderer.setRectangles(rects);
-        selector.updateLinkCounts(computeLinkCounts(rects));
+        _currentRects = rects.map(enrichTableMetadata);
+        renderer.setRectangles(_currentRects);
+        selector.updateLinkCounts(computeLinkCounts(_currentRects));
       },
       onLinkedRectangleAdded: (rect) => {
         if (_currentRects.some((current) => current.id === rect.id)) return;
-        _currentRects = [..._currentRects, rect];
-        renderer.addRectangle(rect);
+        const enriched = enrichTableMetadata(rect);
+        _currentRects = [..._currentRects, enriched];
+        renderer.addRectangle(enriched);
         selector.updateLinkCounts(computeLinkCounts(_currentRects));
         focusRectangle(rect.id);
         navigate(rect.id, rect.pdfId, rect.page);
@@ -609,6 +672,10 @@ export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLEleme
       onSetCharBboxesVisible: (visible) => {
         if (visible) charBboxDebug.show();
         else charBboxDebug.hide();
+      },
+      onSetTableSuggestionsVisible: (visible) => {
+        if (visible) tableSuggestions.show();
+        else tableSuggestions.hide();
       },
       onClearRectangleHighlight: () => { renderer.clearHighlight(); },
       onHighlightRectangle: (id) => { renderer.highlightRectangle(id); },

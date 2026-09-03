@@ -1,0 +1,1 @@
+"""Table structure detection package."""

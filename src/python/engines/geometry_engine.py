@@ -1,12 +1,11 @@
 """Extract per-character bounding boxes from PDF text layers using PyMuPDF."""
 from __future__ import annotations
 
-import base64
-import gzip
-import json
 from typing import Callable
 
 import pymupdf as fitz
+
+from engines.binary_codec import json_to_base64
 
 # rawdict normally materializes the fully decoded bytes of every image block.
 # We discard image blocks (type != 0), so on an OCR'd scan — where each page is
@@ -133,6 +132,4 @@ def extract_text_geometry(
 
 def geometry_to_base64(geometry: dict) -> str:
     """Gzip-compress and base64-encode a text-geometry-v1 dict."""
-    json_bytes = json.dumps(geometry, separators=(",", ":")).encode("utf-8")
-    compressed = gzip.compress(json_bytes)
-    return base64.b64encode(compressed).decode("ascii")
+    return json_to_base64(geometry)

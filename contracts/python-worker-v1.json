@@ -129,6 +129,8 @@
         "table_grid_candidates": { "type": "integer", "minimum": 0, "description": "Images whose dark-pixel projections contained a strong ruled grid and therefore reached header evaluation." },
         "table_text_recovery_ms": { "type": "integer", "minimum": 0, "description": "Milliseconds spent removing detected rulings, recognizing cells with column-aware profiles, and rebuilding the table text layer." },
         "table_text_recovery_error": { "type": "string", "description": "Present when optional full-table cell recovery failed and the worker safely retained the selected OCR result." },
+        "table_structure_ms": { "type": "integer", "minimum": 0, "description": "Milliseconds spent detecting and encoding the table-structure-v1 model." },
+        "table_structure_error": { "type": "string", "description": "Present when optional table-structure detection failed and the worker safely retained the OCR result." },
         "page_text_regions_detected": { "type": "integer", "minimum": 0, "description": "Non-table scan regions recovered with sparse-layout word OCR while rebuilding a detected table page." },
         "page_text_words_resolved": { "type": "integer", "minimum": 0, "description": "Positioned words embedded from recovered non-table scan regions." },
         "input_bytes": { "type": "integer", "minimum": 0, "description": "Decoded input PDF size in bytes." },
@@ -182,6 +184,7 @@
         "status":           { "const": "success" },
         "pdf_base64":       { "type": "string", "description": "Base-64 encoded output PDF bytes with text layer added. Omitted for geometry-only jobs and when preserve_source_pdf is true." },
         "geometry_base64":  { "type": "string", "description": "Gzip-compressed text-geometry-v1 JSON, base64-encoded." },
+        "table_structure_base64": { "type": "string", "description": "Gzip-compressed table-structure-v1 JSON, base64-encoded. Present for full OCR jobs when optional table detection succeeds." },
         "diagnostics":      { "$ref": "#/definitions/OcrDiagnostics" }
       },
       "examples": [

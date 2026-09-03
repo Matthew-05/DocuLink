@@ -14,6 +14,8 @@ namespace DocuLink.Addin.Modules.Infrastructure
         /// <summary>Raised after <see cref="ShowCharBoundingBoxes"/> changes.</summary>
         internal static event EventHandler<bool> CharBoundingBoxesChanged;
 
+        internal static event EventHandler<bool> TableSuggestionsChanged;
+
         /// <summary>
         /// Whether the document viewer draws the per-character bounding-box debug
         /// overlay built from its text cache.
@@ -47,6 +49,36 @@ namespace DocuLink.Addin.Modules.Infrastructure
                 }
 
                 CharBoundingBoxesChanged?.Invoke(null, value);
+            }
+        }
+
+        internal static bool ShowTableSuggestions
+        {
+            get
+            {
+                try
+                {
+                    return Settings.Default.ShowTableSuggestions;
+                }
+                catch (Exception ex)
+                {
+                    DocuLinkLog.Trace($"Could not read ShowTableSuggestions: {ex.Message}");
+                    return false;
+                }
+            }
+            set
+            {
+                if (ShowTableSuggestions == value) return;
+                try
+                {
+                    Settings.Default.ShowTableSuggestions = value;
+                    Settings.Default.Save();
+                }
+                catch (Exception ex)
+                {
+                    DocuLinkLog.Trace($"Could not persist ShowTableSuggestions: {ex.Message}");
+                }
+                TableSuggestionsChanged?.Invoke(null, value);
             }
         }
     }

@@ -43,6 +43,9 @@ namespace DocuLink.Addin.Modules.CustomXml.Models
         /// </summary>
         public string GeometryBase64 { get; set; }
 
+        /// <summary>Gzip-compressed table-structure-v1 JSON, base64-encoded.</summary>
+        public string TableStructureBase64 { get; set; }
+
         /// <summary>
         /// Per-page clockwise rotation in degrees (0, 90, 180, 270).
         /// Only non-zero pages are stored. Null or empty means all pages at 0°.

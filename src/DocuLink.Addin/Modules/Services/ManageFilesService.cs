@@ -104,7 +104,8 @@ namespace DocuLink.Addin.Modules.Services
             return updated;
         }
 
-        public void UpdatePdfAfterOcr(Excel.Workbook workbook, string id, string newBase64, string geometryBase64)
+        public void UpdatePdfAfterOcr(Excel.Workbook workbook, string id, string newBase64,
+            string geometryBase64, string tableStructureBase64)
         {
             if (workbook == null) throw new ArgumentNullException(nameof(workbook));
             if (string.IsNullOrWhiteSpace(id)) throw new ArgumentException("id must be non-empty.", nameof(id));
@@ -116,7 +117,7 @@ namespace DocuLink.Addin.Modules.Services
             if (!store.TryGetMetadata(id, out PdfMetadata existing))
                 throw new InvalidOperationException("PDF not found: " + id);
 
-            store.SavePdfBinary(id, newBase64, geometryBase64);
+            store.SavePdfBinary(id, newBase64, geometryBase64, tableStructureBase64);
 
             var updated = new PdfMetadata(existing.Id, existing.Name, existing.FolderId, existing.DateAdded, existing.FileSizeBytes)
             {
@@ -125,7 +126,8 @@ namespace DocuLink.Addin.Modules.Services
             store.UpsertMetadata(updated);
         }
 
-        public void UpdatePdfGeometry(Excel.Workbook workbook, string id, string geometryBase64)
+        public void UpdatePdfGeometry(Excel.Workbook workbook, string id, string geometryBase64,
+            string tableStructureBase64)
         {
             if (workbook == null) throw new ArgumentNullException(nameof(workbook));
             if (string.IsNullOrWhiteSpace(id)) throw new ArgumentException("id must be non-empty.", nameof(id));
@@ -136,8 +138,8 @@ namespace DocuLink.Addin.Modules.Services
             if (!store.TryGetMetadata(id, out PdfMetadata existing))
                 throw new InvalidOperationException("PDF not found: " + id);
 
-            store.TryLoadPdfBinary(id, out string existingBase64, out _);
-            store.SavePdfBinary(id, existingBase64, geometryBase64);
+            store.TryLoadPdfBinary(id, out string existingBase64, out _, out _);
+            store.SavePdfBinary(id, existingBase64, geometryBase64, tableStructureBase64);
 
             var updated = new PdfMetadata(existing.Id, existing.Name, existing.FolderId, existing.DateAdded, existing.FileSizeBytes)
             {

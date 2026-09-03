@@ -1,6 +1,16 @@
 export type { NormalizedRect, SearchMatch } from "./types.js";
 export type { TextGeometry, TextGeometryPage, TextGeometryCharacter } from "./geometry-decoder.js";
 export { decodeTextGeometry } from "./geometry-decoder.js";
+export type {
+  DetectedTable,
+  PageTables,
+  TableBounds,
+  TableColumn,
+  TableRow,
+  TableStructure,
+  TableTextLine,
+} from "./table-structure-decoder.js";
+export { decodeTableStructure } from "./table-structure-decoder.js";
 export type { CharacterEntry } from "./char-entries.js";
 export type { SearchPageIndex, SearchPageOptions } from "./text-searcher.js";
 export { buildCharEntriesFromGeometry } from "./char-entries.js";
