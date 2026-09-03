@@ -76,6 +76,17 @@ namespace DocuLink.Addin.Modules.UI
                 NavigateToPendingHtml();
         }
 
+        /// <summary>
+        /// Renders a single release's notes without the collapsible header, for
+        /// callers that already name the release in their own chrome.
+        /// </summary>
+        internal void SetRelease(ReleaseNote release)
+        {
+            _pendingHtml = BuildSingleReleasePage(release);
+            if (_webViewReady)
+                NavigateToPendingHtml();
+        }
+
         internal void ShowStatusMessage(string message)
         {
             _pendingHtml = null;
@@ -215,6 +226,30 @@ namespace DocuLink.Addin.Modules.UI
             return html.ToString();
         }
 
+        private static string BuildSingleReleasePage(ReleaseNote release)
+        {
+            var html = new StringBuilder();
+            html.Append(PageStart);
+
+            if (release == null)
+            {
+                html.Append("<p class=\"empty\">No release notes were provided.</p>");
+            }
+            else
+            {
+                var markdown = string.IsNullOrWhiteSpace(release.Body)
+                    ? "*No release notes were provided for this release.*"
+                    : release.Body.Trim();
+
+                html.Append("<article class=\"markdown-body single\">");
+                html.Append(Markdown.ToHtml(markdown, MarkdownPipeline));
+                html.Append("</article>");
+            }
+
+            html.Append("</main></body></html>");
+            return html.ToString();
+        }
+
         private static void AppendRelease(StringBuilder html, ReleaseNote release, bool expanded)
         {
             var version = string.IsNullOrWhiteSpace(release.Version)
@@ -298,6 +333,7 @@ summary:focus-visible { outline: 2px solid #0969da; outline-offset: -2px; }
 .version { color: #1f2328; font-weight: 650; }
 .separator, time { color: #656d76; font-size: 13px; }
 .markdown-body { padding: 18px 28px 24px 40px; overflow-wrap: anywhere; }
+.markdown-body.single { padding: 4px 20px 18px; }
 .markdown-body > :first-child { margin-top: 0 !important; }
 .markdown-body > :last-child { margin-bottom: 0 !important; }
 h1, h2, h3, h4, h5, h6 { margin: 22px 0 10px; color: #1f2328; line-height: 1.25; font-weight: 650; }

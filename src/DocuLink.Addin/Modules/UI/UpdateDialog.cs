@@ -21,6 +21,14 @@ namespace DocuLink.Addin.Modules.UI
         private CancellationTokenSource _downloadCts;
         private string _localMsiPath;
 
+        private const int ContentMargin = 20;
+        private const int CardPadding = 16;
+        private const int FooterHeight = 64;
+        private const int CompactWidth = 460;
+        private const int CompactHeight = 180;
+        private const int NotesWidth = 600;
+        private const int NotesHeight = 560;
+
         private readonly Label _statusLabel;
         private readonly Label _versionLabel;
         private readonly ProgressBar _progressBar;
@@ -29,100 +37,113 @@ namespace DocuLink.Addin.Modules.UI
         private readonly Button _closeButton;
         private readonly CheckBox _snoozeCheckBox;
         private readonly Label _releaseNotesLabel;
+        private readonly Panel _notesSeparator;
+        private readonly CardPanel _notesCard;
         private readonly ReleaseNotesControl _releaseNotes;
+        private readonly Panel _footer;
 
         private UpdateDialog(UpdateCheckResult preChecked = null)
         {
             _preChecked = preChecked;
 
             Text = "DocuLink Updates";
-            ClientSize = new Size(400, 185);
             FormBorderStyle = FormBorderStyle.FixedDialog;
             MaximizeBox = false;
             MinimizeBox = false;
             StartPosition = FormStartPosition.CenterParent;
+            BackColor = DialogTheme.Canvas;
+            Font = DialogTheme.BodyFont;
+            ForeColor = DialogTheme.Text;
+            ClientSize = new Size(CompactWidth, CompactHeight);
 
             _statusLabel = new Label
             {
                 AutoSize = false,
-                Size = new Size(360, 22),
-                Location = new Point(20, 20),
-                Font = new Font("Segoe UI", 10f),
+                Font = DialogTheme.SectionTitleFont,
+                ForeColor = DialogTheme.Text,
                 Text = "Checking for updates…"
             };
 
             _versionLabel = new Label
             {
                 AutoSize = false,
-                Size = new Size(360, 18),
-                Location = new Point(20, 46),
-                Font = new Font("Segoe UI", 9f),
-                ForeColor = SystemColors.GrayText,
+                Font = DialogTheme.CaptionFont,
+                ForeColor = DialogTheme.MutedText,
                 Visible = false
             };
 
             _progressBar = new ProgressBar
             {
-                Size = new Size(300, 18),
-                Location = new Point(20, 72),
                 Minimum = 0,
                 Maximum = 100,
+                Style = ProgressBarStyle.Continuous,
                 Visible = false
             };
 
             _percentLabel = new Label
             {
                 AutoSize = true,
-                Location = new Point(328, 72),
-                Font = new Font("Segoe UI", 9f),
+                Font = DialogTheme.CaptionFont,
+                ForeColor = DialogTheme.MutedText,
                 Text = "0%",
                 Visible = false
             };
 
+            _releaseNotesLabel = DialogTheme.CreateSectionTitle(
+                "What’s new", new Point(CardPadding, 14));
+
+            _notesSeparator = new Panel { BackColor = DialogTheme.Border };
+
+            _releaseNotes = new ReleaseNotesControl { BorderStyle = BorderStyle.None };
+
+            _notesCard = new CardPanel { Visible = false };
+            _notesCard.Controls.Add(_releaseNotesLabel);
+            _notesCard.Controls.Add(_notesSeparator);
+            _notesCard.Controls.Add(_releaseNotes);
+
             _actionButton = new Button
             {
-                Size = new Size(110, 28),
-                Location = new Point(160, 142),
+                Size = new Size(130, 30),
                 Text = "Download",
                 Visible = false
             };
+            DialogTheme.StylePrimaryButton(_actionButton);
             _actionButton.Click += ActionButton_Click;
 
             _closeButton = new Button
             {
-                Size = new Size(80, 28),
-                Location = new Point(300, 142),
+                Size = new Size(96, 30),
                 Text = "Close",
                 DialogResult = DialogResult.Cancel
             };
+            DialogTheme.StyleSecondaryButton(_closeButton);
             CancelButton = _closeButton;
 
             _snoozeCheckBox = new CheckBox
             {
-                AutoSize = false,
-                Size = new Size(366, 20),
-                Location = new Point(14, 74),
-                Font = new Font("Segoe UI", 9f),
-                Text = "Do not check for 24 hours",
+                AutoSize = true,
+                Font = DialogTheme.BodyFont,
+                ForeColor = DialogTheme.MutedText,
+                Cursor = Cursors.Hand,
+                Text = "Don’t check again for 24 hours",
                 Visible = false
             };
 
-            _releaseNotesLabel = new Label
+            _footer = new Panel
             {
-                AutoSize = false,
-                Size = new Size(600, 20),
-                Location = new Point(20, 78),
-                Font = new Font("Segoe UI", 9f, FontStyle.Bold),
-                Text = "What's new",
-                Visible = false
+                Dock = DockStyle.Bottom,
+                Height = FooterHeight,
+                BackColor = DialogTheme.Surface
             };
-
-            _releaseNotes = new ReleaseNotesControl
+            _footer.Controls.Add(new Panel
             {
-                Size = new Size(600, 400),
-                Location = new Point(20, 100),
-                Visible = false
-            };
+                Dock = DockStyle.Top,
+                Height = 1,
+                BackColor = DialogTheme.Border
+            });
+            _footer.Controls.Add(_snoozeCheckBox);
+            _footer.Controls.Add(_actionButton);
+            _footer.Controls.Add(_closeButton);
 
             Controls.AddRange(new Control[]
             {
@@ -130,12 +151,11 @@ namespace DocuLink.Addin.Modules.UI
                 _versionLabel,
                 _progressBar,
                 _percentLabel,
-                _releaseNotesLabel,
-                _releaseNotes,
-                _actionButton,
-                _closeButton,
-                _snoozeCheckBox
+                _notesCard,
+                _footer
             });
+
+            ApplyLayout(showNotes: false);
         }
 
         /// <summary>
@@ -271,8 +291,9 @@ namespace DocuLink.Addin.Modules.UI
                     break;
 
                 case State.Found:
-                    _statusLabel.Text = "A new version of DocuLink is available.";
-                    _versionLabel.Text = $"v{result.LatestVersion}  (you have {AppVersion.Current})";
+                    _statusLabel.Text = "Update available";
+                    _versionLabel.Text =
+                        $"Version {result.LatestVersion} · you have {AppVersion.Current}";
                     _versionLabel.Visible = true;
                     _progressBar.Visible = false;
                     _percentLabel.Visible = false;
@@ -285,8 +306,10 @@ namespace DocuLink.Addin.Modules.UI
                     break;
 
                 case State.UpToDate:
-                    _statusLabel.Text = "DocuLink is up to date.";
-                    _versionLabel.Text = result != null ? $"(v{result.LatestVersion})" : $"(v{AppVersion.Current})";
+                    _statusLabel.Text = "DocuLink is up to date";
+                    _versionLabel.Text = result != null
+                        ? $"Version {result.LatestVersion} is the latest release."
+                        : $"Version {AppVersion.Current}";
                     _versionLabel.Visible = true;
                     _progressBar.Visible = false;
                     _percentLabel.Visible = false;
@@ -296,8 +319,10 @@ namespace DocuLink.Addin.Modules.UI
                     break;
 
                 case State.Dev:
-                    _statusLabel.Text = "Current build is Dev.";
-                    _versionLabel.Text = result != null ? $"Most recent version available: v{result.LatestVersion}" : "";
+                    _statusLabel.Text = "You’re on a development build";
+                    _versionLabel.Text = result != null
+                        ? $"Latest published version: {result.LatestVersion}"
+                        : string.Empty;
                     _versionLabel.Visible = true;
                     _progressBar.Visible = false;
                     _percentLabel.Visible = false;
@@ -321,7 +346,7 @@ namespace DocuLink.Addin.Modules.UI
                     break;
 
                 case State.Complete:
-                    _statusLabel.Text = "Download complete. Ready to install.";
+                    _statusLabel.Text = "Download complete — ready to install";
                     _progressBar.Visible = false;
                     _percentLabel.Visible = false;
                     _actionButton.Text = "Install Now";
@@ -332,7 +357,7 @@ namespace DocuLink.Addin.Modules.UI
                     break;
 
                 case State.Error:
-                    _statusLabel.Text = "Could not check for updates.";
+                    _statusLabel.Text = "Could not check for updates";
                     _versionLabel.Visible = false;
                     _progressBar.Visible = false;
                     _percentLabel.Visible = false;
@@ -343,30 +368,94 @@ namespace DocuLink.Addin.Modules.UI
             }
         }
 
+        /// <summary>
+        /// Shows the notes for the update being offered — the newest release the
+        /// user does not have — rather than the whole published history.
+        /// </summary>
         private void SetReleaseNotesLayout(bool visible, UpdateCheckResult result)
         {
-            _releaseNotesLabel.Visible = visible;
-            _releaseNotes.Visible = visible;
+            ReleaseNote latest = visible ? SelectOfferedRelease(result) : null;
+
+            _releaseNotesLabel.Text =
+                latest != null && !string.IsNullOrWhiteSpace(latest.Version)
+                    ? $"What’s new in v{latest.Version}"
+                    : "What’s new";
+
+            ApplyLayout(visible);
 
             if (visible)
+                _releaseNotes.SetRelease(latest);
+        }
+
+        /// <summary>
+        /// The release matching the version on offer, falling back to the most
+        /// recently published one when no tag matches.
+        /// </summary>
+        private static ReleaseNote SelectOfferedRelease(UpdateCheckResult result)
+        {
+            var notes = result?.ReleaseNotes;
+            if (notes == null || notes.Count == 0) return null;
+
+            for (int i = 0; i < notes.Count; i++)
             {
-                ClientSize = new Size(640, 590);
-                _statusLabel.Width = 600;
-                _versionLabel.Width = 600;
-                _snoozeCheckBox.SetBounds(14, 516, 606, 20);
-                _actionButton.Location = new Point(390, 548);
-                _closeButton.Location = new Point(540, 548);
-                _releaseNotes.SetReleases(result?.ReleaseNotes);
-                RecenterIfVisible();
-                return;
+                if (string.Equals(
+                        notes[i].Version,
+                        result.LatestVersion,
+                        StringComparison.OrdinalIgnoreCase))
+                {
+                    return notes[i];
+                }
             }
 
-            ClientSize = new Size(400, 185);
-            _statusLabel.Width = 360;
-            _versionLabel.Width = 360;
-            _snoozeCheckBox.SetBounds(14, 74, 366, 20);
-            _actionButton.Location = new Point(160, 142);
-            _closeButton.Location = new Point(300, 142);
+            // The service sorts newest first, so entry zero is the latest release.
+            return notes[0];
+        }
+
+        /// <summary>
+        /// Sizes the dialog for its two shapes: a compact status window, and the
+        /// taller form that carries the release-notes card.
+        /// </summary>
+        private void ApplyLayout(bool showNotes)
+        {
+            ClientSize = showNotes
+                ? new Size(NotesWidth, NotesHeight)
+                : new Size(CompactWidth, CompactHeight);
+
+            int width = ClientSize.Width;
+            int textWidth = width - (ContentMargin * 2) - 8;
+
+            _statusLabel.SetBounds(ContentMargin + 2, 22, textWidth, 24);
+            _versionLabel.SetBounds(ContentMargin + 4, 50, textWidth, 18);
+            _progressBar.SetBounds(ContentMargin + 4, 84, textWidth - 52, 10);
+            _percentLabel.Location = new Point(width - ContentMargin - 40, 80);
+
+            _notesCard.Visible = showNotes;
+            if (showNotes)
+            {
+                const int CardTop = 82;
+                _notesCard.SetBounds(
+                    ContentMargin,
+                    CardTop,
+                    width - (ContentMargin * 2),
+                    ClientSize.Height - FooterHeight - ContentMargin - CardTop);
+
+                _notesSeparator.SetBounds(
+                    CardPadding, 46, _notesCard.Width - (CardPadding * 2), 1);
+
+                _releaseNotes.SetBounds(
+                    CardPadding,
+                    60,
+                    _notesCard.Width - (CardPadding * 2),
+                    _notesCard.Height - 60 - CardPadding);
+            }
+
+            int buttonTop = (FooterHeight - _closeButton.Height) / 2 + 1;
+            _closeButton.Location =
+                new Point(width - ContentMargin - _closeButton.Width, buttonTop);
+            _actionButton.Location =
+                new Point(_closeButton.Left - 8 - _actionButton.Width, buttonTop);
+            _snoozeCheckBox.Location = new Point(ContentMargin, buttonTop + 6);
+
             RecenterIfVisible();
         }
 
