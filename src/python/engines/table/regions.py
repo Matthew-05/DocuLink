@@ -63,6 +63,31 @@ def _segment_count(record: dict) -> int:
     return count
 
 
+def _supported_left_edge(records: list[dict]) -> float:
+    """Keep repeated outdents without letting one stray glyph widen a table."""
+    starts = sorted(float(record["x0"]) for record in records)
+    if len(starts) < 2:
+        return starts[0]
+
+    character_widths = [
+        float(character["width"])
+        for record in records
+        for character in record["characters"]
+        if str(character.get("char", "")).strip()
+        and float(character.get("width", 0)) > 0
+    ]
+    tolerance = max(0.003, (median(character_widths) if character_widths else 0.005) * 1.25)
+
+    # A genuine hierarchy level normally recurs (for example section starts and
+    # totals). Pick the leftmost such cluster. Requiring two rows preserves the
+    # protection against a single OCR speck or page-edge annotation.
+    for start in starts:
+        peers = [value for value in starts if abs(value - start) <= tolerance]
+        if len(peers) >= 2:
+            return median(peers)
+    return median(starts)
+
+
 def discover_regions(
     page_geometry: dict,
     vertical_rulings: list[float],
@@ -99,10 +124,9 @@ def discover_regions(
         # accepted shape; longer blocks already provide enough repeated evidence.
         if len(group) == 3 and median(_segment_count(item) for item in group) < 4:
             continue
-        # A single OCR artifact near a page edge must not widen the entire table.
-        # Aligned rows normally agree on their outer columns, so median extents are
-        # a stable region estimate while still allowing uneven cell text lengths.
-        x0 = median(item["x0"] for item in group)
+        # Keep repeated outdents that represent higher hierarchy levels, while a
+        # single OCR artifact near a page edge must not widen the entire table.
+        x0 = _supported_left_edge(group)
         x1 = median(item["x1"] for item in group)
         y0 = min(item["y0"] for item in group)
         y1 = max(item["y1"] for item in group)
