@@ -12,6 +12,29 @@ export function getSearchResultsSummary(matchCount: number, hasMore: boolean): s
   return `${matchCount} result${matchCount === 1 ? "" : "s"}`;
 }
 
+interface SearchResultDisplayGroup {
+  pdfId: string;
+  pdfName: string;
+  matches: SearchMatch[];
+}
+
+/** Groups adjacent results without changing the search engine's ranked order. */
+export function groupSearchResultsInOrder(matches: SearchMatch[]): SearchResultDisplayGroup[] {
+  const groups: SearchResultDisplayGroup[] = [];
+
+  for (const match of matches) {
+    const current = groups[groups.length - 1];
+    if (current?.pdfId === match.pdfId) {
+      current.matches.push(match);
+      continue;
+    }
+
+    groups.push({ pdfId: match.pdfId, pdfName: match.pdfName, matches: [match] });
+  }
+
+  return groups;
+}
+
 export class SearchResultsPanel {
   readonly element: HTMLElement;
 
@@ -78,21 +101,18 @@ export class SearchResultsPanel {
     summary.textContent = getSearchResultsSummary(this._matches.length, this._hasMore);
     this.element.appendChild(summary);
 
-    const grouped = groupByPdf(this._matches);
-    for (const [pdfName, pdfMatches] of grouped) {
+    const groups = groupSearchResultsInOrder(this._matches);
+    for (const group of groups) {
       const section = document.createElement("div");
       section.className = "search-results-panel__section";
 
       const heading = document.createElement("div");
       heading.className = "search-results-panel__heading";
-      heading.textContent = pdfName;
+      heading.textContent = group.pdfName;
       section.appendChild(heading);
 
-      const byPage = groupByPage(pdfMatches);
-      for (const [pageIndex, pageMatches] of byPage) {
-        for (const match of pageMatches) {
-          section.appendChild(this._createItem(match, pageIndex));
-        }
+      for (const match of group.matches) {
+        section.appendChild(this._createItem(match));
       }
 
       this.element.appendChild(section);
@@ -108,14 +128,14 @@ export class SearchResultsPanel {
     }
   }
 
-  private _createItem(match: SearchMatch, pageIndex: number): HTMLElement {
+  private _createItem(match: SearchMatch): HTMLElement {
     const item = document.createElement("button");
     item.type = "button";
     item.className = "search-results-panel__item";
 
     const pageLabel = document.createElement("span");
     pageLabel.className = "search-results-panel__page";
-    pageLabel.textContent = `Page ${pageIndex + 1}`;
+    pageLabel.textContent = `Page ${match.pageIndex + 1}`;
 
     const context = document.createElement("span");
     context.className = "search-results-panel__context";
@@ -163,24 +183,4 @@ export class SearchResultsPanel {
 
     for (const cb of this._callbacks) cb(match);
   }
-}
-
-function groupByPdf(matches: SearchMatch[]): Map<string, SearchMatch[]> {
-  const map = new Map<string, SearchMatch[]>();
-  for (const match of matches) {
-    const list = map.get(match.pdfName) ?? [];
-    list.push(match);
-    map.set(match.pdfName, list);
-  }
-  return map;
-}
-
-function groupByPage(matches: SearchMatch[]): Map<number, SearchMatch[]> {
-  const map = new Map<number, SearchMatch[]>();
-  for (const match of matches) {
-    const list = map.get(match.pageIndex) ?? [];
-    list.push(match);
-    map.set(match.pageIndex, list);
-  }
-  return new Map([...map.entries()].sort(([a], [b]) => a - b));
 }

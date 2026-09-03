@@ -216,6 +216,24 @@ function isAccountingNumberClose(text: string, i: number): boolean {
   return openIndex !== -1 && findAccountingNumberEnd(text, openIndex) === i;
 }
 
+function isParenthesizedNumber(value: string): boolean {
+  return /^\(\s*\d[\d,.\s]*\)$/u.test(value);
+}
+
+function stripTrailingPunctuation(value: string): string {
+  let result = value.trimEnd();
+
+  while (result) {
+    const lastCharacter = Array.from(result).at(-1);
+    if (!lastCharacter || !/\p{P}/u.test(lastCharacter)) break;
+    if (lastCharacter === ")" && isParenthesizedNumber(result)) break;
+
+    result = result.slice(0, -lastCharacter.length).trimEnd();
+  }
+
+  return result;
+}
+
 function normalizeQuery(raw: string, normalizeDates: boolean): string {
   const lower = raw.trim().toLowerCase();
   let result = "";
@@ -238,7 +256,7 @@ function normalizeQuery(raw: string, normalizeDates: boolean): string {
     if (isAccountingNumberClose(lower, i)) continue;
     if (!isNumericComma(lower, i)) result += lower[i];
   }
-  return result;
+  return stripTrailingPunctuation(result);
 }
 
 export function normalizeSearchQuery(raw: string): string {
@@ -252,12 +270,13 @@ export function normalizeSearchQuery(raw: string): string {
  * spaces, control characters, or invisible width characters.
  */
 export function cleanAutoInsertedSearchQuery(raw: string): string {
-  return raw
+  const cleaned = raw
     .replace(/[\u200B-\u200D\u2060\uFEFF]/g, "")
     .replace(/[\u0000-\u001F\u007F-\u009F]/g, " ")
     .replace(/\p{Sc}/gu, "")
     .replace(/\s+/gu, " ")
     .trim();
+  return stripTrailingPunctuation(cleaned);
 }
 
 export function normalizeMatcherQuery(raw: string): string {
@@ -354,7 +373,11 @@ function expandToWord(
   entries: CharacterEntry[],
   matchStart: number,
   matchEnd: number,
-): { contextText: string; matchInContext: { start: number; end: number } } {
+): {
+  contextText: string;
+  matchInContext: { start: number; end: number };
+  fullTokenText: string;
+} {
   let wordStart = matchStart;
   while (
     wordStart > 0
@@ -373,10 +396,22 @@ function expandToWord(
     wordEnd++;
   }
 
+  const fullTokenText = text.slice(wordStart, wordEnd);
+  const preserveAccountingClose = isParenthesizedNumber(fullTokenText);
+  while (wordEnd > matchEnd && /\p{P}/u.test(text[wordEnd - 1] ?? "")) {
+    if (text[wordEnd - 1] === ")" && preserveAccountingClose) break;
+    wordEnd--;
+  }
+
   return {
     contextText: text.slice(wordStart, wordEnd),
     matchInContext: { start: matchStart - wordStart, end: matchEnd - wordStart },
+    fullTokenText,
   };
+}
+
+function prioritizeExactMatches(matches: SearchMatch[]): SearchMatch[] {
+  return matches.sort((a, b) => Number(b.exactMatch) - Number(a.exactMatch));
 }
 
 function rectFromEntries(
@@ -458,10 +493,9 @@ export function searchPageWithIndex(
   const { pageText, normalizedPageText, indexMap, dateSpans } = searchIndex;
   const queryLen = normalizedQuery.length;
   const matches: SearchMatch[] = [];
-  const limit = options.limit ?? Number.POSITIVE_INFINITY;
 
   let offset = 0;
-  while (matches.length < limit && offset <= normalizedPageText.length - queryLen) {
+  while (offset <= normalizedPageText.length - queryLen) {
     const hitIndex = normalizedPageText.indexOf(normalizedQuery, offset);
     if (hitIndex === -1) break;
 
@@ -480,7 +514,12 @@ export function searchPageWithIndex(
       continue;
     }
 
-    const { contextText, matchInContext } = expandToWord(pageText, entries, originalStart, originalEnd);
+    const { contextText, matchInContext, fullTokenText } = expandToWord(
+      pageText,
+      entries,
+      originalStart,
+      originalEnd,
+    );
     const highlightRect = rectFromEntries(entries, originalStart, originalEnd - 1);
 
     matches.push({
@@ -488,6 +527,10 @@ export function searchPageWithIndex(
       pdfId,
       pdfName,
       pageIndex,
+      exactMatch: normalizeQuery(
+        fullTokenText,
+        (options.normalizeDates ?? false) || dateSpans.length > 0,
+      ) === normalizedQuery,
       contextText,
       matchInContext,
       highlightRect,
@@ -496,5 +539,8 @@ export function searchPageWithIndex(
     offset = hitIndex + 1;
   }
 
-  return matches;
+  const prioritizedMatches = prioritizeExactMatches(matches);
+  return options.limit === undefined
+    ? prioritizedMatches
+    : prioritizedMatches.slice(0, options.limit);
 }

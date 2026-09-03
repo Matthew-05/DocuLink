@@ -16,7 +16,11 @@ export interface SearchBatch {
 }
 
 export class PdfTextSearcher {
-  constructor(private readonly _cache: TextContentCache) {}
+  private readonly _cache: TextContentCache;
+
+  constructor(cache: TextContentCache) {
+    this._cache = cache;
+  }
 
   search(rawQuery: string, pdfEntries: PdfEntry[]): SearchMatch[] {
     const normalizedQuery = normalizeSearchQuery(rawQuery);
@@ -36,7 +40,7 @@ export class PdfTextSearcher {
       }
     }
 
-    return results;
+    return results.sort((a, b) => Number(b.exactMatch) - Number(a.exactMatch));
   }
 
   createSession(rawQuery: string, pdfEntries: PdfEntry[]): PdfTextSearchSession {
@@ -56,16 +60,21 @@ export class PdfTextSearcher {
 }
 
 export class PdfTextSearchSession {
+  private readonly _cache: TextContentCache;
+  private readonly _normalizedQuery: string;
   private readonly _pages: SearchPageRef[];
   private _pageCursor = 0;
   private _matchCursor = 0;
   private _complete = false;
+  private _priority: "exact" | "partial" = "exact";
 
   constructor(
-    private readonly _cache: TextContentCache,
-    private readonly _normalizedQuery: string,
+    cache: TextContentCache,
+    normalizedQuery: string,
     pdfEntries: PdfEntry[],
   ) {
+    this._cache = cache;
+    this._normalizedQuery = normalizedQuery;
     this._pages = [];
 
     if (!this._normalizedQuery) {
@@ -90,11 +99,19 @@ export class PdfTextSearchSession {
     const matches: SearchMatch[] = [];
     let pagesScanned = 0;
 
-    while (
-      matches.length < limit
-      && this._pageCursor < this._pages.length
-      && pagesScanned < pageBudget
-    ) {
+    while (matches.length < limit && pagesScanned < pageBudget && !this._complete) {
+      if (this._pageCursor >= this._pages.length) {
+        if (this._priority === "exact") {
+          this._priority = "partial";
+          this._pageCursor = 0;
+          this._matchCursor = 0;
+          continue;
+        }
+
+        this._complete = true;
+        break;
+      }
+
       const page = this._pages[this._pageCursor]!;
       const entries = this._cache.get(page.entry.id, page.pageIndex);
       const searchIndex = this._cache.getSearchIndex(page.entry.id, page.pageIndex);
@@ -113,8 +130,7 @@ export class PdfTextSearchSession {
         entries,
         searchIndex,
         this._normalizedQuery,
-        { limit: this._matchCursor + limit - matches.length + 1 },
-      );
+      ).filter((match) => match.exactMatch === (this._priority === "exact"));
 
       const initialResultCount = matches.length;
       for (let i = this._matchCursor; i < pageMatches.length && matches.length < limit; i++) {
@@ -132,7 +148,6 @@ export class PdfTextSearchSession {
       pagesScanned++;
     }
 
-    this._complete = this._pageCursor >= this._pages.length;
     return { matches, complete: this._complete, hasMore: !this._complete };
   }
 }

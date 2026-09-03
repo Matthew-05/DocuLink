@@ -50,6 +50,7 @@ function entriesFromText(text, lineBreaks = new Set()) {
 assert.equal(normalizeSearchQuery(" 1,000 "), "1000");
 assert.equal(normalizeSearchQuery(" (1,000) "), "-1000");
 assert.equal(normalizeSearchQuery("08/07/26"), "08/07/26");
+assert.equal(normalizeSearchQuery("Invoice..."), "invoice");
 assert.equal(normalizeMatcherQuery(" 03/05/2026 "), "3/5/2026");
 assert.equal(normalizeMatcherQuery("2026-03-05"), "3/5/2026");
 assert.equal(normalizeMatcherQuery("March 5th, 2026"), "3/5/2026");
@@ -57,6 +58,7 @@ assert.equal(normalizeMatcherQuery("5 Mar 2026"), "3/5/2026");
 assert.equal(normalizeMatcherQuery("03/05/26"), "3/5/2026");
 assert.equal(normalizeMatcherQuery("03/05/30"), "3/5/2030");
 assert.equal(normalizeMatcherQuery("02/30/2026"), "02/30/2026");
+assert.equal(normalizeMatcherQuery("Acme Corp,"), "acme corp");
 
 assert.equal(cleanAutoInsertedSearchQuery("       $1,234.56   "), "1,234.56");
 assert.equal(cleanAutoInsertedSearchQuery(" \u20ac 1.234,56 "), "1.234,56");
@@ -64,6 +66,11 @@ assert.equal(cleanAutoInsertedSearchQuery("\t Invoice\r\n1042 \u00a0"), "Invoice
 assert.equal(cleanAutoInsertedSearchQuery("Acme\u200b\u2060 Corp"), "Acme Corp");
 assert.equal(cleanAutoInsertedSearchQuery("PO\u0000123"), "PO 123");
 assert.equal(cleanAutoInsertedSearchQuery("  March   5, 2026  "), "March 5, 2026");
+assert.equal(cleanAutoInsertedSearchQuery(" Invoice?! "), "Invoice");
+assert.equal(cleanAutoInsertedSearchQuery(" (1,000) "), "(1,000)");
+assert.equal(cleanAutoInsertedSearchQuery(" ($1,234.56) "), "(1,234.56)");
+assert.equal(normalizeSearchQuery(cleanAutoInsertedSearchQuery(" ($1,234.56) ")), "-1234.56");
+assert.equal(cleanAutoInsertedSearchQuery("Invoice)"), "Invoice");
 
 {
   const entries = entriesFromText("total 1,000 due");
@@ -82,6 +89,14 @@ assert.equal(cleanAutoInsertedSearchQuery("  March   5, 2026  "), "March 5, 2026
   assert.deepEqual(matches[0].matchInContext, { start: 0, end: 7 });
 }
 
+{
+  const entries = entriesFromText("variance (11) due");
+  const matches = searchPage("pdf-1", "Invoice", 0, entries, normalizeSearchQuery("11"));
+  assert.equal(matches.length, 1);
+  assert.equal(matches[0].contextText, "(11)");
+  assert.deepEqual(matches[0].matchInContext, { start: 1, end: 3 });
+}
+
 for (const sourceDate of ["03/05/2026", "2026-03-05", "March 5th, 2026", "5 Mar 2026", "03/05/26"]) {
   const entries = entriesFromText(`dated ${sourceDate} due`);
   const index = buildSearchPageIndexFromEntries(entries, { normalizeDates: true });
@@ -94,6 +109,7 @@ for (const sourceDate of ["03/05/2026", "2026-03-05", "March 5th, 2026", "5 Mar 
     normalizeMatcherQuery("3/5/2026"),
   );
   assert.equal(matches.length, 1, `expected formatted date to match ${sourceDate}`);
+  assert.equal(matches[0].exactMatch, true);
   assert.equal(matches[0].contextText, sourceDate);
   assert.deepEqual(matches[0].matchInContext, { start: 0, end: sourceDate.length });
 }
@@ -139,6 +155,36 @@ for (const sourceDate of ["03/05/2026", "2026-03-05", "March 5th, 2026", "5 Mar 
   const matches = searchPageWithIndex("pdf-1", "Invoice", 0, entries, index, "fee", { limit: 2 });
   assert.equal(matches.length, 2);
   assert.deepEqual(matches.map((m) => m.id), ["pdf-1:0:0", "pdf-1:0:4"]);
+}
+
+{
+  const entries = entriesFromText("111 11.00 11,");
+  const matches = searchPageWithIndex(
+    "pdf-1",
+    "Numbers",
+    0,
+    entries,
+    buildSearchPageIndexFromEntries(entries),
+    normalizeSearchQuery("11"),
+    { limit: 1 },
+  );
+  assert.deepEqual(matches.map((match) => match.contextText), ["11"]);
+}
+
+{
+  const entries = entriesFromText("111 11.00 A11 11, 11");
+  const matches = searchPage("pdf-1", "Numbers", 0, entries, normalizeSearchQuery("11"));
+  assert.deepEqual(
+    matches.map((match) => [match.id, match.exactMatch, match.contextText]),
+    [
+      ["pdf-1:0:14", true, "11"],
+      ["pdf-1:0:18", true, "11"],
+      ["pdf-1:0:0", false, "111"],
+      ["pdf-1:0:1", false, "111"],
+      ["pdf-1:0:4", false, "11.00"],
+      ["pdf-1:0:11", false, "A11"],
+    ],
+  );
 }
 
 {

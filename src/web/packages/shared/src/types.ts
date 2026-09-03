@@ -10,6 +10,7 @@ export interface SearchMatch {
   pdfId: string;
   pdfName: string;
   pageIndex: number;
+  exactMatch: boolean;
   contextText: string;
   matchInContext: { start: number; end: number };
   highlightRect: NormalizedRect;

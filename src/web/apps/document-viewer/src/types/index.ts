@@ -94,12 +94,4 @@ export interface LinkSelectionEntry {
   cellValue: string;
 }
 
-export interface SearchMatch {
-  id: string;
-  pdfId: string;
-  pdfName: string;
-  pageIndex: number; // 0-based
-  contextText: string;
-  matchInContext: { start: number; end: number };
-  highlightRect: NormalizedRect;
-}
+export type { SearchMatch } from "@doculink/shared";
