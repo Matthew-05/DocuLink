@@ -145,6 +145,9 @@ src/web/package-lock.json
 # Written by generate-version.ps1 before each C# build
 src/DocuLink.Addin/Properties/GeneratedVersion.cs
 
+# Generated analysis and diagnostic artifacts
+/output/
+
 # --- Installer build artifacts ---
 # Generated at build time; not committed
 installer/obj/
