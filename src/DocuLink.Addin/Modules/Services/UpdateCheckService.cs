@@ -13,15 +13,21 @@ namespace DocuLink.Addin.Modules.Services
     internal sealed class ReleaseNote
     {
         internal string Version { get; }
+
+        /// <summary>The release's headline on GitHub; often just the tag name.</summary>
+        internal string Title { get; }
+
         internal string Body { get; }
         internal DateTimeOffset? PublishedAt { get; }
 
         internal ReleaseNote(
             string version,
+            string title,
             string body,
             DateTimeOffset? publishedAt)
         {
             Version = version;
+            Title = title;
             Body = body;
             PublishedAt = publishedAt;
         }
@@ -90,6 +96,7 @@ namespace DocuLink.Addin.Modules.Services
 
                     releases.Add(new ReleaseNote(
                         version,
+                        GetString(data, "name"),
                         GetString(data, "body"),
                         publishedAt));
 

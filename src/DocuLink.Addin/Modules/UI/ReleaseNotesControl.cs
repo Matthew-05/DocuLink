@@ -219,7 +219,7 @@ namespace DocuLink.Addin.Modules.UI
             else
             {
                 for (var index = 0; index < releases.Count; index++)
-                    AppendRelease(html, releases[index], index == 0);
+                    AppendRelease(html, releases[index]);
             }
 
             html.Append("</main></body></html>");
@@ -250,11 +250,16 @@ namespace DocuLink.Addin.Modules.UI
             return html.ToString();
         }
 
-        private static void AppendRelease(StringBuilder html, ReleaseNote release, bool expanded)
+        /// <summary>
+        /// Renders one collapsed disclosure row: version, the release's own title,
+        /// the publication date, and an "Installed" badge on the running version.
+        /// </summary>
+        private static void AppendRelease(StringBuilder html, ReleaseNote release)
         {
             var version = string.IsNullOrWhiteSpace(release.Version)
                 ? "Untitled release"
                 : "v" + release.Version;
+            var title = DescribeTitle(release);
             var date = release.PublishedAt.HasValue
                 ? release.PublishedAt.Value.ToLocalTime().ToString("MMMM d, yyyy")
                 : string.Empty;
@@ -262,10 +267,18 @@ namespace DocuLink.Addin.Modules.UI
                 ? "*No release notes were provided for this release.*"
                 : release.Body.Trim();
 
-            html.Append(expanded ? "<details class=\"release\" open>" : "<details class=\"release\">");
+            html.Append("<details class=\"release\">");
             html.Append("<summary><span class=\"version\">");
             html.Append(WebUtility.HtmlEncode(version));
             html.Append("</span>");
+            if (IsInstalled(release))
+                html.Append("<span class=\"installed\">Installed</span>");
+            if (title.Length > 0)
+            {
+                html.Append("<span class=\"separator\">·</span><span class=\"title\">");
+                html.Append(WebUtility.HtmlEncode(title));
+                html.Append("</span>");
+            }
             if (date.Length > 0)
             {
                 html.Append("<span class=\"separator\">·</span><time>");
@@ -275,6 +288,34 @@ namespace DocuLink.Addin.Modules.UI
             html.Append("</summary><article class=\"markdown-body\">");
             html.Append(Markdown.ToHtml(markdown, MarkdownPipeline));
             html.Append("</article></details>");
+        }
+
+        /// <summary>
+        /// The release's headline, dropped when it only repeats the version so the
+        /// row does not read "v1.2.0 · v1.2.0".
+        /// </summary>
+        private static string DescribeTitle(ReleaseNote release)
+        {
+            var title = (release.Title ?? string.Empty).Trim();
+            if (title.Length == 0) return string.Empty;
+
+            var normalizedTitle = title.TrimStart('v', 'V');
+            var version = (release.Version ?? string.Empty).Trim();
+
+            return string.Equals(normalizedTitle, version, StringComparison.OrdinalIgnoreCase)
+                ? string.Empty
+                : title;
+        }
+
+        /// <summary>Whether a release is the build currently running.</summary>
+        private static bool IsInstalled(ReleaseNote release)
+        {
+            var version = (release.Version ?? string.Empty).Trim().TrimStart('v', 'V');
+            if (version.Length == 0) return false;
+
+            var current = (AppVersion.Current ?? string.Empty).Trim().TrimStart('v', 'V');
+            return current.Length > 0
+                && string.Equals(version, current, StringComparison.OrdinalIgnoreCase);
         }
 
         private void DeleteHtmlFile()
@@ -330,8 +371,10 @@ summary::before { content: '›'; width: 14px; color: #57606a; font-size: 22px; 
 details[open] > summary::before { transform: rotate(90deg); }
 summary:hover { background: #eef2f6; }
 summary:focus-visible { outline: 2px solid #0969da; outline-offset: -2px; }
-.version { color: #1f2328; font-weight: 650; }
-.separator, time { color: #656d76; font-size: 13px; }
+.version { flex: 0 0 auto; color: #1f2328; font-weight: 650; }
+.title { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #1f2328; font-size: 13px; }
+.separator, time { flex: 0 0 auto; color: #656d76; font-size: 13px; }
+.installed { flex: 0 0 auto; margin-left: 2px; padding: 1px 8px; border: 1px solid rgba(31,136,61,.35); border-radius: 999px; background: #dafbe1; color: #1a7f37; font-size: 11px; font-weight: 650; white-space: nowrap; }
 .markdown-body { padding: 18px 28px 24px 40px; overflow-wrap: anywhere; }
 .markdown-body.single { padding: 4px 20px 18px; }
 .markdown-body > :first-child { margin-top: 0 !important; }
