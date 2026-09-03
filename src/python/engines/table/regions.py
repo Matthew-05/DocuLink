@@ -6,6 +6,12 @@ from statistics import median
 from engines.text_lines import line_bounds, line_groups
 
 
+# How far outside a table a short line may sit and still count as its caption,
+# as a fraction of the page. A section caption is outdented by one indent step
+# and sits on the next line; anything further belongs to something else.
+_CAPTION_REACH = 0.03
+
+
 def line_records(page_geometry: dict, bounds: dict | None = None) -> list[dict]:
     records: list[dict] = []
     for characters in line_groups(page_geometry):
@@ -52,8 +58,8 @@ def line_records(page_geometry: dict, bounds: dict | None = None) -> list[dict]:
     return visual
 
 
-def _segment_starts(record: dict) -> list[float]:
-    """Left edge of each whitespace-separated run on one visual line."""
+def _segment_spans(record: dict) -> list[tuple[float, float]]:
+    """The whitespace-separated runs on one visual line, as (start, end)."""
     chars = sorted(
         [item for item in record["characters"] if str(item.get("char", "")).strip()],
         key=lambda item: float(item["x"]),
@@ -62,18 +68,23 @@ def _segment_starts(record: dict) -> list[float]:
         return []
     widths = [float(item["width"]) for item in chars if float(item.get("width", 0)) > 0]
     threshold = max(0.012, (median(widths) if widths else 0.005) * 2.5)
-    starts = [float(chars[0]["x"])]
-    right = float(chars[0]["x"]) + float(chars[0]["width"])
+    spans: list[list[float]] = [[float(chars[0]["x"]), float(chars[0]["x"]) + float(chars[0]["width"])]]
     for character in chars[1:]:
         left = float(character["x"])
-        if left - right >= threshold:
-            starts.append(left)
-        right = max(right, left + float(character["width"]))
-    return starts
+        if left - spans[-1][1] >= threshold:
+            spans.append([left, left + float(character["width"])])
+        else:
+            spans[-1][1] = max(spans[-1][1], left + float(character["width"]))
+    return [(start, end) for start, end in spans]
+
+
+def _segment_gutters(record: dict) -> list[tuple[float, float]]:
+    spans = _segment_spans(record)
+    return [(spans[index][1], spans[index + 1][0]) for index in range(len(spans) - 1)]
 
 
 def _segment_count(record: dict) -> int:
-    return len(_segment_starts(record))
+    return len(_segment_spans(record))
 
 
 def _continues_block(group: list[dict], record: dict) -> bool:
@@ -83,24 +94,20 @@ def _continues_block(group: list[dict], record: dict) -> bool:
     table above it. Justified prose also breaks into runs, so run *count* proves
     nothing — the runs have to land on the columns the block already established.
     """
-    widths = [
-        float(character["width"])
-        for member in group
-        for character in member["characters"]
-        if str(character.get("char", "")).strip() and float(character.get("width", 0)) > 0
-    ]
-    tolerance = max(0.004, (median(widths) if widths else 0.005) * 1.5)
-    seen: list[float] = sorted(start for member in group for start in _segment_starts(member))
-    anchors = [
-        start
-        for start in seen
-        if sum(1 for value in seen if abs(value - start) <= tolerance) >= 2
-    ]
-    matches = sum(
-        1
-        for start in _segment_starts(record)
-        if any(abs(start - anchor) <= tolerance for anchor in anchors)
-    )
+    # Compare gutters, not run starts. A report centres its header labels over the
+    # columns, so "Type"/"Date" begin nowhere near the values beneath them — but
+    # the whitespace corridors between them line up, which is what a column *is*.
+    member_gutters = [gutter for member in group for gutter in _segment_gutters(member)]
+    matches = 0
+    for start, end in _segment_gutters(record):
+        for other_start, other_end in member_gutters:
+            overlap = min(end, other_end) - max(start, other_start)
+            # Score against the wider corridor. Against the narrower one, the huge
+            # gap in a report's title block ("3:13 PM      Door Works") swallows any
+            # column gutter and the title joins the table.
+            if overlap > 0 and overlap >= max(end - start, other_end - other_start) * 0.5:
+                matches += 1
+                break
     return matches >= 2
 
 
@@ -152,18 +159,27 @@ def discover_regions(
         return candidates
     heights = [record["y1"] - record["y0"] for record in records]
     max_gap = max(0.018, median(heights) * 2.5)
-    page_width = max((record["x1"] - record["x0"] for record in records), default=1.0)
+    widest_line = max((record["x1"] - record["x0"] for record in records), default=1.0)
     groups: list[list[dict]] = []
-    # A statement interleaves its sections with short captions ("Cost of sales:").
-    # Those lines hold one segment, so they are not members — but measuring the next
-    # row's gap from the last *member* made every caption look like the end of the
-    # table, splitting one statement into three headerless fragments. Bridge over a
-    # short caption; a full-width line is prose and still ends the block.
+    # Section captions ("Cost of sales:") hold one segment, so they cannot vote on
+    # the block's shape — but they are lines of the table, and `detect_rows` will
+    # make rows of them. Carry them alongside each group so the bounds reach them;
+    # measuring the edges from members alone clipped "Gross margin:" to "ss margin:".
+    captions: list[list[dict]] = []
+    pending: list[dict] = []
     previous_bottom: float | None = None
     for record in records:
         if _segment_count(record) < 2:
-            if previous_bottom is not None and record["x1"] - record["x0"] < page_width * 0.6:
-                previous_bottom = max(previous_bottom, record["y1"])
+            if record["x1"] - record["x0"] < widest_line * 0.6:
+                pending.append(record)
+                if previous_bottom is not None:
+                    # Bridge the gap: measuring the next row from the last member
+                    # made every caption look like the end of the table, splitting
+                    # one statement into three headerless fragments.
+                    previous_bottom = max(previous_bottom, record["y1"])
+            else:
+                # A full-width line is prose, and prose ends the block.
+                pending = []
             continue
         bridged = bool(groups) and previous_bottom is not None and groups[-1][-1]["y1"] < previous_bottom
         if (
@@ -173,10 +189,13 @@ def discover_regions(
             or (bridged and not _continues_block(groups[-1], record))
         ):
             groups.append([record])
+            captions.append([item for item in pending if record["y0"] - item["y1"] <= max_gap])
         else:
             groups[-1].append(record)
+            captions[-1].extend(pending)
+        pending = []
         previous_bottom = record["y1"]
-    for group in groups:
+    for index, group in enumerate(groups):
         if len(group) < 3:
             continue
         # Three-row whitespace tables are useful, but a short address/date block
@@ -184,17 +203,52 @@ def discover_regions(
         # accepted shape; longer blocks already provide enough repeated evidence.
         if len(group) == 3 and median(_segment_count(item) for item in group) < 4:
             continue
-        # Keep repeated outdents that represent higher hierarchy levels, while a
-        # single OCR artifact near a page edge must not widen the entire table.
-        x0 = _supported_edge(group, "x0")
-        x1 = _supported_edge(group, "x1")
+        # Measure the members' own edges first and admit only captions that sit
+        # within an indent step of them. Comparing against the raw minimum would
+        # anchor the test to whatever OCR speck starts furthest left, which is
+        # exactly the noise the supported-edge rule exists to ignore.
+        member_left = _supported_edge(group, "x0")
+        member_right = _supported_edge(group, "x1")
+        # A caption is a label, not a sentence: "Operating expenses for 2025, 2024
+        # and 2023 were as follows" is an intro line and belongs above the table,
+        # not in its header.
+        admitted = [
+            item
+            for item in captions[index]
+            if item["x0"] >= member_left - _CAPTION_REACH
+            and item["x1"] <= member_right + _CAPTION_REACH
+            and item["x1"] - item["x0"] <= (member_right - member_left) * 0.4
+        ]
+        covered = group + admitted
         y0 = min(item["y0"] for item in group)
         y1 = max(item["y1"] for item in group)
+        # A caption may pull the edge out to itself — that is how a single-line
+        # period super-header ("2025") joins the table it labels — but only across
+        # a real line gap. On a noisy scan, line heights balloon to a tenth of the
+        # page, so the reach is capped in page terms too: a short line further than
+        # this is a speck or someone else's heading, not this table's caption.
+        reach = min(median(heights), _CAPTION_REACH)
+        extending = True
+        while extending:
+            extending = False
+            for item in admitted:
+                if item["y0"] < y0 and y0 - item["y1"] <= reach:
+                    y0 = item["y0"]
+                    extending = True
+                elif item["y1"] > y1 and item["y0"] - y1 <= reach:
+                    y1 = item["y1"]
+                    extending = True
+        top = max(0.0, y0 - median(heights) * 0.4)
+        bottom = min(1.0, y1 + median(heights) * 0.4)
+        # Keep repeated outdents that represent higher hierarchy levels, while a
+        # single OCR artifact near a page edge must not widen the entire table.
+        x0 = _supported_edge(covered, "x0")
+        x1 = _supported_edge(covered, "x1")
         bounds = {
             "x": max(0.0, x0 - 0.004),
-            "y": max(0.0, y0 - median(heights) * 0.4),
+            "y": top,
             "width": min(1.0, x1 + 0.004) - max(0.0, x0 - 0.004),
-            "height": min(1.0, y1 + median(heights) * 0.4) - max(0.0, y0 - median(heights) * 0.4),
+            "height": bottom - top,
         }
         if any(_overlap_ratio(bounds, candidate["bounds"]) > 0.5 for candidate in candidates):
             continue

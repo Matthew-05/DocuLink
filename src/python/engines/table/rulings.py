@@ -130,11 +130,27 @@ def _dedupe(values: list[float], tolerance: float = 0.004) -> list[float]:
     return result
 
 
+def _to_displayed(matrix: tuple[float, ...], x: float, y: float) -> tuple[float, float]:
+    a, b, c, d, e, f = matrix
+    return a * x + c * y + e, b * x + d * y + f
+
+
 def _vector_rulings(page) -> tuple[list[float], list[float]]:
     width = float(page.rect.width)
     height = float(page.rect.height)
     if width <= 0 or height <= 0:
         return [], []
+    # `get_drawings` reports the unrotated page, while `page.rect` and the raster
+    # pass below both describe the displayed one. On a rotated page that put every
+    # rule on the wrong axis at the wrong offset — a rule displaying vertically at
+    # x=0.83 was emitted as horizontal at y=0.25 — and mixed two coordinate spaces
+    # into one list. The rotation matrix is the identity for upright pages.
+    try:
+        matrix = tuple(float(value) for value in page.rotation_matrix)
+        if len(matrix) != 6:
+            raise ValueError
+    except Exception:
+        matrix = (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)
     vertical: list[float] = []
     horizontal: list[float] = []
     for drawing in page.get_drawings():
@@ -173,8 +189,8 @@ def _vector_rulings(page) -> tuple[list[float], list[float]]:
                     # header included.
                     continue
             for first, second in segments:
-                x0, y0 = float(first[0]), float(first[1])
-                x1, y1 = float(second[0]), float(second[1])
+                x0, y0 = _to_displayed(matrix, float(first[0]), float(first[1]))
+                x1, y1 = _to_displayed(matrix, float(second[0]), float(second[1]))
                 if abs(x1 - x0) <= 1.5 and abs(y1 - y0) >= height * 0.04:
                     vertical.append(((x0 + x1) / 2 - page.rect.x0) / width)
                 if abs(y1 - y0) <= 1.5 and abs(x1 - x0) >= width * 0.04:
