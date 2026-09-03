@@ -6,6 +6,9 @@ import math
 
 
 _GRID_DARKNESS_LEVELS = (110, 140, 170, 200, 220)
+# A rule is a hairline. Filled rectangles thicker than this are row shading,
+# highlight blocks or chart fills, whose edges are not table structure.
+_MAX_RULE_THICKNESS_PT = 2.5
 _MIN_IMAGE_WIDTH = 400
 _MIN_IMAGE_HEIGHT = 200
 
@@ -135,6 +138,7 @@ def _vector_rulings(page) -> tuple[list[float], list[float]]:
     vertical: list[float] = []
     horizontal: list[float] = []
     for drawing in page.get_drawings():
+        stroked = drawing.get("type") in ("s", "fs") or drawing.get("color") is not None
         for item in drawing.get("items", []):
             kind = item[0]
             segments = []
@@ -142,14 +146,32 @@ def _vector_rulings(page) -> tuple[list[float], list[float]]:
                 segments.append((item[1], item[2]))
             elif kind == "re" and len(item) >= 2:
                 rect = item[1]
-                segments.extend(
-                    [
-                        ((rect.x0, rect.y0), (rect.x1, rect.y0)),
-                        ((rect.x1, rect.y0), (rect.x1, rect.y1)),
-                        ((rect.x1, rect.y1), (rect.x0, rect.y1)),
-                        ((rect.x0, rect.y1), (rect.x0, rect.y0)),
-                    ]
-                )
+                thickness = min(abs(rect.x1 - rect.x0), abs(rect.y1 - rect.y0))
+                if stroked:
+                    # An outlined box: all four edges are drawn, so all four are rules.
+                    segments.extend(
+                        [
+                            ((rect.x0, rect.y0), (rect.x1, rect.y0)),
+                            ((rect.x1, rect.y0), (rect.x1, rect.y1)),
+                            ((rect.x1, rect.y1), (rect.x0, rect.y1)),
+                            ((rect.x0, rect.y1), (rect.x0, rect.y0)),
+                        ]
+                    )
+                elif thickness <= _MAX_RULE_THICKNESS_PT:
+                    # A hairline drawn as a filled rectangle — the usual way an
+                    # accounting underline is emitted. Collapse it to its centreline.
+                    if abs(rect.y1 - rect.y0) <= abs(rect.x1 - rect.x0):
+                        middle = (rect.y0 + rect.y1) / 2
+                        segments.append(((rect.x0, middle), (rect.x1, middle)))
+                    else:
+                        middle = (rect.x0 + rect.x1) / 2
+                        segments.append(((middle, rect.y0), (middle, rect.y1)))
+                else:
+                    # Row shading. Taking its edges as rules made every stripe look
+                    # like a cell border, which drove `detect_rows` down the ruled
+                    # path and discarded every line above the first stripe — the
+                    # header included.
+                    continue
             for first, second in segments:
                 x0, y0 = float(first[0]), float(first[1])
                 x1, y1 = float(second[0]), float(second[1])

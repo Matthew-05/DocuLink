@@ -31,7 +31,13 @@ def detect_tables(
                 columns = detect_columns(page_geometry, bounds, vertical)
                 if len(columns) < 2:
                     continue
-                rows = detect_rows(page_geometry, bounds, horizontal, columns)
+                rows = detect_rows(
+                    page_geometry,
+                    bounds,
+                    horizontal,
+                    columns,
+                    grid=candidate["evidence"] == "ruled",
+                )
                 if len(rows) < 2:
                     continue
                 header = detect_header(
@@ -39,6 +45,7 @@ def detect_tables(
                     columns,
                     rows,
                     ruled=candidate["evidence"] == "ruled",
+                    bounds=bounds,
                 )
                 tables.append({
                     "id": f"page-{page_index}-table-{len(tables)}",

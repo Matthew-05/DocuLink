@@ -68,6 +68,7 @@ def _configure_bundled_tools() -> None:
 _configure_bundled_tools()
 
 import ocrmypdf  # noqa: E402 — must come after env setup
+from engines.text_lines import line_bounds, line_groups  # noqa: E402
 from engines.ocr_progress_plugin import (  # noqa: E402
     configure_progress_callback,
     progress_message_with_elapsed,
@@ -928,42 +929,6 @@ def should_merge_faint_ink_retry(primary: dict, candidate: dict) -> bool:
     )
 
 
-def _line_groups(page: dict) -> list[list[dict]]:
-    groups: dict[int, list[dict]] = {}
-    order: list[int] = []
-    for character in page.get("characters", []):
-        line_index = int(character.get("lineIndex", 0))
-        if line_index not in groups:
-            groups[line_index] = []
-            order.append(line_index)
-        groups[line_index].append(character)
-    return [groups[line_index] for line_index in order]
-
-
-def _line_bounds(characters: list[dict]) -> tuple[float, float, float, float] | None:
-    visible = [
-        character
-        for character in characters
-        if str(character.get("char", "")).strip()
-        and float(character.get("width", 0.0)) > 0
-        and float(character.get("height", 0.0)) > 0
-    ]
-    if not visible:
-        return None
-    return (
-        min(float(character["x"]) for character in visible),
-        min(float(character["y"]) for character in visible),
-        max(
-            float(character["x"]) + float(character["width"])
-            for character in visible
-        ),
-        max(
-            float(character["y"]) + float(character["height"])
-            for character in visible
-        ),
-    )
-
-
 def _line_regions_overlap(
     first: tuple[float, float, float, float],
     second: tuple[float, float, float, float],
@@ -992,8 +957,8 @@ def merge_missing_text_lines(
     original Tesseract reading order is retained; new lines are inserted by
     vertical position instead of globally re-sorting multi-column source text.
     """
-    primary_groups = _line_groups(primary_page)
-    primary_bounds = [_line_bounds(group) for group in primary_groups]
+    primary_groups = line_groups(primary_page)
+    primary_bounds = [line_bounds(group) for group in primary_groups]
     primary_confidences = {
         int(item.get("line_index", index)): float(
             item.get("mean_confidence", 0.0)
@@ -1008,12 +973,12 @@ def merge_missing_text_lines(
     }
     additions: list[tuple[tuple[float, float, float, float], list[dict], str]] = []
     replacements: dict[int, tuple[list[dict], str]] = {}
-    for candidate_index, group in enumerate(_line_groups(candidate_page)):
+    for candidate_index, group in enumerate(line_groups(candidate_page)):
         text = "".join(str(character.get("char", "")) for character in group).strip()
         candidate_alphanumeric = sum(character.isalnum() for character in text)
         if candidate_alphanumeric < 3:
             continue
-        bounds = _line_bounds(group)
+        bounds = line_bounds(group)
         if bounds is None:
             continue
         overlapping = [
@@ -1067,7 +1032,7 @@ def merge_missing_text_lines(
     replaced_word_delta = 0
     replaced_character_delta = 0
     for primary_index, primary_group in enumerate(primary_groups):
-        primary_bounds_item = _line_bounds(primary_group)
+        primary_bounds_item = line_bounds(primary_group)
         primary_y = primary_bounds_item[1] if primary_bounds_item else 1.0
         while (
             addition_index < len(additions)

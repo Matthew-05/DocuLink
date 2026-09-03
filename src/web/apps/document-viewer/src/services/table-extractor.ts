@@ -50,12 +50,21 @@ function summarizeRow(entries: CharacterEntry[]): VisualRow {
   };
 }
 
+/**
+ * Overlap has to dominate. A sparse band (for example a period header sitting over the
+ * first data line) overlaps the line below it by about half a glyph height, which the
+ * previous 0.4-or-close-centers rule merged away. Fragments of one visual row overlap
+ * almost completely instead.
+ *
+ * Mirrors `line_records` in python/engines/table/regions.py — keep the two in step, or
+ * the extracted grid stops agreeing with the detector's suggested rows.
+ */
 function shouldMergeRows(first: VisualRow, second: VisualRow): boolean {
   const overlap = Math.max(0, Math.min(first.bottom, second.bottom) - Math.max(first.top, second.top));
   const smallerHeight = Math.min(first.bottom - first.top, second.bottom - second.top);
-  const overlapRatio = smallerHeight > 0 ? overlap / smallerHeight : 0;
-  const centerTolerance = Math.max(first.medianHeight, second.medianHeight) * 0.55;
-  return overlapRatio >= 0.4 || Math.abs(first.center - second.center) <= centerTolerance;
+  if (smallerHeight > 0) return overlap / smallerHeight >= 0.7;
+  const centerTolerance = Math.max(first.medianHeight, second.medianHeight) * 0.25;
+  return Math.abs(first.center - second.center) <= centerTolerance;
 }
 
 /**

@@ -24,13 +24,39 @@ def detect_rows(
     bounds: dict,
     horizontal_rulings: list[float],
     columns: list[dict],
+    *,
+    grid: bool = False,
 ) -> list[dict]:
     top = bounds["y"]
     bottom = top + bounds["height"]
-    records = line_records(page_geometry, bounds)
+    # `line_records` keeps any line that overlaps the region, so a caption sitting
+    # just above the table came back as a member. Its centre is above the top edge,
+    # which made the first band a sliver holding no text — and header detection,
+    # which reads the first bands, then saw nothing.
+    records = [
+        record
+        for record in line_records(page_geometry, bounds)
+        if top <= (record["y0"] + record["y1"]) / 2 <= bottom
+    ]
     ruled = [value for value in horizontal_rulings if top - 0.002 <= value <= bottom + 0.002]
-    if len(ruled) >= 3:
+    # Only a genuine grid may define rows by its rules. Financial statements
+    # underline every subtotal, which easily clears three horizontal lines while
+    # being emphasis, not structure — and letting those define the bands discarded
+    # every line outside them, the period header first of all.
+    if grid and len(ruled) >= 3:
         ruled = sorted(ruled)
+        # Anchor the outer edges to the table so nothing above the first rule or
+        # below the last one falls outside every row.
+        # Stretch the outer edges only where text actually sits outside the rules,
+        # so a header above the first rule is captured without inventing a blank
+        # band on a bordered form that simply starts with its border.
+        def _center(record: dict) -> float:
+            return (record["y0"] + record["y1"]) / 2
+
+        if any(top <= _center(record) < ruled[0] for record in records):
+            ruled[0] = top
+        if any(ruled[-1] < _center(record) <= bottom for record in records):
+            ruled[-1] = bottom
         rows = []
         for index in range(len(ruled) - 1):
             y0, y1 = ruled[index], ruled[index + 1]

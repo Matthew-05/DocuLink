@@ -132,6 +132,25 @@ test("copied tables preserve source columns while detecting target rows", () => 
   ]);
 });
 
+test("keeps a sparse period band off the data line below it", () => {
+  // Mirrors test_sparse_header_is_not_coalesced_with_lower_data_line in
+  // python/tests/test_table_structure.py. The two merge rules must agree, or the
+  // extracted grid stops matching the detector's suggested rows.
+  const entries = [
+    ...text("2025", 0.6, 0.1, 0),
+    ...text("2024", 0.8, 0.1, 0),
+    ...text("Income taxes payable", 0.1, 0.112, 1),
+    ...text("13,016", 0.62, 0.112, 1),
+    ...text("26,601", 0.82, 0.112, 1),
+  ];
+
+  const grid = detectTableGrid(entries, rect);
+
+  assert.equal(grid.cells.length, 2);
+  assert.ok(grid.cells[0]!.join("").includes("2025"));
+  assert.ok(grid.cells[1]!.join("").includes("Income taxes payable"));
+});
+
 test("uses detected table bands and collapses a multiline header", () => {
   const table: DetectedTable = {
     id: "page-0-table-0",
