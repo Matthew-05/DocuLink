@@ -203,6 +203,7 @@ namespace DocuLink.Addin.Modules.WebView
                         // renderer/page restart therefore needs a complete authoritative sync,
                         // even if the previous context had already received the workbook data.
                         _dataSentToViewer = false;
+                        SendDevStateToWebView();
                         if (_viewerShown)
                         {
                             RefreshDataIfReady();
@@ -703,6 +704,36 @@ namespace DocuLink.Addin.Modules.WebView
                 System.Diagnostics.Debug.WriteLine(
                     $"[DocuLink] SendSearchQuery failed: {ex.Message}");
             }
+        }
+
+        /// <summary>
+        /// Shows or hides the viewer's per-character bounding-box debug overlay.
+        /// Silently ignored until the web context is ready; the state is re-sent
+        /// from <see cref="SendDevStateToWebView"/> once it is.
+        /// </summary>
+        internal void SendCharBboxesVisible(bool visible)
+        {
+            if (_disposed || !_webViewReady) return;
+
+            try
+            {
+                _webView.CoreWebView2.PostWebMessageAsString(
+                    HostMessageSerializer.BuildSetCharBboxesVisible(visible));
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine(
+                    $"[DocuLink] SendCharBboxesVisible failed: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Pushes the persisted developer toggles to a freshly initialized web context
+        /// so a viewer opened after the setting changed starts in the same state.
+        /// </summary>
+        private void SendDevStateToWebView()
+        {
+            SendCharBboxesVisible(Infrastructure.DevSettings.ShowCharBoundingBoxes);
         }
 
         private void FlushPendingSearchQuery()

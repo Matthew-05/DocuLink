@@ -221,6 +221,7 @@
     <Compile Include="Modules\CustomXml\Serialization\DocuLinkPdfBinarySerializer.cs" />
     <Compile Include="Modules\CustomXml\WorkbookStorageSession.cs" />
     <Compile Include="Modules\DocuLinkLog.cs" />
+    <Compile Include="Modules\Infrastructure\DevSettings.cs" />
     <Compile Include="Modules\Infrastructure\ExcelUndoKeyHook.cs" />
     <Compile Include="Modules\Infrastructure\PythonWorkerSession.cs" />
     <Compile Include="Modules\Services\AddPdfDocumentService.cs" />
@@ -258,6 +259,8 @@
     <Compile Include="Modules\UI\LinkTextPromptDialog.cs">
       <SubType>Form</SubType>
     </Compile>
+    <Compile Include="Modules\UI\CardPanel.cs" />
+    <Compile Include="Modules\UI\DialogTheme.cs" />
     <Compile Include="Modules\UI\IProgressReporter.cs" />
     <Compile Include="Modules\UI\NonPdfImportDialog.cs">
       <SubType>Form</SubType>

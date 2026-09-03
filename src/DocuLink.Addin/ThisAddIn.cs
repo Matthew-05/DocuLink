@@ -999,6 +999,41 @@ namespace DocuLink.Addin
 
 
 
+        /// <summary>
+        /// Applies the Development toggle to every open viewer surface so the overlay
+        /// appears or clears without reopening the workbook. Viewers created later pick
+        /// the state up from their controller when their web context reports ready.
+        /// </summary>
+        private void OnCharBoundingBoxesChanged(object sender, bool visible)
+        {
+            foreach (WorkbookPaneEntry entry in _workbookPanes.ToArray())
+            {
+                try
+                {
+                    entry.Host?.SendCharBboxesVisible(visible);
+                }
+                catch (Exception ex)
+                {
+                    Modules.DocuLinkLog.Trace(
+                        $"OnCharBoundingBoxesChanged skipping pane: {ex.Message}");
+                }
+            }
+
+            foreach (WorkbookViewerEntry entry in _workbookViewers.ToArray())
+            {
+                try
+                {
+                    if (entry.Window != null && !entry.Window.IsDisposed)
+                        entry.Window.SendCharBboxesVisible(visible);
+                }
+                catch (Exception ex)
+                {
+                    Modules.DocuLinkLog.Trace(
+                        $"OnCharBoundingBoxesChanged skipping viewer window: {ex.Message}");
+                }
+            }
+        }
+
         /// <summary>Finds the standalone viewer owned by a workbook using COM identity.</summary>
         private WorkbookViewerEntry FindViewerEntryFor(Excel.Workbook wb)
         {
@@ -1104,6 +1139,9 @@ namespace DocuLink.Addin
             _excelUndoKeyHook = new Modules.Infrastructure.ExcelUndoKeyHook(
                 () => UndoMostRecentAction());
 
+            Modules.Infrastructure.DevSettings.CharBoundingBoxesChanged +=
+                OnCharBoundingBoxesChanged;
+
             _ = CheckForUpdateOnOpenAsync();
 
         }
@@ -1121,6 +1159,9 @@ namespace DocuLink.Addin
             _excelUndoKeyHook?.Dispose();
 
             _excelUndoKeyHook = null;
+
+            Modules.Infrastructure.DevSettings.CharBoundingBoxesChanged -=
+                OnCharBoundingBoxesChanged;
 
             Application.SheetSelectionChange -= Application_SheetSelectionChange;
 

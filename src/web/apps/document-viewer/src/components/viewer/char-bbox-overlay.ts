@@ -6,7 +6,8 @@ const CELL_CLASS    = "char-bbox-debug__cell";
 
 /**
  * Debug overlay that draws per-character bounding boxes from the text cache.
- * Toggle via the console: `__docuLink.toggleCharBboxes()`.
+ * Driven by the host's `set-char-bboxes-visible` message (Settings → Development
+ * in development/beta builds), or from the console: `__docuLink.toggleCharBboxes()`.
  */
 export class CharBboxOverlay {
   private _visible = false;

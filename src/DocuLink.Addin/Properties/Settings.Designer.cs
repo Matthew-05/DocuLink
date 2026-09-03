@@ -34,5 +34,17 @@ namespace DocuLink.Addin.Properties {
                 this["LastUpdateCheck"] = value;
             }
         }
+        
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("False")]
+        public bool ShowCharBoundingBoxes {
+            get {
+                return ((bool)(this["ShowCharBoundingBoxes"]));
+            }
+            set {
+                this["ShowCharBoundingBoxes"] = value;
+            }
+        }
     }
 }

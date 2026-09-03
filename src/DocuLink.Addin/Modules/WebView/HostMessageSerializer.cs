@@ -258,6 +258,17 @@ namespace DocuLink.Addin.Modules.WebView
             return sb.ToString();
         }
 
+        /// <summary>
+        /// Returns the JSON payload for a <c>set-char-bboxes-visible</c> message, which
+        /// shows or hides the viewer's per-character bounding-box debug overlay.
+        /// </summary>
+        public static string BuildSetCharBboxesVisible(bool visible)
+        {
+            return visible
+                ? "{\"type\":\"set-char-bboxes-visible\",\"visible\":true}"
+                : "{\"type\":\"set-char-bboxes-visible\",\"visible\":false}";
+        }
+
         /// <summary>Returns the JSON payload for a <c>page-rotations-updated</c> message.</summary>
         public static string BuildPageRotationsUpdated(string pdfId, Dictionary<int, int> rotations)
         {

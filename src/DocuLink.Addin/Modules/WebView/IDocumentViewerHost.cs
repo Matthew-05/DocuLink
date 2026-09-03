@@ -30,5 +30,7 @@ namespace DocuLink.Addin.Modules.WebView
         void SendSearchQuery(string query);
 
         void SendLinkRectanglesRemoved(System.Collections.Generic.IList<string> ids);
+
+        void SendCharBboxesVisible(bool visible);
     }
 }

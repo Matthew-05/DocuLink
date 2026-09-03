@@ -25,6 +25,7 @@ export interface HostMessageHandlers {
   onHighlightRectangle?: (id: string) => void;
   onLinkSelectionChanged?: (entries: LinkSelectionEntry[]) => void;
   onSetSearchQuery?: (query: string) => void;
+  onSetCharBboxesVisible?: (visible: boolean) => void;
   onPdfUpdated?: (entry: PdfEntry) => void;
   onLinkRectanglesRemoved?: (ids: string[]) => void;
   onPdfNameUpdated?: (id: string, name: string) => void;
@@ -210,6 +211,11 @@ interface SetSearchQueryMessage {
   query: string;
 }
 
+interface SetCharBboxesVisibleMessage {
+  type: "set-char-bboxes-visible";
+  visible: boolean;
+}
+
 function toLinkedRectEntry(rect: LinkedRectPayload): LinkedRectEntry {
   return {
     id: rect.id,
@@ -232,6 +238,7 @@ function handleMessage(raw: unknown, handlers: HostMessageHandlers): void {
     onHighlightRectangle,
     onLinkSelectionChanged,
     onSetSearchQuery,
+    onSetCharBboxesVisible,
     onPdfUpdated,
     onLinkRectanglesRemoved,
     onPdfNameUpdated,
@@ -330,6 +337,13 @@ function handleMessage(raw: unknown, handlers: HostMessageHandlers): void {
       if (!onSetSearchQuery) return;
       const msg = parsed as SetSearchQueryMessage;
       onSetSearchQuery(typeof msg.query === "string" ? msg.query : "");
+      return;
+    }
+
+    if (type === "set-char-bboxes-visible") {
+      if (!onSetCharBboxesVisible) return;
+      const msg = parsed as SetCharBboxesVisibleMessage;
+      onSetCharBboxesVisible(msg.visible === true);
       return;
     }
 

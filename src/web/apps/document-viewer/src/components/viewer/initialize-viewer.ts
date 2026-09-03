@@ -606,6 +606,10 @@ export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLEleme
         focusRectangle(id);
         navigate(id, pdfId, page);
       },
+      onSetCharBboxesVisible: (visible) => {
+        if (visible) charBboxDebug.show();
+        else charBboxDebug.hide();
+      },
       onClearRectangleHighlight: () => { renderer.clearHighlight(); },
       onHighlightRectangle: (id) => { renderer.highlightRectangle(id); },
       onLinkSelectionChanged: setLinkSelection,

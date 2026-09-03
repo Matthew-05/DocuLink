@@ -27,6 +27,9 @@ namespace DocuLink.Addin.Modules.WebView
         public void SendLinkRectanglesRemoved(System.Collections.Generic.IList<string> ids) =>
             _controller.SendLinkRectanglesRemoved(ids);
 
+        public void SendCharBboxesVisible(bool visible) =>
+            _controller.SendCharBboxesVisible(visible);
+
         public void NotifyViewerShown() => _controller.NotifyViewerShown();
 
         public void SendNavigateToRectangle(string id, string pdfId, int page) =>

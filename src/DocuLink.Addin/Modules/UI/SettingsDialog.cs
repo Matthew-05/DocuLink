@@ -3,12 +3,28 @@ using System.Diagnostics;
 using System.Drawing;
 using System.IO;
 using System.Windows.Forms;
+using DocuLink.Addin.Modules.Infrastructure;
 using DocuLink.Addin.Modules.Services;
 
 namespace DocuLink.Addin.Modules.UI
 {
     internal sealed class SettingsDialog : Form
     {
+        /// <summary>Gap between the window edge and the cards.</summary>
+        private const int ContentMargin = 20;
+
+        /// <summary>Inner padding used by every card.</summary>
+        private const int CardPadding = 16;
+
+        /// <summary>Vertical gap between stacked cards.</summary>
+        private const int CardGap = 16;
+
+        /// <summary>Height of the Development card, which has a fixed set of controls.</summary>
+        private const int DevelopmentCardHeight = 176;
+
+        /// <summary>Height of the action bar holding the Close button.</summary>
+        private const int FooterHeight = 56;
+
         private readonly ReleaseNotesControl _updateHistory;
         private bool _updateHistoryRequested;
 
@@ -17,84 +33,179 @@ namespace DocuLink.Addin.Modules.UI
             bool showDevelopmentSection = AppVersion.IsDevelopment || AppVersion.IsBeta;
 
             Text = "DocuLink Settings";
-            ClientSize = new Size(640, showDevelopmentSection ? 665 : 590);
-            FormBorderStyle = FormBorderStyle.FixedDialog;
+            // Border style first: changing it after ClientSize would resize the client area.
+            FormBorderStyle = FormBorderStyle.Sizable;
+            MinimumSize = new Size(620, 600);
+            ClientSize = new Size(660, 720);
             MaximizeBox = false;
             MinimizeBox = false;
             StartPosition = FormStartPosition.CenterParent;
+            BackColor = DialogTheme.Canvas;
+            Font = DialogTheme.BodyFont;
+            ForeColor = DialogTheme.Text;
 
-            Controls.Add(new Label
-            {
-                Text = "Updates",
-                AutoSize = true,
-                Location = new Point(20, 18),
-                Font = new Font("Segoe UI", 12f, FontStyle.Bold)
-            });
+            int cardWidth = ClientSize.Width - (ContentMargin * 2);
 
-            Controls.Add(new Label
+            Controls.Add(DialogTheme.CreateTitle("Settings", new Point(ContentMargin + 2, 20)));
+            Controls.Add(DialogTheme.CreateCaption(
+                $"Version {AppVersion.Current}", new Point(ContentMargin + 4, 51)));
+
+            int nextCardTop = 82;
+
+            if (showDevelopmentSection)
             {
-                Text = $"Version: {AppVersion.Current}",
+                Controls.Add(BuildDevelopmentCard(
+                    new Point(ContentMargin, nextCardTop), cardWidth));
+                nextCardTop += DevelopmentCardHeight + CardGap;
+            }
+
+            // The updates card takes the remaining height so the release history
+            // grows with the window instead of leaving dead space below it.
+            int updatesHeight =
+                ClientSize.Height - FooterHeight - ContentMargin - nextCardTop;
+
+            Controls.Add(BuildUpdatesCard(
+                new Point(ContentMargin, nextCardTop),
+                new Size(cardWidth, updatesHeight),
+                out _updateHistory));
+
+            Button closeBtn;
+            Panel footer = BuildFooter(out closeBtn);
+            Controls.Add(footer);
+
+            // Docking gives the footer its real width only once it has a parent, so the
+            // Close button is placed afterwards for its right anchor to hold on resize.
+            closeBtn.Location = new Point(
+                footer.ClientSize.Width - ContentMargin - closeBtn.Width, 13);
+
+            CancelButton = closeBtn;
+        }
+
+        /// <summary>Developer-only card; shown in development and beta builds.</summary>
+        private CardPanel BuildDevelopmentCard(Point location, int width)
+        {
+            var card = new CardPanel
+            {
+                Location = location,
+                Size = new Size(width, DevelopmentCardHeight),
+                Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right
+            };
+
+            card.Controls.Add(DialogTheme.CreateSectionTitle(
+                "Development", new Point(CardPadding, 14)));
+
+            card.Controls.Add(DialogTheme.CreateSeparator(
+                new Point(CardPadding, 46), width - (CardPadding * 2)));
+
+            card.Controls.Add(DialogTheme.CreateSubHeading(
+                "Debugging tools", new Point(CardPadding + 2, 60)));
+
+            var bboxToggle = new CheckBox
+            {
+                Text = "Show character bounding boxes",
                 AutoSize = true,
-                Location = new Point(20, 50),
-                Font = new Font("Segoe UI", 10f)
-            });
+                Location = new Point(CardPadding, 82),
+                Font = DialogTheme.BodyFont,
+                ForeColor = DialogTheme.Text,
+                Cursor = Cursors.Hand,
+                Checked = DevSettings.ShowCharBoundingBoxes
+            };
+            bboxToggle.CheckedChanged += (s, e) =>
+                DevSettings.ShowCharBoundingBoxes = bboxToggle.Checked;
+            card.Controls.Add(bboxToggle);
+
+            card.Controls.Add(DialogTheme.CreateCaption(
+                "Draws the per-character text boxes over every page in the document viewer.",
+                new Point(CardPadding + 18, 104)));
+
+            var openLogsBtn = new Button
+            {
+                Text = "Open Log Folder",
+                Size = new Size(140, 30),
+                Location = new Point(CardPadding, 130)
+            };
+            DialogTheme.StyleSecondaryButton(openLogsBtn);
+            openLogsBtn.Click += OpenLogFolder;
+            card.Controls.Add(openLogsBtn);
+
+            return card;
+        }
+
+        /// <summary>Version actions plus the scrollable release history.</summary>
+        private CardPanel BuildUpdatesCard(
+            Point location, Size size, out ReleaseNotesControl history)
+        {
+            var card = new CardPanel
+            {
+                Location = location,
+                Size = size,
+                Anchor = AnchorStyles.Top | AnchorStyles.Bottom
+                       | AnchorStyles.Left | AnchorStyles.Right
+            };
+
+            card.Controls.Add(DialogTheme.CreateSectionTitle(
+                "Updates", new Point(CardPadding, 14)));
 
             var checkBtn = new Button
             {
                 Text = "Check for Updates",
-                Size = new Size(130, 28),
-                Location = new Point(490, 44),
-                Font = new Font("Segoe UI", 9f)
+                Size = new Size(150, 30),
+                Location = new Point(size.Width - CardPadding - 150, 12),
+                Anchor = AnchorStyles.Top | AnchorStyles.Right
             };
+            DialogTheme.StylePrimaryButton(checkBtn);
             checkBtn.Click += (s, e) => UpdateDialog.ShowSingle(owner: this);
-            Controls.Add(checkBtn);
+            card.Controls.Add(checkBtn);
 
-            Controls.Add(new Label
+            card.Controls.Add(DialogTheme.CreateSeparator(
+                new Point(CardPadding, 54), size.Width - (CardPadding * 2)));
+
+            card.Controls.Add(DialogTheme.CreateSubHeading(
+                "Release history", new Point(CardPadding + 2, 68)));
+
+            history = new ReleaseNotesControl
             {
-                Text = "Update history",
-                AutoSize = false,
-                Size = new Size(600, 20),
-                Location = new Point(20, 88),
-                Font = new Font("Segoe UI", 9f, FontStyle.Bold)
+                BorderStyle = BorderStyle.None,
+                Location = new Point(CardPadding, 90),
+                Size = new Size(
+                    size.Width - (CardPadding * 2),
+                    size.Height - 90 - CardPadding),
+                Anchor = AnchorStyles.Top | AnchorStyles.Bottom
+                       | AnchorStyles.Left | AnchorStyles.Right
+            };
+            card.Controls.Add(history);
+
+            return card;
+        }
+
+        /// <summary>Action bar pinned to the bottom of the dialog.</summary>
+        private Panel BuildFooter(out Button closeBtn)
+        {
+            var footer = new Panel
+            {
+                Dock = DockStyle.Bottom,
+                Height = FooterHeight,
+                BackColor = DialogTheme.Surface
+            };
+
+            footer.Controls.Add(new Panel
+            {
+                Dock = DockStyle.Top,
+                Height = 1,
+                BackColor = DialogTheme.Border
             });
 
-            _updateHistory = new ReleaseNotesControl
-            {
-                Size = new Size(600, 400),
-                Location = new Point(20, 110)
-            };
-            Controls.Add(_updateHistory);
-
-            if (showDevelopmentSection)
-            {
-                Controls.Add(new Label
-                {
-                    Text = "Development",
-                    AutoSize = true,
-                    Location = new Point(20, 528),
-                    Font = new Font("Segoe UI", 12f, FontStyle.Bold)
-                });
-
-                var openLogsBtn = new Button
-                {
-                    Text = "Open Log Folder",
-                    Size = new Size(130, 28),
-                    Location = new Point(20, 558),
-                    Font = new Font("Segoe UI", 9f)
-                };
-                openLogsBtn.Click += OpenLogFolder;
-                Controls.Add(openLogsBtn);
-            }
-
-            var closeBtn = new Button
+            closeBtn = new Button
             {
                 Text = "Close",
                 DialogResult = DialogResult.Cancel,
-                Size = new Size(80, 28),
-                Location = new Point(540, showDevelopmentSection ? 623 : 548)
+                Size = new Size(96, 30),
+                Anchor = AnchorStyles.Top | AnchorStyles.Right
             };
-            Controls.Add(closeBtn);
-            CancelButton = closeBtn;
+            DialogTheme.StyleSecondaryButton(closeBtn);
+            footer.Controls.Add(closeBtn);
+
+            return footer;
         }
 
         private void OpenLogFolder(object sender, EventArgs e)

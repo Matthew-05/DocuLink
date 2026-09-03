@@ -869,6 +869,21 @@
       ]
     },
 
+    "SetCharBboxesVisibleMessage": {
+      "description": "Sent by the C# host when the developer toggle in Settings \u2192 Development changes, and once after 'viewer-ready' so a newly opened viewer adopts the persisted state. The viewer shows or hides the per-character bounding-box debug overlay drawn from its text cache. Development/beta builds only.",
+      "type": "object",
+      "required": ["type", "visible"],
+      "additionalProperties": false,
+      "properties": {
+        "type":    { "const": "set-char-bboxes-visible" },
+        "visible": { "type": "boolean", "description": "True draws the per-character bounding-box overlay on every rendered page; false clears it." }
+      },
+      "examples": [
+        { "type": "set-char-bboxes-visible", "visible": true },
+        { "type": "set-char-bboxes-visible", "visible": false }
+      ]
+    },
+
     "ResetUiMessage": {
       "description": "Sent by the C# host when the file-manager window is hidden. The web app should reset transient UI state so the next show starts fresh.",
       "type": "object",
@@ -1196,6 +1211,7 @@
     { "$ref": "#/definitions/HighlightRectangleMessage" },
     { "$ref": "#/definitions/LinkSelectionChangedMessage" },
     { "$ref": "#/definitions/SetSearchQueryMessage" },
+    { "$ref": "#/definitions/SetCharBboxesVisibleMessage" },
     { "$ref": "#/definitions/ResetUiMessage" },
     { "$ref": "#/definitions/CancelOcrMessage" },
     { "$ref": "#/definitions/OcrPdfsMessage" },
