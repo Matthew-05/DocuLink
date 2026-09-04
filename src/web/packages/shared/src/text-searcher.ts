@@ -1,5 +1,6 @@
 import type { CharacterEntry } from "./char-entries.js";
 import type { NormalizedRect, SearchMatch } from "./types.js";
+import { isStandaloneZeroDash } from "./zero-placeholder.js";
 
 export interface SearchPageIndex {
   pageText: string;
@@ -254,6 +255,10 @@ function normalizeQuery(raw: string, normalizeDates: boolean): string {
     }
 
     if (isAccountingNumberClose(lower, i)) continue;
+    if (isStandaloneZeroDash(lower, i)) {
+      result += "0";
+      continue;
+    }
     if (!isNumericComma(lower, i)) result += lower[i];
   }
   return stripTrailingPunctuation(result);
@@ -331,6 +336,14 @@ function buildNormalizedPageText(
 
     if (isAccountingNumberClose(text, i)) continue;
 
+    if (isStandaloneZeroDash(text, i, (leftIndex, rightIndex) => (
+      hasGeometryBoundary(entries, leftIndex, rightIndex)
+    ))) {
+      indexMap.push(i);
+      normalizedPageText += "0";
+      continue;
+    }
+
     if (!isNumericComma(text, i)) {
       indexMap.push(i);
       normalizedPageText += text[i];
@@ -383,6 +396,7 @@ function expandToWord(
     wordStart > 0
     && !/\s/.test(text[wordStart - 1] ?? "")
     && entries[wordStart]?.lineIndex === entries[wordStart - 1]?.lineIndex
+    && !hasGeometryBoundary(entries, wordStart - 1, wordStart)
   ) {
     wordStart--;
   }
@@ -392,6 +406,7 @@ function expandToWord(
     wordEnd < text.length
     && !/\s/.test(text[wordEnd] ?? "")
     && entries[wordEnd - 1]?.lineIndex === entries[wordEnd]?.lineIndex
+    && !hasGeometryBoundary(entries, wordEnd - 1, wordEnd)
   ) {
     wordEnd++;
   }

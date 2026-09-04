@@ -8,6 +8,7 @@ const packageRoot = dirname(dirname(fileURLToPath(import.meta.url)));
 const outdir = join(packageRoot, "test", ".tmp");
 const outfile = join(outdir, "text-searcher.mjs");
 const sourceFile = join(packageRoot, "src", "text-searcher.ts");
+const zeroPlaceholderFile = join(packageRoot, "src", "zero-placeholder.ts");
 
 await rm(outdir, { recursive: true, force: true });
 await mkdir(outdir, { recursive: true });
@@ -21,6 +22,15 @@ const transpiled = ts.transpileModule(source, {
   },
 });
 await writeFile(outfile, transpiled.outputText, "utf8");
+const zeroPlaceholderSource = await readFile(zeroPlaceholderFile, "utf8");
+const zeroPlaceholderTranspiled = ts.transpileModule(zeroPlaceholderSource, {
+  compilerOptions: {
+    module: ts.ModuleKind.ESNext,
+    target: ts.ScriptTarget.ES2022,
+    verbatimModuleSyntax: true,
+  },
+});
+await writeFile(join(outdir, "zero-placeholder.js"), zeroPlaceholderTranspiled.outputText, "utf8");
 
 const {
   buildSearchPageIndexFromEntries,
@@ -78,6 +88,66 @@ assert.equal(cleanAutoInsertedSearchQuery("Invoice)"), "Invoice");
   assert.equal(matches.length, 1);
   assert.equal(matches[0].id, "pdf-1:0:6");
   assert.equal(matches[0].contextText, "1,000");
+}
+
+{
+  const text = "assets — liabilities";
+  const entries = entriesFromText(text);
+  const matches = searchPage("pdf-1", "Balance Sheet", 0, entries, normalizeSearchQuery("0"));
+  const dashIndex = text.indexOf("—");
+
+  assert.equal(matches.length, 1, "a standalone em dash should match a zero search");
+  assert.equal(matches[0].id, `pdf-1:0:${dashIndex}`);
+  assert.equal(matches[0].exactMatch, true);
+  assert.equal(matches[0].contextText, "—");
+  assert.deepEqual(matches[0].matchInContext, { start: 0, end: 1 });
+  assert.ok(Math.abs(matches[0].highlightRect.x - dashIndex / text.length) < Number.EPSILON);
+  assert.ok(Math.abs(matches[0].highlightRect.width - 1 / text.length) < Number.EPSILON);
+  assert.equal(matches[0].highlightRect.y, 0);
+  assert.equal(matches[0].highlightRect.height, 0.05);
+}
+
+{
+  const entries = entriesFromText("cash $ —");
+  const matches = searchPage("pdf-1", "Balance Sheet", 0, entries, normalizeSearchQuery("0"));
+
+  assert.equal(matches.length, 1, "a currency-prefixed standalone em dash should match zero");
+  assert.equal(matches[0].contextText, "—");
+}
+
+{
+  const entries = entriesFromText("well—being");
+  const matches = searchPage("pdf-1", "Notes", 0, entries, normalizeSearchQuery("0"));
+
+  assert.equal(matches.length, 0, "an em dash inside a word should not be treated as zero");
+}
+
+{
+  const entries = entriesFromText("A—B");
+  entries[0].normLeft = 0.05;
+  entries[0].normRight = 0.10;
+  entries[1].normLeft = 0.40;
+  entries[1].normRight = 0.45;
+  entries[2].normLeft = 0.75;
+  entries[2].normRight = 0.80;
+
+  const matches = searchPage("pdf-1", "Balance Sheet", 0, entries, normalizeSearchQuery("0"));
+  assert.equal(matches.length, 1, "a visually isolated em dash should match zero without text spaces");
+  assert.equal(matches[0].contextText, "—");
+}
+
+{
+  const entries = entriesFromText("$—B");
+  entries[0].normLeft = 0.05;
+  entries[0].normRight = 0.10;
+  entries[1].normLeft = 0.40;
+  entries[1].normRight = 0.45;
+  entries[2].normLeft = 0.75;
+  entries[2].normRight = 0.80;
+
+  const matches = searchPage("pdf-1", "Balance Sheet", 0, entries, normalizeSearchQuery("0"));
+  assert.equal(matches.length, 1, "a visually isolated currency dash should match zero without text spaces");
+  assert.equal(matches[0].contextText, "—");
 }
 
 {

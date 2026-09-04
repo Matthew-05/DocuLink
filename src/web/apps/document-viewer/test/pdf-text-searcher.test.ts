@@ -6,11 +6,18 @@ const sharedTextSearcherUrl = new URL(
   "../../../packages/shared/src/text-searcher.ts",
   import.meta.url,
 ).href;
+const sharedZeroPlaceholderUrl = new URL(
+  "../../../packages/shared/src/zero-placeholder.ts",
+  import.meta.url,
+).href;
 
 registerHooks({
   resolve(specifier, context, nextResolve) {
     if (specifier === "@doculink/shared") {
       return { url: sharedTextSearcherUrl, shortCircuit: true };
+    }
+    if (specifier === "./zero-placeholder.js" && context.parentURL === sharedTextSearcherUrl) {
+      return { url: sharedZeroPlaceholderUrl, shortCircuit: true };
     }
 
     return nextResolve(specifier, context);
