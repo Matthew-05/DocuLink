@@ -47,6 +47,10 @@ class GridHypothesis:
         self.boundaries = boundaries
         self.ruled_columns = ruled_columns
         self.ruled_rows = ruled_rows
+        # Bands removed from the top of the grid because they name the columns
+        # rather than fill them, as {"kind", "text"}. Kept so the period they
+        # carry survives their removal.
+        self.captions: list[dict] = []
 
     @property
     def column_count(self) -> int:

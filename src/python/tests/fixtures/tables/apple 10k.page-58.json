@@ -399,6 +399,7 @@
           "Filing Date/ Period End Date"
         ]
       },
+      "period": null,
       "rulings": {
         "vertical": [],
         "horizontal": [

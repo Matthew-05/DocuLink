@@ -40,6 +40,22 @@ export interface TableHeader {
   labels: string[];
 }
 
+/**
+ * What span of time the table's data covers.
+ *
+ * A statement dates each column; a stacked report labels the whole block once
+ * and qualifies the dates separately. Those labels are not rows of the table and
+ * are excluded from its bounds, so the period they carry is reported here.
+ */
+export interface TablePeriod {
+  /** Period covering every column. Empty when it varies by column. */
+  table: string;
+  /** Period each column's data belongs to; empty where its label carries none. */
+  columns: string[];
+  /** A phrase qualifying the dated columns, such as "Years ended". */
+  qualifier: string;
+}
+
 export interface DetectedTable {
   id: string;
   bounds: TableBounds;
@@ -48,6 +64,7 @@ export interface DetectedTable {
   columns: TableColumn[];
   rows: TableRow[];
   header: TableHeader | null;
+  period: TablePeriod | null;
   rulings: { vertical: number[]; horizontal: number[] };
 }
 
@@ -138,6 +155,19 @@ function parseHeader(value: unknown, rowCount: number): TableHeader | null | und
   return { rowCount: count, labels: labels as string[] };
 }
 
+function parsePeriod(value: unknown, columnCount: number): TablePeriod | null | undefined {
+  if (value === null || value === undefined) return null;
+  if (!isRecord(value)) return undefined;
+  const { table, columns, qualifier } = value;
+  if (typeof table !== "string" || typeof qualifier !== "string") return undefined;
+  if (!Array.isArray(columns) || columns.some((entry) => typeof entry !== "string")) {
+    return undefined;
+  }
+  // One entry per column, so a caller can index it alongside the columns array.
+  if (columns.length !== columnCount) return undefined;
+  return { table, columns: columns as string[], qualifier };
+}
+
 function parseRulings(value: unknown): { vertical: number[]; horizontal: number[] } {
   if (!isRecord(value)) return { vertical: [], horizontal: [] };
   const axis = (input: unknown): number[] =>
@@ -158,6 +188,8 @@ function parseTable(value: unknown): DetectedTable | null {
   if (rows === null) return null;
   const header = parseHeader(value.header, rows.length);
   if (header === undefined) return null;
+  const period = parsePeriod(value.period, columns.length);
+  if (period === undefined) return null;
   return {
     id: value.id,
     bounds,
@@ -166,6 +198,7 @@ function parseTable(value: unknown): DetectedTable | null {
     columns,
     rows,
     header,
+    period,
     rulings: parseRulings(value.rulings),
   };
 }

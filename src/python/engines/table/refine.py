@@ -103,6 +103,19 @@ def strip_spanning_labels(grid: GridHypothesis) -> None:
         )
         if not straddles and not qualifies_a_dated_band and not block_caption:
             break
+        # Why it was removed says what it was. A dated band over titled columns
+        # is the block's period; a phrase over dated columns qualifies them;
+        # anything else — "Incorporated by Reference" — is a group label that
+        # carries no period at all.
+        if block_caption:
+            kind = "period"
+        elif qualifies_a_dated_band:
+            kind = "qualifier"
+        else:
+            kind = "label"
+        grid.captions.append(
+            {"kind": kind, "text": " ".join(value for value in row.cells if value).strip()}
+        )
         grid.rows.pop(0)
 
 

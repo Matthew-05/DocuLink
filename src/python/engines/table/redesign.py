@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from engines.table.candidates import generate
 from engines.table.grid import GridHypothesis, ruled_row_edges
-from engines.table.headers import detect_header_cells
+from engines.table.headers import detect_header_cells, period_in
 from engines.table.layout import PageLayout, build_page_layout
 from engines.table.refine import deduplicate, merge_adjacent, refine
 from engines.table.rulings import PageRulings, detect_page_ruling_segments
@@ -66,6 +66,30 @@ def _snap(edges: list[tuple[float, float]], rules: list[float], reach: float):
         else:
             fixed.append((y0, y1))
     return fixed
+
+
+def _period(grid: GridHypothesis, header: dict | None) -> dict | None:
+    """What span of time the table covers, from its header and its captions.
+
+    A statement dates each column, so the periods come from the header labels. A
+    stacked report labels the whole block once above the titles and qualifies the
+    dates separately; both of those bands are excluded from the grid, so what
+    they said is recorded here rather than lost with them.
+    """
+    columns = [
+        period_in(label) for label in (header or {}).get("labels", [""] * grid.column_count)
+    ]
+    columns += [""] * (grid.column_count - len(columns))
+    table = ""
+    qualifier = ""
+    for caption in grid.captions:
+        if caption["kind"] == "period" and not table:
+            table = period_in(caption["text"]) or caption["text"]
+        elif caption["kind"] == "qualifier" and not qualifier:
+            qualifier = caption["text"]
+    if not table and not qualifier and not any(columns):
+        return None
+    return {"table": table, "columns": columns[: grid.column_count], "qualifier": qualifier}
 
 
 def _merge_confidence(row, layout: PageLayout) -> float:
@@ -181,6 +205,7 @@ def detect_page(
                 ],
                 "rows": rows_payload,
                 "header": header,
+                "period": _period(grid, header),
                 "rulings": {
                     "vertical": sorted(
                         rule.position

@@ -84,7 +84,7 @@ _PROTOCOL_OUT = _claim_protocol_stream()
 from schemas.models import ConvertJob, ConvertResult, OcrJob, OcrProgress, OcrResult
 
 
-_GEOMETRY_CACHE_VERSION = "direct-hocr-v7-table-detector-2"
+_GEOMETRY_CACHE_VERSION = "direct-hocr-v8-table-period"
 _GEOMETRY_CACHE_MAX_ENTRIES = 16
 _GEOMETRY_CACHE: OrderedDict[str, dict] = OrderedDict()
 

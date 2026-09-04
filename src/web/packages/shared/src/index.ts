@@ -8,6 +8,7 @@ export type {
   TableColumn,
   TableRow,
   TableHeader,
+  TablePeriod,
   TableStructure,
   TableTextLine,
 } from "./table-structure-decoder.js";

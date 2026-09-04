@@ -72,6 +72,34 @@ for (const entry of malformed) {
   assert.equal(parsed.pages[0].tables[0].id, "good");
 }
 
+// The period a table covers rides alongside the header.
+{
+  const period = { table: "2025", columns: ["", "2025"], qualifier: "Years ended" };
+  const parsed = parseTableStructure(structure([table({ period })]));
+  assert.deepEqual(parsed.pages[0].tables[0].period, period);
+}
+
+// Absent is normal: most tables carry no period at all.
+{
+  const parsed = parseTableStructure(structure([table()]));
+  assert.equal(parsed.pages[0].tables[0].period, null);
+  const explicit = parseTableStructure(structure([table({ period: null })]));
+  assert.equal(explicit.pages[0].tables[0].period, null);
+}
+
+// A period a caller cannot index alongside the columns is not usable.
+for (const period of [
+  { table: "2025", columns: [""], qualifier: "" },                  // one entry short
+  { table: "2025", columns: ["", "2025", "2024"], qualifier: "" },  // one too many
+  { table: 2025, columns: ["", ""], qualifier: "" },
+  { table: "", columns: "2025", qualifier: "" },
+  { table: "", columns: ["", 2024], qualifier: "" },
+  { table: "", columns: ["", ""] },
+]) {
+  const parsed = parseTableStructure(structure([table({ period })]));
+  assert.deepEqual(parsed.pages[0].tables, [], JSON.stringify(period));
+}
+
 // A missing header is normal, and unusable rulings degrade to empty lists.
 {
   const parsed = parseTableStructure(structure([table({ header: null, rulings: "nonsense" })]));

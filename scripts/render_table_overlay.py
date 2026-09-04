@@ -87,15 +87,22 @@ def _draw_table(image: Image.Image, table: dict, page_number: int) -> None:
             fill=MERGED_ROW if row.get("merged") else ROW,
             width=3,
         )
-    _label(
-        draw,
-        left + 4,
-        max(2.0, top - 18),
+    period = table.get("period") or {}
+    # The period is reported rather than drawn: its label was excluded from the
+    # grid on purpose, so the overlay is the only place it can be checked.
+    dated = period.get("table") or " ".join(
+        value for value in period.get("columns", []) if value
+    )
+    caption = (
         f"p{page_number} {table['id']} {table['evidence']} "
         f"conf={float(table['confidence']):.2f} "
-        f"hdr={int(header['rowCount']) if header else 0}",
-        ACCEPTED,
+        f"hdr={int(header['rowCount']) if header else 0}"
     )
+    if period.get("qualifier"):
+        caption += f" · {period['qualifier']}"
+    if dated:
+        caption += f" · {dated[:60]}"
+    _label(draw, left + 4, max(2.0, top - 18), caption, ACCEPTED)
 
 
 def _draw_rejected(image: Image.Image, candidate: dict, page_number: int) -> None:

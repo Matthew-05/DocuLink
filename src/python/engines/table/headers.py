@@ -7,6 +7,24 @@ import re
 _NUMBER = re.compile(r"^[\s($+\-]*[\d,.%]+[)\s]*$")
 
 
+# A period as it appears inside a longer label. `_PERIOD` matches a cell that is
+# nothing but a period; this one finds the period within "Years ended September
+# 28, 2024" or "As of 2025".
+_PERIOD_IN_TEXT = re.compile(
+    r"(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+\d{1,2},?\s*(?:19|20)\d{2}"
+    r"|FY\s*\d{2,4}"
+    r"|Q[1-4]\s*(?:19|20)?\d{2,4}"
+    r"|(?:19|20)\d{2}",
+    re.IGNORECASE,
+)
+
+
+def period_in(text: str) -> str:
+    """The period a label carries, or an empty string when it carries none."""
+    found = _PERIOD_IN_TEXT.search(text or "")
+    return found.group(0).strip() if found else ""
+
+
 def _is_number(value: str) -> bool:
     """Is this cell an amount?
 

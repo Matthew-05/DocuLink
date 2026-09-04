@@ -15,7 +15,8 @@ from engines.table.grid import (
     infer_boundaries,
     occupied_columns,
 )
-from engines.table.headers import detect_header_cells
+from engines.table.headers import detect_header_cells, period_in
+from engines.table.redesign import _period
 from engines.table.layout import build_page_layout, classify
 from engines.table.refine import refine
 from engines.table.rulings import PageRulings, RulingSegment, merge_parallel, ruling_components
@@ -373,6 +374,82 @@ class HeaderBandTests(unittest.TestCase):
         layout = build_page_layout(page(rows))
         _candidate, grid = refine(whitespace_candidates(layout)[0], layout)[0]
         self.assertIn("Filing Date/ Period End", grid.rows[0].cells[-1])
+
+
+class PeriodTests(unittest.TestCase):
+    """What the data is dated to, kept even when the label is not a row."""
+
+    def _fit(self, rows):
+        layout = build_page_layout(page(rows))
+        _candidate, grid = refine(whitespace_candidates(layout)[0], layout)[0]
+        header = detect_header_cells(grid.cell_matrix(), grid.column_count)
+        return _period(grid, header), grid
+
+    def test_a_period_is_read_out_of_the_column_labels(self) -> None:
+        period, _grid = self._fit(
+            [
+                (0.100, [(0.50, "September 27,"), (0.68, "September 28,"), (0.86, "September 30,")]),
+                (0.110, [(0.55, "2025"), (0.73, "2024"), (0.91, "2023")]),
+                (0.130, [(0.05, "Net sales"), (0.52, "416,161"), (0.70, "391,035"), (0.88, "383,285")]),
+                (0.146, [(0.05, "Cost of sales"), (0.52, "220,960"), (0.70, "210,352"), (0.88, "214,137")]),
+                (0.162, [(0.05, "Gross margin"), (0.52, "195,201"), (0.70, "180,683"), (0.88, "169,148")]),
+            ]
+        )
+        self.assertEqual(
+            period["columns"],
+            ["", "September 27, 2025", "September 28, 2024", "September 30, 2023"],
+        )
+        self.assertEqual(period["table"], "")
+
+    def test_an_excluded_block_caption_is_still_reported(self) -> None:
+        # "2025" is dropped from the grid because it names the block rather than
+        # filling a row. What it said has to survive that.
+        period, grid = self._fit(
+            [
+                (0.100, [(0.55, "2025")]),
+                (0.116, [(0.30, "Adjusted"), (0.55, "Unrealized"), (0.80, "Fair")]),
+                (0.128, [(0.30, "Cost"), (0.55, "Gains"), (0.80, "Value")]),
+                (0.148, [(0.05, "Cash"), (0.31, "28,267"), (0.56, "—"), (0.81, "28,267")]),
+                (0.164, [(0.05, "Money market"), (0.31, "5,272"), (0.56, "—"), (0.81, "5,272")]),
+                (0.180, [(0.05, "Total"), (0.31, "33,539"), (0.56, "—"), (0.81, "33,539")]),
+            ]
+        )
+        self.assertNotIn("2025", " ".join(grid.rows[0].cells))
+        self.assertEqual(period["table"], "2025")
+
+    def test_an_excluded_qualifier_is_still_reported(self) -> None:
+        period, grid = self._fit(
+            [
+                (0.100, [(0.68, "Years ended")]),
+                (0.116, [(0.50, "September 27,"), (0.68, "September 28,"), (0.86, "September 30,")]),
+                (0.126, [(0.55, "2025"), (0.73, "2024"), (0.91, "2023")]),
+                (0.146, [(0.05, "Net income"), (0.52, "112,010"), (0.70, "93,736"), (0.88, "96,995")]),
+                (0.162, [(0.05, "Other income"), (0.52, "1,010"), (0.70, "736"), (0.88, "995")]),
+                (0.178, [(0.05, "Total"), (0.52, "113,020"), (0.70, "94,472"), (0.88, "97,990")]),
+            ]
+        )
+        self.assertNotIn("Years", " ".join(grid.rows[0].cells))
+        self.assertEqual(period["qualifier"], "Years ended")
+        self.assertEqual(period["columns"][1], "September 27, 2025")
+
+    def test_a_table_with_no_dates_reports_none(self) -> None:
+        period, _grid = self._fit(
+            [
+                (0.100, [(0.05, "Apple Asia Limited"), (0.80, "Hong Kong")]),
+                (0.116, [(0.05, "Apple Canada Inc."), (0.80, "Canada")]),
+                (0.132, [(0.05, "Apple India Private"), (0.80, "India")]),
+            ]
+        )
+        self.assertIsNone(period)
+
+    def test_period_extraction_reads_the_shapes_a_filing_uses(self) -> None:
+        self.assertEqual(period_in("September 27, 2025"), "September 27, 2025")
+        self.assertEqual(period_in("Years ended September 28, 2024"), "September 28, 2024")
+        self.assertEqual(period_in("2025"), "2025")
+        self.assertEqual(period_in("FY 2024"), "FY 2024")
+        self.assertEqual(period_in("Q1 2025"), "Q1 2025")
+        self.assertEqual(period_in("Adjusted Cost"), "")
+        self.assertEqual(period_in("Change"), "")
 
 
 class RulingComponentTests(unittest.TestCase):

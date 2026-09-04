@@ -36,7 +36,7 @@
       "rows": [
         {
           "y0": 0.2757840898301866,
-          "y1": 0.31994239248410616,
+          "y1": 0.3298235999213325,
           "kind": "header",
           "textLines": [
             {
@@ -64,8 +64,8 @@
           "mergeConfidence": 0.9488
         },
         {
-          "y0": 0.31994239248410616,
-          "y1": 0.3423145563915522,
+          "y0": 0.3298235999213325,
+          "y1": 0.3424474350129715,
           "kind": "header",
           "textLines": [
             {
@@ -77,7 +77,7 @@
           "mergeConfidence": 0.0
         },
         {
-          "y0": 0.3423145563915522,
+          "y0": 0.3424474350129715,
           "y1": 0.35650956510293363,
           "kind": "body",
           "textLines": [
@@ -143,7 +143,7 @@
         },
         {
           "y0": 0.4374754741938427,
-          "y1": 0.45175122733067985,
+          "y1": 0.45111220774024424,
           "kind": "body",
           "textLines": [
             {
@@ -155,7 +155,7 @@
           "mergeConfidence": 0.0
         },
         {
-          "y0": 0.45175122733067985,
+          "y0": 0.45111220774024424,
           "y1": 0.46962187795928034,
           "kind": "body",
           "textLines": [
@@ -178,6 +178,7 @@
           "Approximate Dollar Value of Shares That May Yet Be Purchased Under the Plans or Programs (1)"
         ]
       },
+      "period": null,
       "rulings": {
         "vertical": [],
         "horizontal": [

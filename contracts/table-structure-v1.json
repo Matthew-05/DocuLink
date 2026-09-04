@@ -55,6 +55,17 @@
         "labels": { "type": "array", "items": { "type": "string" } }
       }
     },
+    "Period": {
+      "type": "object",
+      "description": "What span of time the table's data covers. A statement usually dates each column (\"September 27, 2025\"), but a stacked report labels the whole block once (\"2025\") and qualifies the dates separately (\"Years ended\"). Those labels are not rows of the table and are excluded from its bounds, so the period they carry is recorded here instead of being lost.",
+      "required": ["table", "columns", "qualifier"],
+      "additionalProperties": false,
+      "properties": {
+        "table": { "type": "string", "description": "Period covering every column, taken from a caption above the table. Empty when the period varies by column or none was found." },
+        "columns": { "type": "array", "items": { "type": "string" }, "description": "Period each column's data belongs to, read from that column's header label. One entry per column, empty where the label carries no period." },
+        "qualifier": { "type": "string", "description": "A phrase qualifying the dated columns, such as \"Years ended\", excluded from the grid because it names the group rather than a column. Empty when absent." }
+      }
+    },
     "Rulings": {
       "type": "object", "required": ["vertical", "horizontal"], "additionalProperties": false,
       "properties": {
@@ -74,6 +85,7 @@
         "columns": { "type": "array", "minItems": 2, "items": { "$ref": "#/definitions/Column" } },
         "rows": { "type": "array", "minItems": 2, "items": { "$ref": "#/definitions/Row" } },
         "header": { "anyOf": [{ "$ref": "#/definitions/Header" }, { "type": "null" }] },
+        "period": { "anyOf": [{ "$ref": "#/definitions/Period" }, { "type": "null" }] },
         "rulings": { "$ref": "#/definitions/Rulings" }
       }
     },
