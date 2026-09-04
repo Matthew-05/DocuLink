@@ -10,6 +10,7 @@ import { RectContextMenu } from "./rect-context-menu.js";
 import { LinkSelectionPanel } from "./link-selection-panel.js";
 import { CharBboxOverlay } from "./char-bbox-overlay.js";
 import { TableSuggestionOverlay } from "./table-suggestion-overlay.js";
+import { TableIndicator } from "./table-indicator.js";
 import { createRectNavigator } from "./rect-navigator.js";
 import { attachExcelKeyBridge } from "./excel-key-bridge.js";
 import { createFitMode } from "./fit-mode.js";
@@ -253,6 +254,7 @@ export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLEleme
   const tableCopyModal  = new TableCopyModal();
   const charBboxDebug   = new CharBboxOverlay(viewer, cache);
   const tableSuggestions = new TableSuggestionOverlay(viewer, tableCache);
+  const tableIndicator  = new TableIndicator();
   const matchRenderer   = new SearchMatchRenderer(viewer);
   const searcher        = new PdfTextSearcher(cache);
   const searchNavigator = createSearchNavigator(
@@ -287,6 +289,8 @@ export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLEleme
     _currentRects = _currentRects.map((entry) => enrichTableMetadata(stripTableMetadata(entry)));
     renderer.setRectangles(_currentRects);
     tableSuggestions.refresh();
+    const pdfId = viewer.getActivePdfId();
+    tableIndicator.setCount(pdfId ? tableCache.tableCount(pdfId) : 0);
   };
 
   const setTableModelEnabled = (enabled: boolean): void => {
@@ -294,8 +298,17 @@ export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLEleme
     _tableModelEnabled = enabled;
     if (enabled) tableSuggestions.show();
     else tableSuggestions.hide();
+    tableIndicator.setActive(enabled);
     refreshTableMetadata();
   };
+
+  tableIndicator.onToggle(setTableModelEnabled);
+  // A document swap changes what there is to count, and the count is the whole
+  // reason the control is on screen.
+  viewer.onDocumentChanged(() => {
+    const pdfId = viewer.getActivePdfId();
+    tableIndicator.setCount(pdfId ? tableCache.tableCount(pdfId) : 0);
+  });
 
   /** Rectangle the viewer is currently showing; marked as active in the panel. */
   let _focusedRectId: string | null = null;
@@ -706,7 +719,6 @@ export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLEleme
         if (visible) charBboxDebug.show();
         else charBboxDebug.hide();
       },
-      onSetTableSuggestionsVisible: (visible) => { setTableModelEnabled(visible); },
       onClearRectangleHighlight: () => { renderer.clearHighlight(); },
       onHighlightRectangle: (id) => { renderer.highlightRectangle(id); },
       onLinkSelectionChanged: setLinkSelection,
@@ -744,11 +756,14 @@ export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLEleme
 
   const viewerWrapper = document.createElement("div");
   viewerWrapper.className = "viewer-wrapper";
-  viewerWrapper.append(viewer.element, linkTypeBar, selectionPanel.element);
+  viewerWrapper.append(
+    viewer.element, tableIndicator.element, linkTypeBar, selectionPanel.element,
+  );
 
   viewer.onDocumentAvailabilityChanged((hasDocument) => {
     toolbarElement.hidden = !hasDocument;
     linkTypeBar.hidden = !hasDocument;
+    if (!hasDocument) tableIndicator.setCount(0);
   });
 
   return { toolbarElement, viewerWrapper };

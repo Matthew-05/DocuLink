@@ -91,3 +91,39 @@ test("ignores an invalid optional table model", async () => {
   await assert.doesNotReject(cache.build("pdf-1", "broken"));
   assert.deepEqual(cache.tablesOnPage("pdf-1", 0), []);
 });
+
+test("counts the tables in a document across its pages", async () => {
+  const structure = {
+    version: 1,
+    coordinateSpace: "normalized",
+    pages: [
+      { pageIndex: 0, tables: [table("a", { x: 0.1, y: 0.1, width: 0.5, height: 0.2 })] },
+      { pageIndex: 1, tables: [] },
+      {
+        pageIndex: 2,
+        tables: [
+          table("b", { x: 0.1, y: 0.1, width: 0.5, height: 0.2 }),
+          table("c", { x: 0.1, y: 0.4, width: 0.5, height: 0.2 }),
+        ],
+      },
+    ],
+  };
+  const cache = new TableStructureCache(async () => structure as never);
+  await cache.build("pdf-1", "encoded");
+
+  // The indicator shows one number for the document, so pages without tables
+  // must not be miscounted and an unknown document must read zero rather than
+  // hiding an error behind a plausible number.
+  assert.equal(cache.tableCount("pdf-1"), 3);
+  assert.equal(cache.tableCount("pdf-unknown"), 0);
+
+  cache.clearPdf("pdf-1");
+  assert.equal(cache.tableCount("pdf-1"), 0);
+});
+
+test("a document with no stored structure counts zero", async () => {
+  const cache = cacheOf([]);
+  await cache.build("pdf-1", undefined);
+
+  assert.equal(cache.tableCount("pdf-1"), 0);
+});

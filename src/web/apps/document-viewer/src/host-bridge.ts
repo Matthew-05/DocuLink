@@ -26,7 +26,6 @@ export interface HostMessageHandlers {
   onLinkSelectionChanged?: (entries: LinkSelectionEntry[]) => void;
   onSetSearchQuery?: (query: string) => void;
   onSetCharBboxesVisible?: (visible: boolean) => void;
-  onSetTableSuggestionsVisible?: (visible: boolean) => void;
   onPdfUpdated?: (entry: PdfEntry) => void;
   onLinkRectanglesRemoved?: (ids: string[]) => void;
   onPdfNameUpdated?: (id: string, name: string) => void;
@@ -219,11 +218,6 @@ interface SetCharBboxesVisibleMessage {
   visible: boolean;
 }
 
-interface SetTableSuggestionsVisibleMessage {
-  type: "set-table-suggestions-visible";
-  visible: boolean;
-}
-
 function toLinkedRectEntry(rect: LinkedRectPayload): LinkedRectEntry {
   return {
     id: rect.id,
@@ -247,7 +241,6 @@ function handleMessage(raw: unknown, handlers: HostMessageHandlers): void {
     onLinkSelectionChanged,
     onSetSearchQuery,
     onSetCharBboxesVisible,
-    onSetTableSuggestionsVisible,
     onPdfUpdated,
     onLinkRectanglesRemoved,
     onPdfNameUpdated,
@@ -353,13 +346,6 @@ function handleMessage(raw: unknown, handlers: HostMessageHandlers): void {
       if (!onSetCharBboxesVisible) return;
       const msg = parsed as SetCharBboxesVisibleMessage;
       onSetCharBboxesVisible(msg.visible === true);
-      return;
-    }
-
-    if (type === "set-table-suggestions-visible") {
-      if (!onSetTableSuggestionsVisible) return;
-      const msg = parsed as SetTableSuggestionsVisibleMessage;
-      onSetTableSuggestionsVisible(msg.visible === true);
       return;
     }
 

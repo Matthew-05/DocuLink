@@ -269,13 +269,6 @@ namespace DocuLink.Addin.Modules.WebView
                 : "{\"type\":\"set-char-bboxes-visible\",\"visible\":false}";
         }
 
-        public static string BuildSetTableSuggestionsVisible(bool visible)
-        {
-            return visible
-                ? "{\"type\":\"set-table-suggestions-visible\",\"visible\":true}"
-                : "{\"type\":\"set-table-suggestions-visible\",\"visible\":false}";
-        }
-
         /// <summary>Returns the JSON payload for a <c>page-rotations-updated</c> message.</summary>
         public static string BuildPageRotationsUpdated(string pdfId, Dictionary<int, int> rotations)
         {

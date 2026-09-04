@@ -1,3 +1,15 @@
+/* One palette for the whole feature: the suggestion regions, and the indicator
+   that switches them on. It is the Table link colour, because a suggestion is a
+   table link waiting to be made — dashed where a real link is solid, so the two
+   never read as the same thing. */
+:root {
+  --table-suggestion-color: rgb(124, 58, 237);
+  --table-suggestion-color-strong: rgb(91, 33, 182);
+  --table-suggestion-border: rgba(124, 58, 237, 0.55);
+  --table-suggestion-fill: rgba(124, 58, 237, 0.06);
+  --table-suggestion-line: rgba(124, 58, 237, 0.34);
+}
+
 .table-suggestions {
   position: absolute;
   inset: 0;
@@ -13,8 +25,8 @@
   display: block;
   box-sizing: border-box;
   padding: 0;
-  border: 2px solid rgba(20, 139, 116, 0.9);
-  background: rgba(20, 139, 116, 0.05);
+  border: 1.5px dashed var(--table-suggestion-border);
+  background: var(--table-suggestion-fill);
   pointer-events: none;
 }
 
@@ -31,7 +43,7 @@
   padding: 0;
   border: none;
   border-radius: 0 0 4px 0;
-  background: rgba(20, 139, 116, 0.9);
+  background: var(--table-suggestion-color);
   color: #fff;
   font-size: 15px;
   line-height: 1;
@@ -41,14 +53,14 @@
 
 .table-suggestions__action:hover,
 .table-suggestions__action:focus-visible {
-  background: rgb(20, 139, 116);
-  box-shadow: 0 0 0 2px rgba(20, 139, 116, 0.35);
+  background: var(--table-suggestion-color-strong);
+  box-shadow: 0 0 0 2px rgba(124, 58, 237, 0.35);
 }
 
 .table-suggestions__line {
   position: absolute;
   display: block;
-  background: rgba(20, 139, 116, 0.55);
+  background: var(--table-suggestion-line);
   pointer-events: none;
 }
 
@@ -68,7 +80,7 @@
   position: absolute;
   inset: 0 0 auto;
   display: block;
-  background: rgba(65, 105, 225, 0.12);
-  border-bottom: 2px solid rgba(65, 105, 225, 0.75);
+  background: rgba(124, 58, 237, 0.14);
+  border-bottom: 1.5px solid var(--table-suggestion-border);
   pointer-events: none;
 }

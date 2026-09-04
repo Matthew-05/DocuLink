@@ -20,7 +20,7 @@ namespace DocuLink.Addin.Modules.UI
         private const int CardGap = 16;
 
         /// <summary>Height of the Development card, which has a fixed set of controls.</summary>
-        private const int DevelopmentCardHeight = 232;
+        private const int DevelopmentCardHeight = 176;
 
         /// <summary>Height of the action bar holding the Close button.</summary>
         private const int FooterHeight = 56;
@@ -118,29 +118,11 @@ namespace DocuLink.Addin.Modules.UI
                 "Draws the per-character text boxes over every page in the document viewer.",
                 new Point(CardPadding + 18, 104)));
 
-            var tableToggle = new CheckBox
-            {
-                Text = "Show table suggestions",
-                AutoSize = true,
-                Location = new Point(CardPadding, 130),
-                Font = DialogTheme.BodyFont,
-                ForeColor = DialogTheme.Text,
-                Cursor = Cursors.Hand,
-                Checked = DevSettings.ShowTableSuggestions
-            };
-            tableToggle.CheckedChanged += (s, e) =>
-                DevSettings.ShowTableSuggestions = tableToggle.Checked;
-            card.Controls.Add(tableToggle);
-
-            card.Controls.Add(DialogTheme.CreateCaption(
-                "Draws detected table regions and their row, column, and header bands.",
-                new Point(CardPadding + 18, 152)));
-
             var openLogsBtn = new Button
             {
                 Text = "Open Log Folder",
                 Size = new Size(140, 30),
-                Location = new Point(CardPadding, 184)
+                Location = new Point(CardPadding, 130)
             };
             DialogTheme.StyleSecondaryButton(openLogsBtn);
             openLogsBtn.Click += OpenLogFolder;

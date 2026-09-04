@@ -51,6 +51,13 @@ export class TableStructureCache {
     }
   }
 
+  /** Tables detected across every page of one document. */
+  tableCount(pdfId: string): number {
+    let total = 0;
+    for (const tables of this._cache.get(pdfId)?.values() ?? []) total += tables.length;
+    return total;
+  }
+
   tablesOnPage(pdfId: string, pageIndex: number): DetectedTable[] {
     return this._cache.get(pdfId)?.get(pageIndex) ?? [];
   }
