@@ -1,0 +1,62 @@
+.table-toggle {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-sm);
+  color: var(--color-text-muted);
+  transition: background 0.1s, color 0.1s;
+}
+
+.table-toggle:hover:not(:disabled) {
+  background: var(--color-surface-hover);
+  color: var(--table-suggestion-color);
+}
+
+/* Present but inert: the document has nothing to suggest, which is worth
+   showing rather than hiding the control and the question with it. */
+.table-toggle:disabled {
+  color: var(--color-border);
+  cursor: default;
+}
+
+.table-toggle__icon {
+  width: 14px;
+  height: 14px;
+  fill: currentColor;
+}
+
+.table-toggle--active {
+  background: rgba(124, 58, 237, 0.14);
+  color: var(--table-suggestion-color);
+}
+
+.table-toggle--active:hover:not(:disabled) {
+  background: rgba(124, 58, 237, 0.2);
+}
+
+.table-toggle__badge {
+  position: absolute;
+  top: -3px;
+  right: -4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 13px;
+  height: 13px;
+  padding: 0 3px;
+  box-sizing: border-box;
+  border-radius: 7px;
+  background: var(--table-suggestion-color);
+  color: #fff;
+  font-size: 9px;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: -0.2px;
+}
+
+.table-toggle__badge[hidden] {
+  display: none;
+}

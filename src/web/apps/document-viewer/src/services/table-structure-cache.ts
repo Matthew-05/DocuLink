@@ -51,6 +51,17 @@ export class TableStructureCache {
     }
   }
 
+  /**
+   * Whether a table model was stored for this document.
+   *
+   * Distinct from a model with no tables in it: one means detection has never
+   * run over this PDF, the other that it ran and found nothing. The toolbar
+   * says something different for each.
+   */
+  hasStructure(pdfId: string): boolean {
+    return this._cache.has(pdfId);
+  }
+
   /** Tables detected across every page of one document. */
   tableCount(pdfId: string): number {
     let total = 0;
@@ -92,6 +103,26 @@ export class TableStructureCache {
       return first.table.id < second.table.id ? -1 : first.table.id > second.table.id ? 1 : 0;
     });
     return scored[0].table;
+  }
+
+  /**
+   * The tables that the given rectangles land on.
+   *
+   * Used to tell an already-linked table from one still worth suggesting. It is
+   * a question about the rectangles as they are right now, so the answer is
+   * computed rather than stored: a deleted link stops covering its table on the
+   * very next call, with no flag anywhere to go stale.
+   */
+  tablesUnder(
+    pdfId: string,
+    rects: ReadonlyArray<{ page: number; rect: NormalizedRect }>,
+  ): Set<string> {
+    const ids = new Set<string>();
+    for (const { page, rect } of rects) {
+      const table = this.tableAt(pdfId, page, rect);
+      if (table) ids.add(table.id);
+    }
+    return ids;
   }
 
   clearPdf(pdfId: string): void {

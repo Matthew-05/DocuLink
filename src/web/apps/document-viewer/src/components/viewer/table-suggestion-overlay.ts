@@ -7,6 +7,7 @@ const OVERLAY_CLASS = "table-suggestions";
 
 export class TableSuggestionOverlay {
   private _visible = false;
+  private _linked: ReadonlySet<string> = new Set();
   private readonly _callbacks: Array<(pdfId: string, pageIndex: number, table: DetectedTable) => void> = [];
 
   constructor(
@@ -14,6 +15,18 @@ export class TableSuggestionOverlay {
     private readonly _cache: TableStructureCache,
   ) {
     this._viewer.onDocumentChanged(() => this.refresh());
+  }
+
+  /**
+   * Tables that already have a link rectangle on them.
+   *
+   * A suggestion whose table has been linked has nothing left to suggest, so it
+   * stops being drawn. Membership is recomputed from the current rectangles
+   * rather than remembered, so deleting the link brings the suggestion back.
+   */
+  setLinkedTableIds(ids: ReadonlySet<string>): void {
+    this._linked = ids;
+    this.refresh();
   }
 
   onSuggestionClicked(callback: (pdfId: string, pageIndex: number, table: DetectedTable) => void): void {
@@ -47,7 +60,9 @@ export class TableSuggestionOverlay {
 
   private _renderPage(wrapper: HTMLDivElement, pdfId: string, pageIndex: number): void {
     this._clearPage(wrapper);
-    const tables = this._cache.tablesOnPage(pdfId, pageIndex);
+    const tables = this._cache
+      .tablesOnPage(pdfId, pageIndex)
+      .filter((table) => !this._linked.has(table.id));
     if (tables.length === 0) return;
     const container = document.createElement("div");
     container.className = OVERLAY_CLASS;

@@ -127,3 +127,75 @@ test("a document with no stored structure counts zero", async () => {
 
   assert.equal(cache.tableCount("pdf-1"), 0);
 });
+
+test("reports which tables the current rectangles cover", async () => {
+  const structure = {
+    version: 1,
+    coordinateSpace: "normalized",
+    pages: [
+      {
+        pageIndex: 0,
+        tables: [
+          table("top", { x: 0.1, y: 0.1, width: 0.8, height: 0.2 }),
+          table("bottom", { x: 0.1, y: 0.5, width: 0.8, height: 0.2 }),
+        ],
+      },
+    ],
+  };
+  const cache = new TableStructureCache(async () => structure as never);
+  await cache.build("pdf-1", "encoded");
+
+  const under = (rects: Array<{ page: number; rect: { x: number; y: number; width: number; height: number } }>) =>
+    [...cache.tablesUnder("pdf-1", rects)].sort();
+
+  // A link drawn on a table covers it; two links on one table still name it once.
+  assert.deepEqual(under([{ page: 0, rect: { x: 0.1, y: 0.1, width: 0.8, height: 0.2 } }]), ["top"]);
+  assert.deepEqual(
+    under([
+      { page: 0, rect: { x: 0.1, y: 0.1, width: 0.4, height: 0.2 } },
+      { page: 0, rect: { x: 0.5, y: 0.1, width: 0.4, height: 0.2 } },
+    ]),
+    ["top"],
+  );
+  assert.deepEqual(
+    under([
+      { page: 0, rect: { x: 0.1, y: 0.1, width: 0.8, height: 0.2 } },
+      { page: 0, rect: { x: 0.1, y: 0.5, width: 0.8, height: 0.2 } },
+    ]),
+    ["bottom", "top"],
+  );
+
+  // Rectangles that land on no table, or on another page, cover nothing — which
+  // is how a deleted link turns its table back into a suggestion.
+  assert.deepEqual(under([{ page: 0, rect: { x: 0.1, y: 0.85, width: 0.3, height: 0.05 } }]), []);
+  assert.deepEqual(under([{ page: 1, rect: { x: 0.1, y: 0.1, width: 0.8, height: 0.2 } }]), []);
+  assert.deepEqual(under([]), []);
+});
+
+test("tells a document with no model apart from one with no tables", async () => {
+  const empty = { version: 1, coordinateSpace: "normalized", pages: [{ pageIndex: 0, tables: [] }] };
+  const cache = new TableStructureCache(async () => empty as never);
+
+  // Never detected: nothing was stored for this PDF.
+  await cache.build("never-run", undefined);
+  assert.equal(cache.hasStructure("never-run"), false);
+  assert.equal(cache.tableCount("never-run"), 0);
+
+  // Detected and empty: a model exists, it just holds no tables. The toolbar
+  // says something different for each, so the two must not collapse together.
+  await cache.build("ran-empty", "encoded");
+  assert.equal(cache.hasStructure("ran-empty"), true);
+  assert.equal(cache.tableCount("ran-empty"), 0);
+
+  cache.clearPdf("ran-empty");
+  assert.equal(cache.hasStructure("ran-empty"), false);
+});
+
+test("a payload that cannot be decoded counts as never detected", async () => {
+  const cache = new TableStructureCache(async () => {
+    throw new Error("corrupt");
+  });
+  await cache.build("pdf-1", "encoded");
+
+  assert.equal(cache.hasStructure("pdf-1"), false);
+});

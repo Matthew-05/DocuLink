@@ -37,6 +37,7 @@
 .toolbar__right {
   display: flex;
   align-items: center;
+  gap: var(--toolbar-gap);
   justify-self: end;
 }
 

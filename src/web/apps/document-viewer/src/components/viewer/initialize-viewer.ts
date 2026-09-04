@@ -10,7 +10,7 @@ import { RectContextMenu } from "./rect-context-menu.js";
 import { LinkSelectionPanel } from "./link-selection-panel.js";
 import { CharBboxOverlay } from "./char-bbox-overlay.js";
 import { TableSuggestionOverlay } from "./table-suggestion-overlay.js";
-import { TableIndicator } from "./table-indicator.js";
+import { TableNotice } from "./table-notice.js";
 import { createRectNavigator } from "./rect-navigator.js";
 import { attachExcelKeyBridge } from "./excel-key-bridge.js";
 import { createFitMode } from "./fit-mode.js";
@@ -78,7 +78,9 @@ interface DocuLinkDebugApi {
  * for the caller to mount in the DOM.
  */
 export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLElement; viewerWrapper: HTMLElement } {
-  const { element: toolbarElement, zoom, page, folderFilter, selector, search, rotate } =
+  const {
+    element: toolbarElement, zoom, page, folderFilter, selector, search, rotate, tableToggle,
+  } =
     createToolbar();
 
   const linkTypeSelector = new LinkTypeSelector();
@@ -254,7 +256,7 @@ export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLEleme
   const tableCopyModal  = new TableCopyModal();
   const charBboxDebug   = new CharBboxOverlay(viewer, cache);
   const tableSuggestions = new TableSuggestionOverlay(viewer, tableCache);
-  const tableIndicator  = new TableIndicator();
+  const tableNotice     = new TableNotice();
   const matchRenderer   = new SearchMatchRenderer(viewer);
   const searcher        = new PdfTextSearcher(cache);
   const searchNavigator = createSearchNavigator(
@@ -285,12 +287,68 @@ export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLEleme
     return { ...entry, table };
   };
 
+  /**
+   * Remaining count at which the notice was last put away, per document.
+   *
+   * Re-detection that finds more tables than the user dismissed is news worth
+   * repeating; working through the ones they already saw is not, so a count
+   * that only falls leaves the notice dismissed.
+   */
+  const _noticeDismissedAt = new Map<string, number>();
+
+  /**
+   * Tables linked in this viewer but not yet echoed back by the host.
+   *
+   * Creating a link is a round trip. Without this the suggestion the user just
+   * accepted would sit there until the host answered. Cleared whenever the host
+   * sends the authoritative list, so it can never outlive the truth.
+   */
+  let _pendingLinkedTables = new Set<string>();
+
+  /** Tables still worth suggesting in the open document, as of the last sync. */
+  let _remainingTables = 0;
+
+  const linkedTableIds = (pdfId: string): Set<string> => {
+    const ids = tableCache.tablesUnder(
+      pdfId,
+      _currentRects
+        .filter((entry) => entry.pdfId === pdfId && entry.linkType === "table")
+        .map((entry) => ({ page: entry.page, rect: entry.rect })),
+    );
+    for (const id of _pendingLinkedTables) ids.add(id);
+    return ids;
+  };
+
+  /** Recomputes what is still worth suggesting, and who should be saying so. */
+  const syncTableSuggestions = (): void => {
+    const pdfId = viewer.getActivePdfId();
+    if (!pdfId) {
+      _remainingTables = 0;
+      tableSuggestions.setLinkedTableIds(new Set());
+      tableToggle.setState({ detected: false, total: 0, remaining: 0 });
+      tableNotice.setCount(0);
+      tableNotice.setVisible(false);
+      return;
+    }
+    const linked = linkedTableIds(pdfId);
+    tableSuggestions.setLinkedTableIds(linked);
+    const total = tableCache.tableCount(pdfId);
+    const remaining = Math.max(0, total - linked.size);
+    _remainingTables = remaining;
+    tableToggle.setState({
+      detected: tableCache.hasStructure(pdfId), total, remaining,
+    });
+    tableNotice.setCount(remaining);
+    tableNotice.setVisible(
+      !_tableModelEnabled && remaining > (_noticeDismissedAt.get(pdfId) ?? 0),
+    );
+  };
+
   const refreshTableMetadata = (): void => {
     _currentRects = _currentRects.map((entry) => enrichTableMetadata(stripTableMetadata(entry)));
     renderer.setRectangles(_currentRects);
     tableSuggestions.refresh();
-    const pdfId = viewer.getActivePdfId();
-    tableIndicator.setCount(pdfId ? tableCache.tableCount(pdfId) : 0);
+    syncTableSuggestions();
   };
 
   const setTableModelEnabled = (enabled: boolean): void => {
@@ -298,17 +356,31 @@ export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLEleme
     _tableModelEnabled = enabled;
     if (enabled) tableSuggestions.show();
     else tableSuggestions.hide();
-    tableIndicator.setActive(enabled);
+    tableToggle.setActive(enabled);
     refreshTableMetadata();
   };
 
-  tableIndicator.onToggle(setTableModelEnabled);
-  // A document swap changes what there is to count, and the count is the whole
-  // reason the control is on screen.
-  viewer.onDocumentChanged(() => {
+  tableToggle.onToggle(setTableModelEnabled);
+
+  // Showing the suggestions is itself an acknowledgement: the notice has said
+  // what it had to say, and turning them off again should not bring it back.
+  const putNoticeAway = (): void => {
     const pdfId = viewer.getActivePdfId();
-    tableIndicator.setCount(pdfId ? tableCache.tableCount(pdfId) : 0);
+    if (pdfId) _noticeDismissedAt.set(pdfId, _remainingTables);
+  };
+
+  tableNotice.onShow(() => {
+    putNoticeAway();
+    setTableModelEnabled(true);
   });
+  tableNotice.onDismiss(() => {
+    putNoticeAway();
+    syncTableSuggestions();
+  });
+
+  // A document swap changes what there is to suggest, and whether anything
+  // should be on screen saying so.
+  viewer.onDocumentChanged(() => { syncTableSuggestions(); });
 
   /** Rectangle the viewer is currently showing; marked as active in the panel. */
   let _focusedRectId: string | null = null;
@@ -540,6 +612,8 @@ export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLEleme
 
   tableSuggestions.onSuggestionClicked((pdfId, page, detectedTable) => {
     const rect = detectedTable.bounds;
+    _pendingLinkedTables.add(detectedTable.id);
+    syncTableSuggestions();
     const entries = cache.get(pdfId, page);
     const table = detectTableGrid(entries, rect, detectedTable);
     sendLinkRectangleCreated({
@@ -698,8 +772,11 @@ export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLEleme
     {
       onLinkedRectangles: (rects) => {
         contextMenu.hide();
+        // The authoritative list supersedes anything this viewer assumed.
+        _pendingLinkedTables = new Set();
         _currentRects = rects.map(enrichTableMetadata);
         renderer.setRectangles(_currentRects);
+        syncTableSuggestions();
         selector.updateLinkCounts(computeLinkCounts(_currentRects));
       },
       onLinkedRectangleAdded: (rect) => {
@@ -707,6 +784,7 @@ export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLEleme
         const enriched = enrichTableMetadata(rect);
         _currentRects = [..._currentRects, enriched];
         renderer.addRectangle(enriched);
+        syncTableSuggestions();
         selector.updateLinkCounts(computeLinkCounts(_currentRects));
         focusRectangle(rect.id);
         navigate(rect.id, rect.pdfId, rect.page);
@@ -733,6 +811,8 @@ export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLEleme
         renderer.removeRectangles(ids);
         const removed = new Set(ids);
         _currentRects = _currentRects.filter((r) => !removed.has(r.id));
+        // A table whose link is gone is a suggestion again.
+        syncTableSuggestions();
         selector.updateLinkCounts(computeLinkCounts(_currentRects));
         setLinkSelection(_currentSelection.filter((e) => !removed.has(e.id)));
       },
@@ -757,13 +837,13 @@ export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLEleme
   const viewerWrapper = document.createElement("div");
   viewerWrapper.className = "viewer-wrapper";
   viewerWrapper.append(
-    viewer.element, tableIndicator.element, linkTypeBar, selectionPanel.element,
+    viewer.element, tableNotice.element, linkTypeBar, selectionPanel.element,
   );
 
   viewer.onDocumentAvailabilityChanged((hasDocument) => {
     toolbarElement.hidden = !hasDocument;
     linkTypeBar.hidden = !hasDocument;
-    if (!hasDocument) tableIndicator.setCount(0);
+    if (!hasDocument) syncTableSuggestions();
   });
 
   return { toolbarElement, viewerWrapper };

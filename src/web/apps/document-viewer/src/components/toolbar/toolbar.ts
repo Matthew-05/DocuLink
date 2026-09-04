@@ -4,6 +4,7 @@ import { PdfSelector } from "./pdf-selector.js";
 import { FolderFilter } from "./folder-filter.js";
 import { SearchBar } from "./search-bar.js";
 import { RotateController } from "./rotate-controller.js";
+import { TableToggle } from "./table-toggle.js";
 
 export interface ToolbarComponents {
   zoom: ZoomController;
@@ -12,6 +13,7 @@ export interface ToolbarComponents {
   selector: PdfSelector;
   search: SearchBar;
   rotate: RotateController;
+  tableToggle: TableToggle;
 }
 
 export function createToolbar(): { element: HTMLElement } & ToolbarComponents {
@@ -24,6 +26,7 @@ export function createToolbar(): { element: HTMLElement } & ToolbarComponents {
   const folderFilter = new FolderFilter();
   const selector = new PdfSelector();
   const search = new SearchBar();
+  const tableToggle = new TableToggle();
 
   selector.onOpen(() => {
     search.hideResults();
@@ -50,9 +53,10 @@ export function createToolbar(): { element: HTMLElement } & ToolbarComponents {
 
   const right = document.createElement("div");
   right.className = "toolbar__right";
-  right.append(search.element);
+  // Layout: [detected tables] [search]
+  right.append(tableToggle.element, search.element);
 
   element.append(left, center, right);
 
-  return { element, zoom, page, folderFilter, selector, search, rotate };
+  return { element, zoom, page, folderFilter, selector, search, rotate, tableToggle };
 }
