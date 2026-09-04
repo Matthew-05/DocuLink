@@ -20,7 +20,7 @@ import { createSearchNavigator } from "./search-navigator.js";
 import { TableCopyModal } from "../table-copy-modal/table-copy-modal.js";
 import { TextContentCache } from "../../services/text-content-cache.js";
 import { TableStructureCache } from "../../services/table-structure-cache.js";
-import { extractText } from "../../services/text-extractor.js";
+import { extractText } from "@doculink/shared";
 import {
   detectCopiedTable,
   detectTableGrid,

@@ -5,6 +5,8 @@ import pymupdf as fitz
 from engines.geometry_engine import (
     _extract_page_characters,
     _extract_page_characters_from_rawdict,
+    find_coincident_text_layer_pages,
+    find_unstrippable_hidden_text_pages,
 )
 
 
@@ -68,6 +70,44 @@ class ExtractPageCharactersFromRawdictTests(unittest.TestCase):
         self.assertEqual(_char(rawdict, self.PAGE_W, self.PAGE_H), ["a", "b"])
 
         boxes = _extract_page_characters_from_rawdict(rawdict, self.PAGE_W, self.PAGE_H)
+        self.assertEqual([box["lineIndex"] for box in boxes], [0, 1])
+
+    def test_removes_a_coincident_duplicate_text_layer(self) -> None:
+        first = [
+            ("A", (10, 10, 20, 30)),
+            ("1", (20, 10, 30, 30)),
+        ]
+        duplicate = [
+            ("A", (10.2, 10.1, 20.2, 30.1)),
+            ("1", (20.2, 10.1, 30.2, 30.1)),
+        ]
+        rawdict = {
+            "blocks": [
+                _text_block(first),
+                _text_block(duplicate),
+            ]
+        }
+
+        boxes = _extract_page_characters_from_rawdict(
+            rawdict, self.PAGE_W, self.PAGE_H
+        )
+
+        self.assertEqual([box["char"] for box in boxes], ["A", "1"])
+        self.assertEqual([box["lineIndex"] for box in boxes], [0, 0])
+
+    def test_preserves_repeated_text_at_distinct_positions(self) -> None:
+        rawdict = {
+            "blocks": [
+                _text_block([("A", (10, 10, 20, 30))]),
+                _text_block([("A", (10, 40, 20, 60))]),
+            ]
+        }
+
+        boxes = _extract_page_characters_from_rawdict(
+            rawdict, self.PAGE_W, self.PAGE_H
+        )
+
+        self.assertEqual([box["char"] for box in boxes], ["A", "A"])
         self.assertEqual([box["lineIndex"] for box in boxes], [0, 1])
 
     def test_preserves_source_line_when_vertical_positions_are_ambiguous(self) -> None:
@@ -184,6 +224,82 @@ class ExtractPageCharactersFromRawdictTests(unittest.TestCase):
 
             self.assertEqual([item["char"] for item in characters], ["A", "B"])
             self.assertLess(characters[0]["x"], characters[1]["x"])
+        finally:
+            document.close()
+
+    def test_coincident_pdf_text_draws_are_extracted_once(self) -> None:
+        document = fitz.open()
+        try:
+            page = document.new_page(width=self.PAGE_W, height=self.PAGE_H)
+            page.insert_text((72, 100), "Revenue 123", fontsize=12)
+            page.insert_text((72, 100), "Revenue 123", fontsize=12)
+            page = document.reload_page(page)
+
+            characters = _extract_page_characters(page)
+
+            self.assertEqual(
+                "".join(character["char"] for character in characters),
+                "Revenue 123",
+            )
+        finally:
+            document.close()
+
+    def test_detects_differently_encoded_hidden_copies_before_output_is_saved(
+        self,
+    ) -> None:
+        document = fitz.open()
+        try:
+            page = document.new_page(width=self.PAGE_W, height=self.PAGE_H)
+            page.insert_text(
+                (72, 100),
+                "Revenue 123",
+                fontsize=12,
+                fill_opacity=0,
+            )
+            page.insert_text(
+                (72.5, 100.2),
+                "Revenue I23",
+                fontsize=12,
+                render_mode=3,
+            )
+
+            pages = find_coincident_text_layer_pages(document.tobytes())
+
+            self.assertEqual(pages, [1])
+        finally:
+            document.close()
+
+    def test_zero_opacity_text_is_forced_instead_of_redo_ocr(self) -> None:
+        document = fitz.open()
+        try:
+            page = document.new_page(width=self.PAGE_W, height=self.PAGE_H)
+            page.insert_text(
+                (72, 100),
+                "Existing OCR",
+                fontsize=12,
+                fill_opacity=0,
+            )
+
+            pages = find_unstrippable_hidden_text_pages(document.tobytes())
+
+            self.assertEqual(pages, [1])
+        finally:
+            document.close()
+
+    def test_render_mode_three_text_can_still_use_redo_ocr(self) -> None:
+        document = fitz.open()
+        try:
+            page = document.new_page(width=self.PAGE_W, height=self.PAGE_H)
+            page.insert_text(
+                (72, 100),
+                "Existing OCR",
+                fontsize=12,
+                render_mode=3,
+            )
+
+            pages = find_unstrippable_hidden_text_pages(document.tobytes())
+
+            self.assertEqual(pages, [])
         finally:
             document.close()
 

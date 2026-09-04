@@ -4,14 +4,10 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "node build.mjs"
+    "build": "tsc -p ../../tsconfig.tools.json && node build.ts"
   },
   "dependencies": {
     "@doculink/shared": "*",
     "pdfjs-dist": "^4.10.38"
-  },
-  "devDependencies": {
-    "esbuild": "^0.25.0",
-    "typescript": "^5.8.3"
   }
 }

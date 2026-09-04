@@ -1,6 +1,6 @@
 import type { PdfViewer } from "./pdf-viewer.js";
 import type { TextContentCache } from "../../services/text-content-cache.js";
-import { extractText } from "../../services/text-extractor.js";
+import { extractText } from "@doculink/shared";
 import type { LinkRectPayload } from "../../types/index.js";
 import { DragAutoScroller } from "./drag-auto-scroller.js";
 import {

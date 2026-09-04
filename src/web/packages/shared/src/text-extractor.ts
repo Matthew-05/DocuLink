@@ -1,5 +1,6 @@
 import type { CharacterEntry } from "./char-entries.js";
 import type { NormalizedRect } from "./types.js";
+import { normalizeExtractedZeroPlaceholder } from "./zero-placeholder.js";
 
 const MIN_CHAR_BOX_OVERLAP = 0.3;
 
@@ -55,5 +56,5 @@ export function extractText(entries: CharacterEntry[] | null, rect: NormalizedRe
     prev = entry;
   }
 
-  return result;
+  return normalizeExtractedZeroPlaceholder(result);
 }

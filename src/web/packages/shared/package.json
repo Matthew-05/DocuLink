@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "build": "node -e \"console.log('[DocuLink] shared build complete')\"",
-    "test": "node ./test/text-searcher.test.mjs && node ./test/geometry-lines.test.mjs && node ./test/table-structure-validation.test.mjs"
+    "test": "tsc -p ./tsconfig.json && node --test ./test/*.test.ts ./test/*.test.mjs"
   },
   "dependencies": {
     "pdfjs-dist": "^4.10.38"
@@ -14,5 +14,9 @@
   "exports": {
     ".": "./src/index.ts",
     "./base.css": "./base.css"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.3",
+    "typescript": "^5.9.3"
   }
 }

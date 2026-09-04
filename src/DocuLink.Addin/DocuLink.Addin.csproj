@@ -373,12 +373,19 @@
   </PropertyGroup>
   <!-- Enumerate web source files so MSBuild can skip npm build when nothing changed -->
   <ItemGroup>
+    <WebSourceFiles Include="$(WebRootDir)\build-app.ts" />
+    <WebSourceFiles Include="$(WebRootDir)\tsconfig.tools.json" />
+    <WebSourceFiles Include="$(WebRootDir)\package.json" />
+    <WebSourceFiles Include="$(WebRootDir)\package-lock.json" />
     <WebSourceFiles Include="$(WebRootDir)\apps\document-viewer\src\**\*.*" />
-    <WebSourceFiles Include="$(WebRootDir)\apps\document-viewer\build.mjs" />
+    <WebSourceFiles Include="$(WebRootDir)\apps\document-viewer\build.ts" />
+    <WebSourceFiles Include="$(WebRootDir)\apps\document-viewer\package.json" />
     <WebSourceFiles Include="$(WebRootDir)\apps\file-manager\src\**\*.*" />
-    <WebSourceFiles Include="$(WebRootDir)\apps\file-manager\build.mjs" />
+    <WebSourceFiles Include="$(WebRootDir)\apps\file-manager\build.ts" />
+    <WebSourceFiles Include="$(WebRootDir)\apps\file-manager\package.json" />
     <WebSourceFiles Include="$(WebRootDir)\apps\document-matcher\src\**\*.*" />
-    <WebSourceFiles Include="$(WebRootDir)\apps\document-matcher\build.mjs" />
+    <WebSourceFiles Include="$(WebRootDir)\apps\document-matcher\build.ts" />
+    <WebSourceFiles Include="$(WebRootDir)\apps\document-matcher\package.json" />
     <WebSourceFiles Include="$(WebRootDir)\packages\**\src\**\*.*" />
   </ItemGroup>
   <Target Name="BuildWebAssets" BeforeTargets="Build" Inputs="@(WebSourceFiles)" Outputs="$(ViewerDistDir)\index.js;$(ViewerDistDir)\index.css;$(FileManagerDistDir)\index.js;$(FileManagerDistDir)\index.css;$(DocumentMatcherDistDir)\index.js;$(DocumentMatcherDistDir)\index.css">

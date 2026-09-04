@@ -23,7 +23,12 @@ import sys
 import time
 
 from engines.conversion_engine import ConversionError, convert_to_pdf
-from engines.geometry_engine import extract_text_geometry, geometry_to_base64
+from engines.geometry_engine import (
+    extract_text_geometry,
+    find_coincident_text_layer_pages,
+    find_unstrippable_hidden_text_pages,
+    geometry_to_base64,
+)
 from engines.pdf_security import sanitize_pdf_bytes
 from engines.table_cell_engine import has_recoverable_ruled_table, recover_table_cells
 from engines.table.detector import detect_tables, structure_to_base64
@@ -574,6 +579,9 @@ def _handle_job(job: OcrJob) -> None:
         preflight_geometry_ms = _elapsed_ms(preflight_started)
         preflight_summary = summarize_geometry_quality(preflight_geometry)
         preflight_garbled = needs_garbled_text_retry(preflight_summary)
+        unstrippable_hidden_text_pages = find_unstrippable_hidden_text_pages(
+            pdf_bytes
+        )
 
         initial_summary = preflight_summary
         initial_characters = initial_summary["total_characters"]
@@ -851,7 +859,7 @@ def _handle_job(job: OcrJob) -> None:
         selected_profile = PROFILE_DEFAULT
         evaluated_profiles = [PROFILE_DEFAULT]
         ocr_ran = True
-        if preflight_garbled:
+        if preflight_garbled or unstrippable_hidden_text_pages:
             initial_summary = preflight_summary
             initial_characters = initial_summary["total_characters"]
             initial_non_whitespace_characters = initial_summary[
@@ -861,14 +869,28 @@ def _handle_job(job: OcrJob) -> None:
             initial_garbled_page_numbers = list(
                 initial_summary["garbled_page_numbers"]
             )
-            forced_page_numbers = initial_garbled_page_numbers
-            escalation_reason = "text-garbled-preflight"
-            ocr_mode = MODE_FORCE
-            on_progress(
-                "Source text mapping is garbled on page(s) "
-                f"{','.join(map(str, forced_page_numbers))}; "
-                "skipping redo and rasterizing only those pages…"
+            forced_page_numbers = sorted(
+                set(initial_garbled_page_numbers)
+                | set(unstrippable_hidden_text_pages)
             )
+            escalation_reason = (
+                "text-garbled-preflight"
+                if preflight_garbled
+                else "unstrippable-hidden-text"
+            )
+            ocr_mode = MODE_FORCE
+            if preflight_garbled:
+                on_progress(
+                    "Source text mapping is garbled or cannot be safely replaced "
+                    f"on page(s) {','.join(map(str, forced_page_numbers))}; "
+                    "skipping redo and rasterizing only those pages…"
+                )
+            else:
+                on_progress(
+                    "Source contains a hidden text layer that redo cannot remove "
+                    f"on page(s) {','.join(map(str, forced_page_numbers))}; "
+                    "rasterizing only those pages…"
+                )
             ocr_started = time.perf_counter()
             try:
                 result_bytes = ocr_pdf_bytes(
@@ -1151,6 +1173,58 @@ def _handle_job(job: OcrJob) -> None:
                 date_recovery_ms = _elapsed_ms(date_recovery_started)
             if table_text_recovery_ms == 0:
                 table_text_recovery_ms = date_recovery_ms
+
+        # OCRmyPDF redo can only strip text drawn with PDF render mode 3. Some
+        # producers hide OCR using zero opacity or clipping, and table recovery
+        # also rewrites localized text regions. Validate the actual output PDF,
+        # then rasterize only affected pages so a document with two overlapping
+        # layers is never persisted. This is intentionally after every optional
+        # retry and recovery stage.
+        duplicate_layer_pages = find_coincident_text_layer_pages(result_bytes)
+        if duplicate_layer_pages:
+            forced_page_numbers = sorted(
+                set(forced_page_numbers) | set(duplicate_layer_pages)
+            )
+            escalation_reason = "duplicate-text-layer"
+            ocr_mode = MODE_FORCE
+            on_progress(
+                "Overlapping text layers detected on page(s) "
+                f"{','.join(map(str, duplicate_layer_pages))}; "
+                "rebuilding those pages…"
+            )
+            duplicate_repair_started = time.perf_counter()
+            try:
+                result_bytes = ocr_pdf_bytes(
+                    result_bytes,
+                    mode=MODE_FORCE,
+                    auto_rotate_pages=False,
+                    pages=",".join(map(str, duplicate_layer_pages)),
+                    progress_callback=on_progress,
+                )
+            finally:
+                fallback_ocr_ms += _elapsed_ms(duplicate_repair_started)
+                ocr_ms = primary_ocr_ms + fallback_ocr_ms + adaptive_ocr_ms
+
+            duplicate_geometry_started = time.perf_counter()
+            geometry = extract_text_geometry(
+                result_bytes,
+                progress_callback=on_progress,
+            )
+            fallback_geometry_ms += _elapsed_ms(duplicate_geometry_started)
+            geometry_ms = (
+                primary_geometry_ms
+                + fallback_geometry_ms
+                + adaptive_geometry_ms
+                + table_geometry_ms
+            )
+            remaining_duplicate_pages = find_coincident_text_layer_pages(
+                result_bytes
+            )
+            if remaining_duplicate_pages:
+                raise RuntimeError(
+                    "Could not rebuild overlapping text layer on page(s) "
+                    + ",".join(map(str, remaining_duplicate_pages))
+                )
 
         # result_bytes is derived exclusively from the already-scrubbed pdf_bytes
         # and locally generated OCR text. A second scrub repeats the expensive PDF
