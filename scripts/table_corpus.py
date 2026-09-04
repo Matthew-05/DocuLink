@@ -46,11 +46,19 @@ def geometry_for(pdf_bytes: bytes) -> dict:
     return geometry
 
 
-def detect(pdf_bytes: bytes, geometry: dict, *, detector: str = DEFAULT_DETECTOR) -> tuple[dict, dict, float]:
+def detect(
+    pdf_bytes: bytes,
+    geometry: dict,
+    *,
+    detector: str = DEFAULT_DETECTOR,
+    periods: bool | None = None,
+) -> tuple[dict, dict, float]:
     """Run one detector, returning its structure, diagnostics and elapsed seconds."""
     diagnostics: dict = {}
     started = time.perf_counter()
-    structure = detect_tables(pdf_bytes, geometry, detector=detector, diagnostics=diagnostics)
+    structure = detect_tables(
+        pdf_bytes, geometry, detector=detector, diagnostics=diagnostics, periods=periods
+    )
     return structure, diagnostics, time.perf_counter() - started
 
 

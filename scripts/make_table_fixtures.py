@@ -13,6 +13,7 @@ both the PDFs and the goldens; review the diff before committing.
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 import pymupdf as fitz
@@ -139,6 +140,40 @@ class Builder:
                 "center": (line["y0"] + line["y1"]) / 2,
                 "lines": [line],
             }
+        )
+        return self.rows[-1]
+
+    def money(self, baseline: float, label: str, cells: list[tuple[float, str, bool]]):
+        """A row of right-aligned amounts, each optionally marked with a currency.
+
+        The marker floats at the left of its cell, well clear of the amount at the
+        right — the arrangement every accounting layout uses, and the one that
+        tempts a column boundary to fall between a symbol and the number it
+        belongs to.
+        """
+        placed: dict[int, tuple] = {}
+        if label:
+            box = self.sheet.text(72.0, baseline, label)
+            placed[0] = box
+            self.boxes.append(box)
+        for index, (right_edge, amount, marked) in enumerate(cells, start=1):
+            boxes = []
+            if marked:
+                boxes.append(self.sheet.text(right_edge - 80.0, baseline, "$"))
+            boxes.append(self.sheet.text(right_edge, baseline, amount, right=True))
+            self.boxes.extend(boxes)
+            placed[index] = (
+                min(box[0] for box in boxes),
+                min(box[1] for box in boxes),
+                max(box[2] for box in boxes),
+                max(box[3] for box in boxes),
+            )
+        line = {
+            "y0": min(box[1] for box in placed.values()),
+            "y1": max(box[3] for box in placed.values()),
+        }
+        self.rows.append(
+            {"cells": placed, "center": (line["y0"] + line["y1"]) / 2, "lines": [line]}
         )
         return self.rows[-1]
 
@@ -366,6 +401,45 @@ def intro_paragraph(sheet: Sheet) -> list[dict]:
     return [builder.golden(header_rows=1)]
 
 
+def currency_columns(sheet: Sheet) -> list[dict]:
+    """Floated currency markers in every arrangement a filing uses.
+
+    Markers on the first and last rows only, markers on every row, a nil dash
+    that still takes a marker, negatives in parentheses, and amounts of widely
+    different lengths. Each marker has to end up inside the column of the amount
+    it marks — which is a statement about where the boundary goes, not only about
+    what the cell text says.
+    """
+    builder = Builder(sheet)
+    # Amounts right-aligned here, markers 80pt to their left — clear of the
+    # longest row label, as an accounting layout sets them. A marker that
+    # overlapped the labels could not be separated by any single boundary.
+    columns = (330.0, 450.0, 570.0)
+    builder.row(
+        120.0,
+        {
+            1: (columns[0], "2025", True),
+            2: (columns[1], "2024", True),
+            3: (columns[2], "2023", True),
+        },
+    )
+    body = [
+        ("Net sales", [("416,161", True), ("391,035", True), ("383,285", True)]),
+        ("Cost of sales", [("(220,960)", False), ("(210,352)", False), ("(214,137)", False)]),
+        ("Research and development", [("34,550", False), ("31,370", False), ("29,915", False)]),
+        ("Impairment", [("—", True), ("—", True), ("1,050", True)]),
+        ("Other income", [("269", False), ("(565)", False), ("382", False)]),
+        ("Total", [("133,050", True), ("123,216", True), ("114,301", True)]),
+    ]
+    for offset, (label, amounts) in enumerate(body):
+        builder.money(
+            142.0 + offset * LINE_PITCH,
+            label,
+            [(columns[index], amount, marked) for index, (amount, marked) in enumerate(amounts)],
+        )
+    return [builder.golden(header_rows=1)]
+
+
 def bullet_list(sheet: Sheet) -> list[dict]:
     """A negative: a bullet list is two aligned columns and is not a table."""
     sheet.text(72.0, 110.0, "First Quarter 2025:")
@@ -437,12 +511,33 @@ FIXTURE_BUILDERS = {
     "prose-between": prose_between,
     "wrapped-cells": wrapped_cells,
     "intro-paragraph": intro_paragraph,
+    "currency-columns": currency_columns,
     "ruled-grid": ruled_grid,
     "negative-bullet-list": bullet_list,
     "negative-numbered-list": numbered_list,
     "negative-chart": chart,
     "negative-aligned-prose": aligned_prose,
 }
+
+
+def _replace(path: Path, payload: bytes) -> bool:
+    """Write a fixture through a temporary file and rename it into place.
+
+    Rewriting in place fails whenever something else holds the file open — a PDF
+    viewer, an indexer — and leaves a half-written fixture behind if it fails
+    part way. A rename either happens or does not. A file that cannot be replaced
+    at all is reported and skipped, so one locked fixture does not abandon the
+    rest of the set half-rebuilt.
+    """
+    temporary = path.with_suffix(path.suffix + ".tmp")
+    temporary.write_bytes(payload)
+    try:
+        os.replace(temporary, path)
+    except OSError as error:
+        temporary.unlink(missing_ok=True)
+        print(f"[skipped] {path.name}: {error.strerror or error}")
+        return False
+    return True
 
 
 def build(output: Path = FIXTURES) -> list[Path]:
@@ -453,9 +548,7 @@ def build(output: Path = FIXTURES) -> list[Path]:
         sheet = Sheet(document)
         tables = builder(sheet)
         pdf_path = output / f"{name}.pdf"
-        # Written as bytes rather than saved in place: `save` unlinks the previous
-        # file first, which fails on a read-only-delete mount.
-        pdf_path.write_bytes(document.tobytes(deflate=True, garbage=3))
+        wrote_pdf = _replace(pdf_path, document.tobytes(deflate=True, garbage=3))
         document.close()
         golden = {
             "pageIndex": 0,
@@ -471,8 +564,10 @@ def build(output: Path = FIXTURES) -> list[Path]:
             ],
         }
         golden_path = output / f"{name}.page-1.json"
-        golden_path.write_text(json.dumps(golden, indent=2) + "\n", encoding="utf-8")
-        written.extend([pdf_path, golden_path])
+        # The golden describes the PDF beside it, so it is only rewritten when
+        # that PDF was.
+        if wrote_pdf and _replace(golden_path, (json.dumps(golden, indent=2) + "\n").encode("utf-8")):
+            written.extend([pdf_path, golden_path])
     return written
 
 

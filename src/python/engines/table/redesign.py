@@ -22,6 +22,12 @@ from engines.table.scoring import CandidateFeatures, evaluate
 
 DETECTOR_VERSION = "table-detector-2"
 
+# Period analysis — reporting what span of time a table's data is dated to — is
+# early alpha. It is off unless a caller asks for it, so production output keeps
+# `period` null and nothing downstream can come to depend on a shape that is
+# still moving. The diagnostic scripts turn it on with --periods.
+PERIOD_ANALYSIS = False
+
 
 def _row_bands(grid: GridHypothesis, top: float, bottom: float) -> list[tuple[float, float]]:
     """Split the region into bands, one per logical row.
@@ -69,17 +75,27 @@ def _snap(edges: list[tuple[float, float]], rules: list[float], reach: float):
 
 
 def _period(grid: GridHypothesis, header: dict | None) -> dict | None:
-    """What span of time the table covers, from its header and its captions.
+    """What span of time the table covers, and which way the periods run.
 
-    A statement dates each column, so the periods come from the header labels. A
-    stacked report labels the whole block once above the titles and qualifies the
-    dates separately; both of those bands are excluded from the grid, so what
-    they said is recorded here rather than lost with them.
+    Periods are not always along the top. A statement dates its columns; a
+    maturity schedule dates its rows and titles its columns with what the numbers
+    are; an activity table dates only its opening and closing balances and leaves
+    the movements between them undated. A stacked report labels the whole block
+    once above the titles and qualifies the dates separately — and both of those
+    bands are excluded from the grid, so what they said is recorded here rather
+    than lost with them.
     """
-    columns = [
-        period_in(label) for label in (header or {}).get("labels", [""] * grid.column_count)
-    ]
+    labels = (header or {}).get("labels", [])
+    columns = [period_in(label) for label in labels]
     columns += [""] * (grid.column_count - len(columns))
+    columns = columns[: grid.column_count]
+
+    header_rows = int(header["rowCount"]) if header else 0
+    rows: list[str] = []
+    for index, row in enumerate(grid.rows):
+        label = row.cells[0] if row.cells else ""
+        rows.append("" if index < header_rows else period_in(label))
+
     table = ""
     qualifier = ""
     for caption in grid.captions:
@@ -87,9 +103,26 @@ def _period(grid: GridHypothesis, header: dict | None) -> dict | None:
             table = period_in(caption["text"]) or caption["text"]
         elif caption["kind"] == "qualifier" and not qualifier:
             qualifier = caption["text"]
-    if not table and not qualifier and not any(columns):
+
+    dated_columns = any(columns)
+    dated_rows = any(rows)
+    if not table and not qualifier and not dated_columns and not dated_rows:
         return None
-    return {"table": table, "columns": columns[: grid.column_count], "qualifier": qualifier}
+    if dated_columns and dated_rows:
+        axis = "both"
+    elif dated_columns:
+        axis = "columns"
+    elif dated_rows:
+        axis = "rows"
+    else:
+        axis = "none"
+    return {
+        "table": table,
+        "columns": columns,
+        "rows": rows,
+        "qualifier": qualifier,
+        "axis": axis,
+    }
 
 
 def _merge_confidence(row, layout: PageLayout) -> float:
@@ -110,13 +143,17 @@ def detect_page(
     page_index: int,
     diagnostics: dict | None = None,
     rejected: list[dict] | None = None,
+    periods: bool | None = None,
 ) -> list[dict]:
     """Every table on one page, in reading order.
 
     Pass `rejected` to collect the candidates that were fitted but not published,
     each with the reason it lost. The overlay renderer draws them; nothing in the
     production path looks at them.
+
+    `periods` overrides the `PERIOD_ANALYSIS` default for this page.
     """
+    analyse_periods = PERIOD_ANALYSIS if periods is None else periods
     layout = build_page_layout(page_geometry)
     rulings: PageRulings = (
         detect_page_ruling_segments(page) if page is not None else PageRulings()
@@ -205,7 +242,7 @@ def detect_page(
                 ],
                 "rows": rows_payload,
                 "header": header,
-                "period": _period(grid, header),
+                "period": _period(grid, header) if analyse_periods else None,
                 "rulings": {
                     "vertical": sorted(
                         rule.position

@@ -58,11 +58,13 @@
     "Period": {
       "type": "object",
       "description": "What span of time the table's data covers. A statement usually dates each column (\"September 27, 2025\"), but a stacked report labels the whole block once (\"2025\") and qualifies the dates separately (\"Years ended\"). Those labels are not rows of the table and are excluded from its bounds, so the period they carry is recorded here instead of being lost.",
-      "required": ["table", "columns", "qualifier"],
+      "required": ["table", "columns", "rows", "qualifier", "axis"],
       "additionalProperties": false,
       "properties": {
         "table": { "type": "string", "description": "Period covering every column, taken from a caption above the table. Empty when the period varies by column or none was found." },
         "columns": { "type": "array", "items": { "type": "string" }, "description": "Period each column's data belongs to, read from that column's header label. One entry per column, empty where the label carries no period." },
+        "rows": { "type": "array", "items": { "type": "string" }, "description": "Period each row's data belongs to, read from that row's label. One entry per row, empty where the label carries no period. A maturity schedule dates its rows rather than its columns, and an activity table dates only the opening and closing balances, leaving the movements between them undated." },
+        "axis": { "type": "string", "enum": ["columns", "rows", "both", "none"], "description": "Which way the periods run. \"none\" means every cell shares `table` — or that no period was found at all. A cell's period is its row's, else its column's, else the table's." },
         "qualifier": { "type": "string", "description": "A phrase qualifying the dated columns, such as \"Years ended\", excluded from the grid because it names the group rather than a column. Empty when absent." }
       }
     },

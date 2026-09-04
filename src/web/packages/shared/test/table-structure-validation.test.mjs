@@ -74,7 +74,13 @@ for (const entry of malformed) {
 
 // The period a table covers rides alongside the header.
 {
-  const period = { table: "2025", columns: ["", "2025"], qualifier: "Years ended" };
+  const period = {
+    table: "2025",
+    columns: ["", "2025"],
+    rows: ["", "2024"],
+    qualifier: "Years ended",
+    axis: "both",
+  };
   const parsed = parseTableStructure(structure([table({ period })]));
   assert.deepEqual(parsed.pages[0].tables[0].period, period);
 }
@@ -88,13 +94,16 @@ for (const entry of malformed) {
 }
 
 // A period a caller cannot index alongside the columns is not usable.
+const wellFormed = { table: "", columns: ["", ""], rows: ["", ""], qualifier: "", axis: "none" };
 for (const period of [
-  { table: "2025", columns: [""], qualifier: "" },                  // one entry short
-  { table: "2025", columns: ["", "2025", "2024"], qualifier: "" },  // one too many
-  { table: 2025, columns: ["", ""], qualifier: "" },
-  { table: "", columns: "2025", qualifier: "" },
-  { table: "", columns: ["", 2024], qualifier: "" },
-  { table: "", columns: ["", ""] },
+  { ...wellFormed, columns: [""] },                 // one column entry short
+  { ...wellFormed, columns: ["", "2025", "2024"] }, // one too many
+  { ...wellFormed, rows: [""] },                    // one row entry short
+  { ...wellFormed, table: 2025 },
+  { ...wellFormed, columns: "2025" },
+  { ...wellFormed, rows: ["", 2024] },
+  { ...wellFormed, axis: "diagonal" },
+  { table: "", columns: ["", ""], rows: ["", ""], qualifier: "" }, // no axis
 ]) {
   const parsed = parseTableStructure(structure([table({ period })]));
   assert.deepEqual(parsed.pages[0].tables, [], JSON.stringify(period));

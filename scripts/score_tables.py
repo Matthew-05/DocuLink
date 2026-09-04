@@ -121,12 +121,19 @@ def main() -> int:
     parser.add_argument("--tolerance", type=float, default=0.01, help="boundary tolerance")
     parser.add_argument("--iou", type=float, default=0.5, help="table match threshold")
     parser.add_argument("--detector", choices=DETECTORS, default=DEFAULT_DETECTOR)
+    parser.add_argument(
+        "--periods",
+        action="store_true",
+        help="run the alpha period analysis, which is off by default",
+    )
     parser.add_argument("--quiet", action="store_true")
     args = parser.parse_args()
 
     pdf_bytes = args.pdf.read_bytes()
     geometry = geometry_for(pdf_bytes)
-    structure, diagnostics, elapsed = detect(pdf_bytes, geometry, detector=args.detector)
+    structure, diagnostics, elapsed = detect(
+        pdf_bytes, geometry, detector=args.detector, periods=args.periods or None
+    )
     page_count = max(1, len(structure["pages"]))
 
     if args.write_candidates:

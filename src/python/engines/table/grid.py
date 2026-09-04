@@ -303,17 +303,22 @@ def align_boundaries_to_cells(
         # header label already lies across the boundary, and a band that is
         # broken wherever the line is drawn cannot argue about where to draw it.
         if pushed_right:
-            candidate = min(token.x0 for token in pushed_right) - margin
+            edge = min(token.x0 for token in pushed_right)
             floor = max(
                 (token.x1 for token in kept_left if token.x1 <= aligned[index]), default=low
             )
+            # Centre the boundary in the corridor rather than hugging the marker:
+            # the same cells either way, but a small difference in one document's
+            # metrics cannot then push a glyph across it.
+            candidate = (floor + edge) / 2 if low < floor < edge else edge - margin
             if low < candidate < high and candidate > floor:
                 aligned[index] = candidate
         elif pushed_left:
-            candidate = max(token.x1 for token in pushed_left) + margin
+            edge = max(token.x1 for token in pushed_left)
             ceiling = min(
                 (token.x0 for token in kept_right if token.x0 >= aligned[index]), default=high
             )
+            candidate = (edge + ceiling) / 2 if edge < ceiling < high else edge + margin
             if low < candidate < high and candidate < ceiling:
                 aligned[index] = candidate
     return aligned

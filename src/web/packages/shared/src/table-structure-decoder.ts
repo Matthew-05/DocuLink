@@ -48,12 +48,19 @@ export interface TableHeader {
  * are excluded from its bounds, so the period they carry is reported here.
  */
 export interface TablePeriod {
-  /** Period covering every column. Empty when it varies by column. */
+  /** Period covering every column. Empty when it varies by column or row. */
   table: string;
   /** Period each column's data belongs to; empty where its label carries none. */
   columns: string[];
+  /** Period each row's data belongs to; empty where its label carries none. */
+  rows: string[];
   /** A phrase qualifying the dated columns, such as "Years ended". */
   qualifier: string;
+  /**
+   * Which way the periods run. A cell's period is its row's, else its column's,
+   * else the table's.
+   */
+  axis: "columns" | "rows" | "both" | "none";
 }
 
 export interface DetectedTable {
@@ -155,17 +162,36 @@ function parseHeader(value: unknown, rowCount: number): TableHeader | null | und
   return { rowCount: count, labels: labels as string[] };
 }
 
-function parsePeriod(value: unknown, columnCount: number): TablePeriod | null | undefined {
+const PERIOD_AXES = new Set(["columns", "rows", "both", "none"]);
+
+function parsePeriod(
+  value: unknown,
+  columnCount: number,
+  rowCount: number,
+): TablePeriod | null | undefined {
   if (value === null || value === undefined) return null;
   if (!isRecord(value)) return undefined;
-  const { table, columns, qualifier } = value;
+  const { table, columns, rows, qualifier, axis } = value;
   if (typeof table !== "string" || typeof qualifier !== "string") return undefined;
-  if (!Array.isArray(columns) || columns.some((entry) => typeof entry !== "string")) {
-    return undefined;
-  }
-  // One entry per column, so a caller can index it alongside the columns array.
-  if (columns.length !== columnCount) return undefined;
-  return { table, columns: columns as string[], qualifier };
+  if (typeof axis !== "string" || !PERIOD_AXES.has(axis)) return undefined;
+  const strings = (input: unknown, length: number): string[] | null =>
+    Array.isArray(input)
+      && input.length === length
+      && input.every((entry) => typeof entry === "string")
+      ? (input as string[])
+      : null;
+  // One entry per column and per row, so a caller can index them alongside the
+  // columns and rows arrays without bounds checks of its own.
+  const byColumn = strings(columns, columnCount);
+  const byRow = strings(rows, rowCount);
+  if (byColumn === null || byRow === null) return undefined;
+  return {
+    table,
+    columns: byColumn,
+    rows: byRow,
+    qualifier,
+    axis: axis as TablePeriod["axis"],
+  };
 }
 
 function parseRulings(value: unknown): { vertical: number[]; horizontal: number[] } {
@@ -188,7 +214,7 @@ function parseTable(value: unknown): DetectedTable | null {
   if (rows === null) return null;
   const header = parseHeader(value.header, rows.length);
   if (header === undefined) return null;
-  const period = parsePeriod(value.period, columns.length);
+  const period = parsePeriod(value.period, columns.length, rows.length);
   if (period === undefined) return null;
   return {
     id: value.id,

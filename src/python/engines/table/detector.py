@@ -12,7 +12,7 @@ import pymupdf as fitz
 from engines.binary_codec import json_to_base64
 from engines.table.columns import detect_columns
 from engines.table.headers import detect_header
-from engines.table.redesign import DETECTOR_VERSION, detect_page
+from engines.table.redesign import DETECTOR_VERSION, PERIOD_ANALYSIS, detect_page
 from engines.table.regions import discover_regions
 from engines.table.rows import detect_rows
 from engines.table.rulings import detect_page_rulings
@@ -29,6 +29,7 @@ def detect_tables(
     *,
     detector: str = DEFAULT_DETECTOR,
     diagnostics: dict | None = None,
+    periods: bool | None = None,
 ) -> dict:
     if detector not in DETECTORS:
         raise ValueError(f"unknown table detector: {detector}")
@@ -47,7 +48,11 @@ def detect_tables(
             page = doc.load_page(page_index)
             if detector == "redesign":
                 tables = detect_page(
-                    page_geometry, page, page_index=page_index, diagnostics=diagnostics
+                    page_geometry,
+                    page,
+                    page_index=page_index,
+                    diagnostics=diagnostics,
+                    periods=periods,
                 )
             else:
                 tables = _detect_page_current(page_geometry, page, page_index)
@@ -58,6 +63,10 @@ def detect_tables(
         diagnostics["table_detector_version"] = (
             DETECTOR_VERSION if detector == "redesign" else "table-detector-1"
         )
+        if detector == "redesign":
+            diagnostics["table_period_analysis"] = (
+                PERIOD_ANALYSIS if periods is None else bool(periods)
+            )
     return {"version": 1, "coordinateSpace": "normalized", "pages": pages}
 
 

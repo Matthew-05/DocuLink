@@ -30,7 +30,12 @@ ACCEPTED = (0, 102, 255, 255)
 REJECTED = (220, 40, 40, 255)
 COLUMN = (255, 0, 0, 255)
 ROW = (0, 170, 0, 255)
-HEADER_FILL = (255, 255, 0, 80)
+# Yellow marks whichever band carries the period the data is dated to; blue marks
+# the band that names what the data is. A statement dates its columns, a maturity
+# schedule dates its rows, and reading the two apart is most of understanding a
+# table — so the overlay says which is which rather than shading both alike.
+PERIOD_FILL = (255, 255, 0, 80)
+LABEL_FILL = (70, 150, 255, 60)
 MERGED_ROW = (255, 140, 0, 255)
 
 
@@ -62,16 +67,37 @@ def _draw_table(image: Image.Image, table: dict, page_number: int) -> None:
     left, top, right, bottom = _rect(table["bounds"], image.size)
     header = table.get("header")
     rows = table["rows"]
-    if header is not None:
-        overlay = Image.new("RGBA", image.size, (0, 0, 0, 0))
-        overlay_draw = ImageDraw.Draw(overlay)
-        for row in rows[: int(header["rowCount"])]:
-            overlay_draw.rectangle(
-                (left, float(row["y0"]) * height, right, float(row["y1"]) * height),
-                fill=HEADER_FILL,
-            )
-        image.alpha_composite(overlay)
-        overlay.close()
+    # Without period analysis there is nothing to tell the two axes apart, so the
+    # header keeps the single shade it always had.
+    period_known = table.get("period") is not None
+    axis = (table.get("period") or {}).get("axis", "none")
+    header_rows = int(header["rowCount"]) if header else 0
+    overlay = Image.new("RGBA", image.size, (0, 0, 0, 0))
+    overlay_draw = ImageDraw.Draw(overlay)
+    for row in rows[:header_rows]:
+        overlay_draw.rectangle(
+            (left, float(row["y0"]) * height, right, float(row["y1"]) * height),
+            fill=PERIOD_FILL
+            if not period_known or axis in ("columns", "both")
+            else LABEL_FILL,
+        )
+    body = rows[header_rows:]
+    if period_known and body and len(table["columns"]) >= 2:
+        # The first column holds the row labels. It is the period axis when the
+        # rows are dated — a maturity schedule, or the opening and closing
+        # balances of an activity table — and otherwise names the rows.
+        label_column = table["columns"][0]
+        overlay_draw.rectangle(
+            (
+                float(label_column["x0"]) * width,
+                float(body[0]["y0"]) * height,
+                float(label_column["x1"]) * width,
+                float(body[-1]["y1"]) * height,
+            ),
+            fill=PERIOD_FILL if axis in ("rows", "both") else LABEL_FILL,
+        )
+    image.alpha_composite(overlay)
+    overlay.close()
 
     draw = ImageDraw.Draw(image)
     draw.rectangle((left, top, right, bottom), outline=ACCEPTED, width=3)
@@ -91,17 +117,21 @@ def _draw_table(image: Image.Image, table: dict, page_number: int) -> None:
     # The period is reported rather than drawn: its label was excluded from the
     # grid on purpose, so the overlay is the only place it can be checked.
     dated = period.get("table") or " ".join(
-        value for value in period.get("columns", []) if value
+        value
+        for value in list(period.get("columns", [])) + list(period.get("rows", []))
+        if value
     )
     caption = (
         f"p{page_number} {table['id']} {table['evidence']} "
         f"conf={float(table['confidence']):.2f} "
         f"hdr={int(header['rowCount']) if header else 0}"
     )
+    if period.get("axis") and period["axis"] != "none":
+        caption += f" · periods by {period['axis']}"
     if period.get("qualifier"):
         caption += f" · {period['qualifier']}"
     if dated:
-        caption += f" · {dated[:60]}"
+        caption += f" · {dated[:52]}"
     _label(draw, left + 4, max(2.0, top - 18), caption, ACCEPTED)
 
 
@@ -129,6 +159,7 @@ def analyse(
     detector: str = DEFAULT_DETECTOR,
     pages: set[int] | None = None,
     want_rejected: bool = False,
+    periods: bool | None = None,
 ):
     """Detect page by page, keeping the rejected candidates when asked."""
     geometry = geometry_for(pdf_bytes)
@@ -144,7 +175,11 @@ def analyse(
             rejected: list[dict] = [] if want_rejected else None
             if detector == "redesign":
                 tables = detect_page(
-                    page_geometry, page, page_index=page_index, rejected=rejected
+                    page_geometry,
+                    page,
+                    page_index=page_index,
+                    rejected=rejected,
+                    periods=periods,
                 )
             else:
                 tables = _detect_page_current(page_geometry, page, page_index)
@@ -163,11 +198,18 @@ def render_overlay(
     pages: set[int] | None = None,
     show_rejected: bool = False,
     report: Path | None = None,
+    periods: bool | None = None,
 ) -> Path:
     pdf_path = Path(pdf_path)
     out_pdf = Path(out_pdf)
     pdf_bytes = pdf_path.read_bytes()
-    results = analyse(pdf_bytes, detector=detector, pages=pages, want_rejected=show_rejected)
+    results = analyse(
+        pdf_bytes,
+        detector=detector,
+        pages=pages,
+        want_rejected=show_rejected,
+        periods=periods,
+    )
 
     rendered_pages: list[Image.Image] = []
     document = fitz.open(stream=pdf_bytes, filetype="pdf")
@@ -270,6 +312,11 @@ def main() -> int:
     parser.add_argument("--detector", choices=DETECTORS, default=DEFAULT_DETECTOR)
     parser.add_argument("--page", action="append", help="1-based page, list or range")
     parser.add_argument("--show-rejected", action="store_true")
+    parser.add_argument(
+        "--periods",
+        action="store_true",
+        help="run the alpha period analysis and shade the period axis apart from the label axis",
+    )
     parser.add_argument("--write-report", type=Path)
     args = parser.parse_args()
 
@@ -281,6 +328,7 @@ def main() -> int:
         pages=_page_set(args.page),
         show_rejected=args.show_rejected,
         report=args.write_report,
+        periods=args.periods or None,
     )
     print(output)
     return 0

@@ -400,6 +400,8 @@ class PeriodTests(unittest.TestCase):
             ["", "September 27, 2025", "September 28, 2024", "September 30, 2023"],
         )
         self.assertEqual(period["table"], "")
+        self.assertEqual(period["axis"], "columns")
+        self.assertEqual(period["rows"], [""] * len(period["rows"]))
 
     def test_an_excluded_block_caption_is_still_reported(self) -> None:
         # "2025" is dropped from the grid because it names the block rather than
@@ -431,6 +433,42 @@ class PeriodTests(unittest.TestCase):
         self.assertNotIn("Years", " ".join(grid.rows[0].cells))
         self.assertEqual(period["qualifier"], "Years ended")
         self.assertEqual(period["columns"][1], "September 27, 2025")
+
+    def test_a_maturity_schedule_dates_its_rows(self) -> None:
+        # The periods run down the first column and the columns name the data.
+        period, _grid = self._fit(
+            [
+                (0.100, [(0.05, "2026"), (0.80, "12,393")]),
+                (0.116, [(0.05, "2027"), (0.80, "10,078")]),
+                (0.132, [(0.05, "2028"), (0.80, "9,300")]),
+                (0.148, [(0.05, "2029"), (0.80, "5,235")]),
+                (0.164, [(0.05, "Thereafter"), (0.80, "49,303")]),
+                (0.180, [(0.05, "Total"), (0.80, "91,281")]),
+            ]
+        )
+        self.assertEqual(period["axis"], "rows")
+        self.assertEqual(period["rows"][:4], ["2026", "2027", "2028", "2029"])
+        self.assertEqual(period["rows"][4:], ["", ""])
+        self.assertEqual(period["columns"], ["", ""])
+
+    def test_an_activity_table_dates_only_its_balances(self) -> None:
+        # Rows are movements between two dated balances, so only the opening and
+        # closing rows carry a period.
+        period, _grid = self._fit(
+            [
+                (0.100, [(0.45, "Number of"), (0.75, "Weighted-Average")]),
+                (0.112, [(0.45, "RSUs"), (0.75, "Fair Value")]),
+                (0.132, [(0.05, "Balance as of September 28, 2024"), (0.47, "163,326"), (0.77, "158.73")]),
+                (0.148, [(0.05, "RSUs granted"), (0.47, "73,466"), (0.77, "226.68")]),
+                (0.164, [(0.05, "RSUs vested"), (0.47, "(76,845)"), (0.77, "159.85")]),
+                (0.180, [(0.05, "Balance as of September 27, 2025"), (0.47, "151,574"), (0.77, "189.75")]),
+            ]
+        )
+        self.assertEqual(period["axis"], "rows")
+        self.assertEqual(
+            period["rows"],
+            ["", "September 28, 2024", "", "", "September 27, 2025"],
+        )
 
     def test_a_table_with_no_dates_reports_none(self) -> None:
         period, _grid = self._fit(

@@ -30,6 +30,7 @@ POSITIVE = (
     "wrapped-cells",
     "ruled-grid",
     "intro-paragraph",
+    "currency-columns",
 )
 NEGATIVE = (
     "negative-bullet-list",
@@ -138,3 +139,25 @@ class EmittedStructureTests(unittest.TestCase):
             with self.subTest(fixture=name):
                 _expected, predicted = _run(name)
                 self._check(predicted)
+
+
+class PublishedCellTests(unittest.TestCase):
+    """Every glyph must land in the right cell of the *published* geometry.
+
+    The grid's own cell text applies rules a consumer never sees — a floated
+    currency marker is attached to the amount it marks. What ships is the column
+    and row bands, so this rebuilds each cell from those alone, the way the
+    viewer's extractor does, and fails when a marker ends up in the wrong one.
+    """
+
+    def test_no_fixture_puts_a_marker_in_the_wrong_cell(self) -> None:
+        from audit_table_cells import audit
+
+        for name in POSITIVE:
+            with self.subTest(fixture=name):
+                report = audit(FIXTURES / f"{name}.pdf")
+                self.assertEqual(
+                    report["faults"],
+                    0,
+                    f"{name}: {report['pages']}",
+                )
