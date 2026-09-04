@@ -1,7 +1,27 @@
 import assert from "node:assert/strict";
+import { registerHooks } from "node:module";
 import test from "node:test";
-import { detectCopiedTable, detectTableGrid, gridFromTableStructure } from "../src/services/table-extractor.ts";
 import type { DetectedTable } from "@doculink/shared";
+
+const tableExtractorUrl = new URL("../src/services/table-extractor.ts", import.meta.url).href;
+const zeroPlaceholderUrl = new URL(
+  "../../../packages/shared/src/zero-placeholder.ts",
+  import.meta.url,
+).href;
+
+// The workspace link is not resolvable from a bare `node --test` run, and pulling in the whole
+// shared barrel would drag pdfjs along with it. Only the zero-placeholder helper is needed.
+registerHooks({
+  resolve(specifier, context, nextResolve) {
+    if (specifier === "@doculink/shared" && context.parentURL === tableExtractorUrl) {
+      return { url: zeroPlaceholderUrl, shortCircuit: true };
+    }
+    return nextResolve(specifier, context);
+  },
+});
+
+const { detectCopiedTable, detectTableGrid, gridFromTableStructure } =
+  await import(tableExtractorUrl) as typeof import("../src/services/table-extractor.ts");
 
 interface TestCharacter {
   char: string;
@@ -185,4 +205,22 @@ test("a missing model retains the text heuristic fallback", () => {
     ...text("20", 0.7, 0.5, 2),
   ];
   assert.deepEqual(detectTableGrid(entries, rect, null), detectTableGrid(entries, rect));
+});
+
+test("normalizes standalone em dash cells to zero like a single rectangle", () => {
+  const entries = [
+    ...text("Alpha", 0.08, 0.15, 1),
+    ...text("100", 0.5, 0.15, 1),
+    ...text("$ —", 0.78, 0.15, 1),
+    ...text("Beta", 0.08, 0.35, 2),
+    ...text("—", 0.5, 0.35, 2),
+    ...text("Net — total", 0.78, 0.35, 2),
+  ];
+
+  const grid = detectTableGrid(entries, rect);
+
+  assert.deepEqual(grid.cells, [
+    ["Alpha", "100", "$ 0"],
+    ["Beta", "0", "Net — total"],
+  ]);
 });
