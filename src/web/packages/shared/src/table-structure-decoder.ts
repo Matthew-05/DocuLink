@@ -35,6 +35,11 @@ export interface TableRow {
   mergeConfidence: number;
 }
 
+export interface TableHeader {
+  rowCount: number;
+  labels: string[];
+}
+
 export interface DetectedTable {
   id: string;
   bounds: TableBounds;
@@ -42,8 +47,158 @@ export interface DetectedTable {
   confidence: number;
   columns: TableColumn[];
   rows: TableRow[];
-  header: { rowCount: number; labels: string[] } | null;
+  header: TableHeader | null;
   rulings: { vertical: number[]; horizontal: number[] };
+}
+
+// Coordinates are normalized, so a boundary may sit a rounding step outside the
+// unit square or its parent box. Anything beyond this is malformed.
+const EPSILON = 0.005;
+
+const EVIDENCE = new Set(["ruled", "whitespace", "mixed"]);
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isUnit(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value)
+    && value >= -EPSILON && value <= 1 + EPSILON;
+}
+
+function parseBounds(value: unknown): TableBounds | null {
+  if (!isRecord(value)) return null;
+  const { x, y, width, height } = value;
+  if (!isUnit(x) || !isUnit(y) || !isUnit(width) || !isUnit(height)) return null;
+  if (width <= 0 || height <= 0) return null;
+  if (x + width > 1 + EPSILON || y + height > 1 + EPSILON) return null;
+  return { x, y, width, height };
+}
+
+function parseColumns(value: unknown, bounds: TableBounds): TableColumn[] | null {
+  if (!Array.isArray(value) || value.length < 2) return null;
+  const columns: TableColumn[] = [];
+  let previous = bounds.x - EPSILON;
+  for (const entry of value) {
+    if (!isRecord(entry) || !isUnit(entry.x0) || !isUnit(entry.x1)) return null;
+    const { x0, x1 } = entry as { x0: number; x1: number };
+    // Columns must run left to right, not overlap, and stay inside the table.
+    if (x1 <= x0 || x0 < previous - EPSILON || x1 > bounds.x + bounds.width + EPSILON) return null;
+    previous = x1;
+    columns.push({ x0, x1 });
+  }
+  return columns;
+}
+
+function parseTextLines(value: unknown): TableTextLine[] | null {
+  if (!Array.isArray(value)) return null;
+  const lines: TableTextLine[] = [];
+  for (const entry of value) {
+    if (!isRecord(entry) || !isUnit(entry.y0) || !isUnit(entry.y1)) return null;
+    const { y0, y1 } = entry as { y0: number; y1: number };
+    if (y1 < y0) return null;
+    lines.push({ y0, y1 });
+  }
+  return lines;
+}
+
+function parseRows(value: unknown, bounds: TableBounds): TableRow[] | null {
+  if (!Array.isArray(value) || value.length < 2) return null;
+  const rows: TableRow[] = [];
+  let previous = bounds.y - EPSILON;
+  for (const entry of value) {
+    if (!isRecord(entry) || !isUnit(entry.y0) || !isUnit(entry.y1)) return null;
+    const { y0, y1 } = entry as { y0: number; y1: number };
+    if (y1 <= y0 || y0 < previous - EPSILON || y1 > bounds.y + bounds.height + EPSILON) return null;
+    if (entry.kind !== "header" && entry.kind !== "body") return null;
+    if (typeof entry.merged !== "boolean" || !isUnit(entry.mergeConfidence)) return null;
+    const textLines = parseTextLines(entry.textLines);
+    if (textLines === null) return null;
+    previous = y1;
+    rows.push({
+      y0,
+      y1,
+      kind: entry.kind,
+      textLines,
+      merged: entry.merged,
+      mergeConfidence: entry.mergeConfidence,
+    });
+  }
+  return rows;
+}
+
+function parseHeader(value: unknown, rowCount: number): TableHeader | null | undefined {
+  if (value === null || value === undefined) return null;
+  if (!isRecord(value)) return undefined;
+  const { rowCount: count, labels } = value;
+  if (typeof count !== "number" || !Number.isInteger(count) || count < 1 || count > rowCount) {
+    return undefined;
+  }
+  if (!Array.isArray(labels) || labels.some((label) => typeof label !== "string")) return undefined;
+  return { rowCount: count, labels: labels as string[] };
+}
+
+function parseRulings(value: unknown): { vertical: number[]; horizontal: number[] } {
+  if (!isRecord(value)) return { vertical: [], horizontal: [] };
+  const axis = (input: unknown): number[] =>
+    Array.isArray(input) ? input.filter(isUnit) : [];
+  return { vertical: axis(value.vertical), horizontal: axis(value.horizontal) };
+}
+
+function parseTable(value: unknown): DetectedTable | null {
+  if (!isRecord(value)) return null;
+  if (typeof value.id !== "string" || value.id.length === 0) return null;
+  if (typeof value.evidence !== "string" || !EVIDENCE.has(value.evidence)) return null;
+  if (!isUnit(value.confidence)) return null;
+  const bounds = parseBounds(value.bounds);
+  if (bounds === null) return null;
+  const columns = parseColumns(value.columns, bounds);
+  if (columns === null) return null;
+  const rows = parseRows(value.rows, bounds);
+  if (rows === null) return null;
+  const header = parseHeader(value.header, rows.length);
+  if (header === undefined) return null;
+  return {
+    id: value.id,
+    bounds,
+    evidence: value.evidence as DetectedTable["evidence"],
+    confidence: value.confidence,
+    columns,
+    rows,
+    header,
+    rulings: parseRulings(value.rulings),
+  };
+}
+
+/**
+ * Validate a decoded payload instead of trusting it.
+ *
+ * The model is produced by a detector that evolves independently of this app and
+ * arrives across a process boundary, so a cast would let a malformed or
+ * out-of-order table reach the renderer and draw nonsense over the page. A table
+ * that fails validation is dropped; the rest of the page still works. Only a
+ * payload that is not a table model at all is rejected outright, which the cache
+ * treats as "this PDF has no table structure".
+ */
+export function parseTableStructure(value: unknown): TableStructure {
+  if (!isRecord(value) || value.version !== 1 || value.coordinateSpace !== "normalized") {
+    throw new Error("Unsupported table structure payload");
+  }
+  if (!Array.isArray(value.pages)) throw new Error("Table structure has no pages");
+  const pages: PageTables[] = [];
+  for (const page of value.pages) {
+    if (!isRecord(page)) continue;
+    const { pageIndex, tables } = page;
+    if (typeof pageIndex !== "number" || !Number.isInteger(pageIndex) || pageIndex < 0) continue;
+    if (!Array.isArray(tables)) continue;
+    const parsed: DetectedTable[] = [];
+    for (const table of tables) {
+      const detected = parseTable(table);
+      if (detected !== null) parsed.push(detected);
+    }
+    pages.push({ pageIndex, tables: parsed });
+  }
+  return { version: 1, coordinateSpace: "normalized", pages };
 }
 
 function base64ToBytes(base64: string): Uint8Array {
@@ -58,5 +213,5 @@ export async function decodeTableStructure(base64: string): Promise<TableStructu
   const stream = new Blob([compressed.buffer as ArrayBuffer])
     .stream()
     .pipeThrough(new DecompressionStream("gzip"));
-  return JSON.parse(await new Response(stream).text()) as TableStructure;
+  return parseTableStructure(JSON.parse(await new Response(stream).text()));
 }

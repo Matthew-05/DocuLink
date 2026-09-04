@@ -382,8 +382,16 @@
     <WebSourceFiles Include="$(WebRootDir)\packages\**\src\**\*.*" />
   </ItemGroup>
   <Target Name="BuildWebAssets" BeforeTargets="Build" Inputs="@(WebSourceFiles)" Outputs="$(ViewerDistDir)\index.js;$(ViewerDistDir)\index.css;$(FileManagerDistDir)\index.js;$(FileManagerDistDir)\index.css;$(DocumentMatcherDistDir)\index.js;$(DocumentMatcherDistDir)\index.css">
-    <Message Text="[DocuLink] Installing web dependencies…" Importance="high" />
-    <Exec Command="cmd /c npm install" WorkingDirectory="$(WebRootDir)" Condition="!Exists('$(WebRootDir)\node_modules')" />
+    <!-- An empty node_modules is not an install. npm creates the directory before it
+         fetches anything, so an interrupted, cleaned or never-completed install
+         leaves the folder behind; the old Exists(node_modules) guard then skipped
+         npm install and the build failed inside npm run build with "Cannot find
+         package 'esbuild'". Test for the packages the build actually consumes. -->
+    <PropertyGroup>
+      <WebDependenciesInstalled Condition="Exists('$(WebRootDir)\node_modules\esbuild\package.json') And Exists('$(WebRootDir)\node_modules\pdfjs-dist\package.json')">true</WebDependenciesInstalled>
+    </PropertyGroup>
+    <Message Text="[DocuLink] Installing web dependencies…" Importance="high" Condition="'$(WebDependenciesInstalled)' != 'true'" />
+    <Exec Command="cmd /c npm install" WorkingDirectory="$(WebRootDir)" Condition="'$(WebDependenciesInstalled)' != 'true'" />
     <Message Text="[DocuLink] Building web assets…" Importance="high" />
     <Exec Command="cmd /c npm run build" WorkingDirectory="$(WebRootDir)" />
   </Target>

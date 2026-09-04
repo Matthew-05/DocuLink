@@ -84,7 +84,7 @@ _PROTOCOL_OUT = _claim_protocol_stream()
 from schemas.models import ConvertJob, ConvertResult, OcrJob, OcrProgress, OcrResult
 
 
-_GEOMETRY_CACHE_VERSION = "direct-hocr-v6-table-structure"
+_GEOMETRY_CACHE_VERSION = "direct-hocr-v7-table-detector-2"
 _GEOMETRY_CACHE_MAX_ENTRIES = 16
 _GEOMETRY_CACHE: OrderedDict[str, dict] = OrderedDict()
 
@@ -199,6 +199,9 @@ def _handle_job(job: OcrJob) -> None:
     table_text_recovery_error = ""
     table_structure_ms = 0
     table_structure_error = ""
+    # Detector diagnostics travel as their own dictionary so the detector can add
+    # counters without every caller learning their names.
+    table_diagnostics: dict = {}
     page_text_regions_detected = 0
     page_text_words_resolved = 0
     native_pages_reused = 0
@@ -315,6 +318,7 @@ def _handle_job(job: OcrJob) -> None:
             d["table_text_recovery_error"] = table_text_recovery_error
         if table_structure_error:
             d["table_structure_error"] = table_structure_error
+        d.update(table_diagnostics)
         return d
 
     def _emit_success(
@@ -377,6 +381,7 @@ def _handle_job(job: OcrJob) -> None:
                 detection_pdf,
                 geometry,
                 progress_callback=on_progress,
+                diagnostics=table_diagnostics,
             )
             table_structure_b64 = structure_to_base64(table_structure)
         except Exception as exc:  # noqa: BLE001 — optional stage must preserve OCR

@@ -1,14 +1,56 @@
-"""Raster and vector ruling-line detection."""
+"""Raster and vector ruling-line detection.
+
+Two views of the same evidence are published. `detect_page_rulings` returns bare
+normalized axis positions, which is all a single page-global grid ever needed.
+`detect_page_ruling_segments` keeps each rule's extent, strength and source, so
+the redesigned detector can group rules into connected components and treat two
+unrelated ruled objects on one page as two proposals instead of one.
+"""
 from __future__ import annotations
 
+from dataclasses import dataclass, field
 from PIL import Image, ImageOps
 import math
+
+
+@dataclass
+class RulingSegment:
+    """One drawn rule, with the extent it actually covers."""
+
+    axis: str  # "vertical" | "horizontal"
+    position: float  # normalized cross-axis coordinate
+    start: float  # normalized along-axis start
+    end: float  # normalized along-axis end
+    source: str  # "vector" | "raster"
+    strength: float = 1.0
+    thickness: float = 0.0
+
+    @property
+    def length(self) -> float:
+        return max(0.0, self.end - self.start)
+
+    def spans(self, value: float, *, slack: float = 0.0) -> bool:
+        return self.start - slack <= value <= self.end + slack
+
+
+@dataclass
+class PageRulings:
+    """Every rule on a page, plus the graphics that are emphatically not rules."""
+
+    vertical: list[RulingSegment] = field(default_factory=list)
+    horizontal: list[RulingSegment] = field(default_factory=list)
+    # Bounding boxes of curves, diagonals, thick fills and embedded images. A
+    # chart is made almost entirely of these; a table contains none of them.
+    graphics: list[tuple[float, float, float, float]] = field(default_factory=list)
 
 
 _GRID_DARKNESS_LEVELS = (110, 140, 170, 200, 220)
 # A rule is a hairline. Filled rectangles thicker than this are row shading,
 # highlight blocks or chart fills, whose edges are not table structure.
 _MAX_RULE_THICKNESS_PT = 2.5
+# A drawn shape is only treated as figure content when it covers area in both
+# directions; anything thinner is furniture (shading, an underline, a rule).
+_MIN_GRAPHIC_EXTENT = 0.04
 _MIN_IMAGE_WIDTH = 400
 _MIN_IMAGE_HEIGHT = 200
 
@@ -135,11 +177,13 @@ def _to_displayed(matrix: tuple[float, ...], x: float, y: float) -> tuple[float,
     return a * x + c * y + e, b * x + d * y + f
 
 
-def _vector_rulings(page) -> tuple[list[float], list[float]]:
+def _vector_ruling_segments(page) -> PageRulings:
+    """Rules and graphics from the page's vector content, with real extents."""
     width = float(page.rect.width)
     height = float(page.rect.height)
+    result = PageRulings()
     if width <= 0 or height <= 0:
-        return [], []
+        return result
     # `get_drawings` reports the unrotated page, while `page.rect` and the raster
     # pass below both describe the displayed one. On a rotated page that put every
     # rule on the wrong axis at the wrong offset — a rule displaying vertically at
@@ -151,15 +195,42 @@ def _vector_rulings(page) -> tuple[list[float], list[float]]:
             raise ValueError
     except Exception:
         matrix = (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)
-    vertical: list[float] = []
-    horizontal: list[float] = []
+
+    def _normalize(x: float, y: float) -> tuple[float, float]:
+        display_x, display_y = _to_displayed(matrix, x, y)
+        return (display_x - page.rect.x0) / width, (display_y - page.rect.y0) / height
+
+    def _record_graphic(rect) -> None:
+        """Remember a shape only if it covers area in both directions.
+
+        Row shading and highlight bars are filled rectangles too, and they are a
+        table's furniture rather than a chart's. A band one line high says
+        nothing about whether the region is plotted; a block that is broad and
+        tall in equal measure is the plot area of a figure.
+        """
+        try:
+            x0, y0 = _normalize(float(rect.x0), float(rect.y0))
+            x1, y1 = _normalize(float(rect.x1), float(rect.y1))
+        except Exception:
+            return
+        box = (min(x0, x1), min(y0, y1), max(x0, x1), max(y0, y1))
+        if box[2] - box[0] < _MIN_GRAPHIC_EXTENT or box[3] - box[1] < _MIN_GRAPHIC_EXTENT:
+            return
+        result.graphics.append(box)
+
     for drawing in page.get_drawings():
         stroked = drawing.get("type") in ("s", "fs") or drawing.get("color") is not None
+        line_width = float(drawing.get("width") or 0.0)
         for item in drawing.get("items", []):
             kind = item[0]
-            segments = []
+            segments: list[tuple[tuple[float, float], tuple[float, float]]] = []
             if kind == "l" and len(item) >= 3:
                 segments.append((item[1], item[2]))
+            elif kind in ("c", "qu") and len(item) >= 2:
+                # A curve or quad is never a rule. It is, however, exactly what a
+                # plotted series is made of, so it is worth remembering.
+                _record_graphic(drawing.get("rect"))
+                continue
             elif kind == "re" and len(item) >= 2:
                 rect = item[1]
                 thickness = min(abs(rect.x1 - rect.x0), abs(rect.y1 - rect.y0))
@@ -183,19 +254,288 @@ def _vector_rulings(page) -> tuple[list[float], list[float]]:
                         middle = (rect.x0 + rect.x1) / 2
                         segments.append(((middle, rect.y0), (middle, rect.y1)))
                 else:
-                    # Row shading. Taking its edges as rules made every stripe look
-                    # like a cell border, which drove `detect_rows` down the ruled
-                    # path and discarded every line above the first stripe — the
-                    # header included.
+                    # Row shading or a filled plot area. Taking its edges as rules
+                    # made every stripe look like a cell border, which drove row
+                    # detection down the ruled path and discarded the header.
+                    _record_graphic(rect)
                     continue
             for first, second in segments:
                 x0, y0 = _to_displayed(matrix, float(first[0]), float(first[1]))
                 x1, y1 = _to_displayed(matrix, float(second[0]), float(second[1]))
-                if abs(x1 - x0) <= 1.5 and abs(y1 - y0) >= height * 0.04:
-                    vertical.append(((x0 + x1) / 2 - page.rect.x0) / width)
-                if abs(y1 - y0) <= 1.5 and abs(x1 - x0) >= width * 0.04:
-                    horizontal.append(((y0 + y1) / 2 - page.rect.y0) / height)
-    return _dedupe(vertical), _dedupe(horizontal)
+                horizontal_run = abs(x1 - x0)
+                vertical_run = abs(y1 - y0)
+                if vertical_run > 1.5 and horizontal_run > 1.5:
+                    # A diagonal: a leader line, a chart series or a strike-through.
+                    box = (
+                        (min(x0, x1) - page.rect.x0) / width,
+                        (min(y0, y1) - page.rect.y0) / height,
+                        (max(x0, x1) - page.rect.x0) / width,
+                        (max(y0, y1) - page.rect.y0) / height,
+                    )
+                    if (
+                        box[2] - box[0] >= _MIN_GRAPHIC_EXTENT
+                        and box[3] - box[1] >= _MIN_GRAPHIC_EXTENT
+                    ):
+                        result.graphics.append(box)
+                    continue
+                thickness = max(line_width, 0.4) / max(width, height)
+                if horizontal_run <= 1.5 and vertical_run >= height * 0.04:
+                    result.vertical.append(
+                        RulingSegment(
+                            axis="vertical",
+                            position=((x0 + x1) / 2 - page.rect.x0) / width,
+                            start=(min(y0, y1) - page.rect.y0) / height,
+                            end=(max(y0, y1) - page.rect.y0) / height,
+                            source="vector",
+                            strength=1.0,
+                            thickness=thickness,
+                        )
+                    )
+                if vertical_run <= 1.5 and horizontal_run >= width * 0.04:
+                    result.horizontal.append(
+                        RulingSegment(
+                            axis="horizontal",
+                            position=((y0 + y1) / 2 - page.rect.y0) / height,
+                            start=(min(x0, x1) - page.rect.x0) / width,
+                            end=(max(x0, x1) - page.rect.x0) / width,
+                            source="vector",
+                            strength=1.0,
+                            thickness=thickness,
+                        )
+                    )
+    return result
+
+
+def _vector_rulings(page) -> tuple[list[float], list[float]]:
+    rulings = _vector_ruling_segments(page)
+    return (
+        _dedupe([rule.position for rule in rulings.vertical]),
+        _dedupe([rule.position for rule in rulings.horizontal]),
+    )
+
+
+def _run_extent(values: list[int], center: int, minimum: int, tolerance: int) -> tuple[int, int]:
+    """Walk out from a detected line centre while the ink continues.
+
+    A rule may be interrupted where it passes behind a cell value or where the
+    rasterizer dropped a pixel, so short breaks are stepped over; a long break is
+    the end of the rule.
+    """
+    size = len(values)
+    if not size:
+        return 0, 0
+    center = max(0, min(size - 1, center))
+    left = center
+    gap = 0
+    for index in range(center, -1, -1):
+        if values[index] >= minimum:
+            left = index
+            gap = 0
+        else:
+            gap += 1
+            if gap > tolerance:
+                break
+    right = center
+    gap = 0
+    for index in range(center, size):
+        if values[index] >= minimum:
+            right = index
+            gap = 0
+        else:
+            gap += 1
+            if gap > tolerance:
+                break
+    return left, right
+
+
+def _measure_raster_extents(
+    dark: Image.Image, centers: list[int], *, vertical: bool
+) -> list[RulingSegment]:
+    width, height = dark.size
+    axis_size = height if vertical else width
+    tolerance = max(2, round(axis_size * 0.02))
+    segments: list[RulingSegment] = []
+    for center in centers:
+        if vertical:
+            low = max(0, center - 1)
+            high = min(width, center + 2)
+            strip = dark.crop((low, 0, high, height)).resize((1, height), Image.Resampling.BOX)
+        else:
+            low = max(0, center - 1)
+            high = min(height, center + 2)
+            strip = dark.crop((0, low, width, high)).resize((width, 1), Image.Resampling.BOX)
+        values = _pixel_values(strip)
+        start, end = _run_extent(values, _densest(values), 128, tolerance)
+        coverage = sum(1 for value in values[start : end + 1] if value >= 128)
+        span = max(1, end - start + 1)
+        segments.append(
+            RulingSegment(
+                axis="vertical" if vertical else "horizontal",
+                position=center / (width if vertical else height),
+                start=start / axis_size,
+                end=(end + 1) / axis_size,
+                source="raster",
+                strength=coverage / span,
+                thickness=1.0 / (width if vertical else height),
+            )
+        )
+    return segments
+
+
+def _densest(values: list[int]) -> int:
+    """The index at the centre of the longest inked run, used as a seed."""
+    best_start = best_length = 0
+    start = None
+    for index, value in enumerate(values):
+        if value >= 128:
+            if start is None:
+                start = index
+        elif start is not None:
+            if index - start > best_length:
+                best_start, best_length = start, index - start
+            start = None
+    if start is not None and len(values) - start > best_length:
+        best_start, best_length = start, len(values) - start
+    return best_start + best_length // 2
+
+
+def detect_ruled_grid_segments(image: Image.Image) -> list[RulingSegment]:
+    """Raster rules with extents, using the same darkness sweep as the grid pass."""
+    gray = ImageOps.grayscale(image)
+    width, height = gray.size
+    if width < _MIN_IMAGE_WIDTH or height < _MIN_IMAGE_HEIGHT:
+        return []
+    for darkness in _GRID_DARKNESS_LEVELS:
+        dark = gray.point(lambda value, limit=darkness: 255 if value < limit else 0)
+        vertical_density = _pixel_values(dark.resize((width, 1), Image.Resampling.BOX))
+        horizontal_density = _pixel_values(dark.resize((1, height), Image.Resampling.BOX))
+        x_lines = _line_centers(
+            vertical_density, round(255 * 0.70), merge_distance=max(1, round(width * 0.008))
+        )
+        y_lines = _line_centers(
+            horizontal_density, round(255 * 0.50), merge_distance=max(1, round(height * 0.008))
+        )
+        if len(x_lines) < 3 or len(y_lines) < 3:
+            x_lines = _strip_projected_lines(dark, vertical=True)
+            y_lines = _strip_projected_lines(dark, vertical=False)
+        if len(x_lines) >= 3 and len(y_lines) >= 3:
+            return _measure_raster_extents(dark, x_lines, vertical=True) + _measure_raster_extents(
+                dark, y_lines, vertical=False
+            )
+    return []
+
+
+def detect_page_ruling_segments(page, *, dpi: int = 150) -> PageRulings:
+    """Vector and raster rules for one page, keeping extents and page graphics."""
+    rulings = _vector_ruling_segments(page)
+    try:
+        for rect in page.get_image_rects():
+            width = float(page.rect.width) or 1.0
+            height = float(page.rect.height) or 1.0
+            box = (
+                (float(rect.x0) - page.rect.x0) / width,
+                (float(rect.y0) - page.rect.y0) / height,
+                (float(rect.x1) - page.rect.x0) / width,
+                (float(rect.y1) - page.rect.y0) / height,
+            )
+            if box[2] - box[0] >= _MIN_GRAPHIC_EXTENT and box[3] - box[1] >= _MIN_GRAPHIC_EXTENT:
+                rulings.graphics.append(box)
+    except Exception:  # Image geometry is a hint, never a requirement.
+        pass
+    try:
+        pixmap = page.get_pixmap(dpi=dpi, alpha=False)
+        image = Image.frombytes("RGB", (pixmap.width, pixmap.height), pixmap.samples)
+        for segment in detect_ruled_grid_segments(image):
+            if segment.axis == "vertical":
+                rulings.vertical.append(segment)
+            else:
+                rulings.horizontal.append(segment)
+    except Exception:  # Raster evidence is opportunistic; vector evidence remains useful.
+        pass
+    return rulings
+
+
+def merge_parallel(segments: list[RulingSegment], tolerance: float = 0.004) -> list[RulingSegment]:
+    """Collapse rules that describe the same line, unioning their extents.
+
+    A rule found by both the vector and the raster pass, or a dashed rule found in
+    pieces, must count once — otherwise a single underline looks like a grid.
+    """
+    ordered = sorted(segments, key=lambda item: (item.position, item.start))
+    merged: list[RulingSegment] = []
+    for segment in ordered:
+        previous = merged[-1] if merged else None
+        if (
+            previous is not None
+            and segment.position - previous.position <= tolerance
+            # Two rules at the same offset that never overlap are two rules — the
+            # left and right halves of a two-up layout, for instance.
+            and segment.start <= previous.end + tolerance * 4
+        ):
+            previous.position = (previous.position + segment.position) / 2
+            previous.start = min(previous.start, segment.start)
+            previous.end = max(previous.end, segment.end)
+            previous.strength = max(previous.strength, segment.strength)
+            if previous.source != segment.source:
+                previous.source = "mixed"
+            continue
+        merged.append(
+            RulingSegment(
+                segment.axis,
+                segment.position,
+                segment.start,
+                segment.end,
+                segment.source,
+                segment.strength,
+                segment.thickness,
+            )
+        )
+    return merged
+
+
+def ruling_components(
+    rulings: PageRulings, *, slack: float = 0.006
+) -> list[tuple[list[RulingSegment], list[RulingSegment]]]:
+    """Group rules into independent drawn objects.
+
+    Two rules belong to the same object when they cross, or nearly cross. The old
+    page-global min/max over every ruling treated a chart, a signature box and a
+    real grid as one enormous table; a connected component is the smallest honest
+    unit of "one ruled thing".
+    """
+    vertical = merge_parallel([rule for rule in rulings.vertical])
+    horizontal = merge_parallel([rule for rule in rulings.horizontal])
+    nodes = vertical + horizontal
+    parent = list(range(len(nodes)))
+
+    def find(index: int) -> int:
+        while parent[index] != index:
+            parent[index] = parent[parent[index]]
+            index = parent[index]
+        return index
+
+    def union(first: int, second: int) -> None:
+        first, second = find(first), find(second)
+        if first != second:
+            parent[second] = first
+
+    for v_index, v_rule in enumerate(vertical):
+        for h_offset, h_rule in enumerate(horizontal):
+            h_index = len(vertical) + h_offset
+            if h_rule.spans(v_rule.position, slack=slack) and v_rule.spans(
+                h_rule.position, slack=slack
+            ):
+                union(v_index, h_index)
+
+    groups: dict[int, tuple[list[RulingSegment], list[RulingSegment]]] = {}
+    for index, node in enumerate(nodes):
+        root = find(index)
+        bucket = groups.setdefault(root, ([], []))
+        bucket[0 if node.axis == "vertical" else 1].append(node)
+    return [
+        (sorted(v, key=lambda item: item.position), sorted(h, key=lambda item: item.position))
+        for v, h in groups.values()
+    ]
 
 
 def detect_page_rulings(page, *, dpi: int = 150) -> tuple[list[float], list[float]]:

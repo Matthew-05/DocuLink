@@ -7,10 +7,11 @@ export type {
   TableBounds,
   TableColumn,
   TableRow,
+  TableHeader,
   TableStructure,
   TableTextLine,
 } from "./table-structure-decoder.js";
-export { decodeTableStructure } from "./table-structure-decoder.js";
+export { decodeTableStructure, parseTableStructure } from "./table-structure-decoder.js";
 export type { CharacterEntry } from "./char-entries.js";
 export type { SearchPageIndex, SearchPageOptions } from "./text-searcher.js";
 export { buildCharEntriesFromGeometry } from "./char-entries.js";

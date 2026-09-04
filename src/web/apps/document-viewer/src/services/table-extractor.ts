@@ -56,7 +56,7 @@ function summarizeRow(entries: CharacterEntry[]): VisualRow {
  * previous 0.4-or-close-centers rule merged away. Fragments of one visual row overlap
  * almost completely instead.
  *
- * Mirrors `line_records` in python/engines/table/regions.py — keep the two in step, or
+ * Mirrors `_merge_same_baseline` in python/engines/table/layout.py — keep the two in step, or
  * the extracted grid stops agreeing with the detector's suggested rows.
  */
 function shouldMergeRows(first: VisualRow, second: VisualRow): boolean {
