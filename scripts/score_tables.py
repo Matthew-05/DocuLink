@@ -21,7 +21,7 @@ import argparse
 import json
 from pathlib import Path
 
-from table_corpus import DEFAULT_DETECTOR, DETECTORS, PYTHON_ROOT, detect, geometry_for
+from table_corpus import PYTHON_ROOT, detect, geometry_for
 
 
 def _bounds_tuple(bounds: dict) -> tuple[float, float, float, float]:
@@ -120,7 +120,6 @@ def main() -> int:
     parser.add_argument("--write-report", type=Path)
     parser.add_argument("--tolerance", type=float, default=0.01, help="boundary tolerance")
     parser.add_argument("--iou", type=float, default=0.5, help="table match threshold")
-    parser.add_argument("--detector", choices=DETECTORS, default=DEFAULT_DETECTOR)
     parser.add_argument(
         "--periods",
         action="store_true",
@@ -132,7 +131,7 @@ def main() -> int:
     pdf_bytes = args.pdf.read_bytes()
     geometry = geometry_for(pdf_bytes)
     structure, diagnostics, elapsed = detect(
-        pdf_bytes, geometry, detector=args.detector, periods=args.periods or None
+        pdf_bytes, geometry, periods=args.periods or None
     )
     page_count = max(1, len(structure["pages"]))
 
@@ -216,7 +215,6 @@ def main() -> int:
     recall = _ratio(totals["matched"], totals["expected"], empty_is_perfect=True)
     report = {
         "document": args.pdf.name,
-        "detector": args.detector,
         "detectorVersion": diagnostics.get("table_detector_version", ""),
         "tolerance": args.tolerance,
         "iouThreshold": args.iou,

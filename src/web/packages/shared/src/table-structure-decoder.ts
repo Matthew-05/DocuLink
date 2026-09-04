@@ -1,6 +1,17 @@
 export interface TableStructure {
   version: 1;
   coordinateSpace: "normalized";
+  /**
+   * Which detector built this model.
+   *
+   * A structure is cached in the workbook, so it outlives the detector that
+   * produced it. Carrying the version means a stale model can be recognized and
+   * rebuilt rather than silently trusted. Absent in models written before the
+   * field existed.
+   */
+  detectorVersion?: string;
+  /** Detection stopped at its time budget; later pages were never examined. */
+  truncated?: boolean;
   pages: PageTables[];
 }
 
@@ -257,7 +268,13 @@ export function parseTableStructure(value: unknown): TableStructure {
     }
     pages.push({ pageIndex, tables: parsed });
   }
-  return { version: 1, coordinateSpace: "normalized", pages };
+  return {
+    version: 1,
+    coordinateSpace: "normalized",
+    ...(typeof value.detectorVersion === "string" ? { detectorVersion: value.detectorVersion } : {}),
+    ...(value.truncated === true ? { truncated: true } : {}),
+    pages,
+  };
 }
 
 function base64ToBytes(base64: string): Uint8Array {

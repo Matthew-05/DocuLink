@@ -127,6 +127,8 @@
         "table_structure_ms": { "type": "integer", "minimum": 0, "description": "Milliseconds spent detecting and encoding the table-structure-v1 model." },
         "table_structure_error": { "type": "string", "description": "Present when optional table-structure detection failed and the worker safely retained the OCR result." },
         "table_detector_version": { "type": "string", "description": "Identifier of the table detector that produced the returned table-structure-v1 model. Bumped whenever detection behaviour changes, so cached structures from an older detector can be told apart." },
+        "table_pages_detected": { "type": "integer", "minimum": 0, "description": "Pages examined by table detection. Fewer than page_count when detection stopped at its time budget." },
+        "table_structure_truncated": { "type": "boolean", "description": "Present when detection stopped early against its wall-clock budget. The pages already detected are published; later pages carry no tables because they were never examined." },
         "table_candidates_generated": { "type": "integer", "minimum": 0, "description": "Regions proposed by the ruled, whitespace and mixed candidate generators before fitting and validation." },
         "table_candidates_emitted": { "type": "integer", "minimum": 0, "description": "Candidates that survived grid fitting, refinement, scoring and deduplication and were published in the model." },
         "table_evidence_ruled": { "type": "integer", "minimum": 0, "description": "Published tables whose columns and rows came from drawn rules alone." },

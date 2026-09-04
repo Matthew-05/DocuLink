@@ -1,6 +1,6 @@
 import type { PdfViewer } from "./pdf-viewer.js";
 import type { TextContentCache } from "../../services/text-content-cache.js";
-import type { TableStructureCache } from "../../services/table-structure-cache.js";
+import type { DetectedTable } from "@doculink/shared";
 import type { RectRenderer } from "./rect-renderer.js";
 import { extractText } from "@doculink/shared";
 import { detectTableGrid } from "../../services/table-extractor.js";
@@ -56,7 +56,10 @@ export class RectEditOverlay {
   constructor(
     private readonly _viewer: PdfViewer,
     private readonly _cache: TextContentCache,
-    private readonly _tableCache: TableStructureCache,
+    /** The detected table a rectangle sits in, or null when the model is off. */
+    private readonly _detectedTableAt: (
+      pdfId: string, pageIndex: number, rect: NormalizedRect,
+    ) => DetectedTable | null,
     private readonly _renderer: RectRenderer,
   ) {
     this._autoScroller = new DragAutoScroller(this._viewer.element);
@@ -238,7 +241,7 @@ export class RectEditOverlay {
       ? detectTableGrid(
           entries,
           finalRect,
-          this._tableCache.tableAt(pdfId, pageIndex, finalRect),
+          this._detectedTableAt(pdfId, pageIndex, finalRect),
         )
       : undefined;
     if (table) this._renderer.updateTable(id, table);

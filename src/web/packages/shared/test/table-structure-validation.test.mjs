@@ -126,4 +126,25 @@ for (const period of [
   assert.deepEqual(parsed.pages.map((page) => page.pageIndex), [4]);
 }
 
+// The detector version rides with the model so a cached structure built by an
+// older detector can be recognized. Older payloads simply do not carry one.
+{
+  const versioned = parseTableStructure({
+    ...structure([table()]),
+    detectorVersion: "table-detector-2",
+    truncated: true,
+  });
+  assert.equal(versioned.detectorVersion, "table-detector-2");
+  assert.equal(versioned.truncated, true);
+
+  const legacy = parseTableStructure(structure([table()]));
+  assert.equal(legacy.detectorVersion, undefined);
+  assert.equal(legacy.truncated, undefined);
+
+  const nonsense = parseTableStructure({ ...structure([table()]), detectorVersion: 2, truncated: "yes" });
+  assert.equal(nonsense.detectorVersion, undefined);
+  assert.equal(nonsense.truncated, undefined);
+  assert.equal(nonsense.pages[0].tables.length, 1);
+}
+
 console.log("table structure validation tests passed");

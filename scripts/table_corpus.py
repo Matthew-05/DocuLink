@@ -1,7 +1,7 @@
 """Shared corpus plumbing for the table diagnostic scripts.
 
 Both the scorer and the overlay renderer need the same two things: text geometry
-with OCR filled in for image-only pages, and a way to run either detector. Kept
+with OCR filled in for image-only pages, and a way to run the detector. Kept
 in one place so the two tools can never drift into measuring different inputs.
 """
 from __future__ import annotations
@@ -27,7 +27,7 @@ from engines.ocr_engine import (  # noqa: E402
     select_pages_requiring_ocr,
     summarize_geometry_quality,
 )
-from engines.table.detector import DEFAULT_DETECTOR, DETECTORS, detect_tables  # noqa: E402
+from engines.table.detector import detect_tables  # noqa: E402
 from engines.table_cell_engine import recover_table_geometry  # noqa: E402
 
 
@@ -54,16 +54,20 @@ def detect(
     pdf_bytes: bytes,
     geometry: dict,
     *,
-    detector: str = DEFAULT_DETECTOR,
     periods: bool | None = None,
 ) -> tuple[dict, dict, float]:
-    """Run one detector, returning its structure, diagnostics and elapsed seconds."""
+    """Run the detector, returning its structure, diagnostics and elapsed seconds.
+
+    The diagnostic tools measure detection itself, so the wall-clock budget the
+    worker applies is disabled here: a slow page is a result to look at, not one
+    to truncate.
+    """
     diagnostics: dict = {}
     started = time.perf_counter()
     structure = detect_tables(
-        pdf_bytes, geometry, detector=detector, diagnostics=diagnostics, periods=periods
+        pdf_bytes, geometry, diagnostics=diagnostics, periods=periods, budget_ms=0
     )
     return structure, diagnostics, time.perf_counter() - started
 
 
-__all__ = ["DEFAULT_DETECTOR", "DETECTORS", "PYTHON_ROOT", "REPO_ROOT", "detect", "geometry_for"]
+__all__ = ["PYTHON_ROOT", "REPO_ROOT", "detect", "geometry_for"]

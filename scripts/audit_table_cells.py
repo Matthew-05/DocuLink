@@ -26,7 +26,7 @@ SCRIPTS = Path(__file__).resolve().parent
 if str(SCRIPTS) not in sys.path:
     sys.path.insert(0, str(SCRIPTS))
 
-from table_corpus import DEFAULT_DETECTOR, DETECTORS, detect, geometry_for  # noqa: E402
+from table_corpus import detect, geometry_for  # noqa: E402
 
 from engines.table.layout import build_page_layout  # noqa: E402
 
@@ -125,14 +125,14 @@ def audit_table(table: dict, characters: list[dict], lines) -> list[dict]:
     return findings
 
 
-def audit(pdf: Path, *, detector: str = DEFAULT_DETECTOR, periods: bool = False) -> dict:
+def audit(pdf: Path, *, periods: bool = False) -> dict:
     pdf_bytes = pdf.read_bytes()
     geometry = geometry_for(pdf_bytes)
     structure, _diagnostics, _elapsed = detect(
-        pdf_bytes, geometry, detector=detector, periods=periods or None
+        pdf_bytes, geometry, periods=periods or None
     )
     by_page = {page["pageIndex"]: page for page in geometry["pages"]}
-    report = {"document": pdf.name, "detector": detector, "tables": 0, "counts": {}, "pages": []}
+    report = {"document": pdf.name, "tables": 0, "counts": {}, "pages": []}
     for page in structure["pages"]:
         source = by_page.get(page["pageIndex"], {"characters": []})
         layout = build_page_layout(source)
@@ -153,12 +153,11 @@ def audit(pdf: Path, *, detector: str = DEFAULT_DETECTOR, periods: bool = False)
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("pdf", type=Path)
-    parser.add_argument("--detector", choices=DETECTORS, default=DEFAULT_DETECTOR)
     parser.add_argument("--periods", action="store_true")
     parser.add_argument("--json", type=Path)
     args = parser.parse_args()
 
-    report = audit(args.pdf, detector=args.detector, periods=args.periods)
+    report = audit(args.pdf, periods=args.periods)
     if args.json:
         args.json.parent.mkdir(parents=True, exist_ok=True)
         args.json.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")

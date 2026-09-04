@@ -9,6 +9,8 @@
   "properties": {
     "version": { "const": 1 },
     "coordinateSpace": { "const": "normalized" },
+    "detectorVersion": { "type": "string", "description": "Identifier of the detector that produced this model, e.g. \"table-detector-2\". Stored with the model so a cached structure built by an older detector can be recognized and rebuilt. Absent in models written before the field existed." },
+    "truncated": { "type": "boolean", "description": "True when detection stopped early against its time budget. Pages already detected are present and correct; later pages carry no tables because they were never examined, not because they hold none." },
     "pages": { "type": "array", "items": { "$ref": "#/definitions/PageTables" } }
   },
   "definitions": {

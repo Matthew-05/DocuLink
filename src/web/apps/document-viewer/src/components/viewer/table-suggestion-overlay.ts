@@ -20,11 +20,6 @@ export class TableSuggestionOverlay {
     this._callbacks.push(callback);
   }
 
-  toggle(): boolean {
-    this._visible ? this.hide() : this.show();
-    return this._visible;
-  }
-
   show(): void {
     if (this._visible) return;
     this._visible = true;
@@ -60,17 +55,22 @@ export class TableSuggestionOverlay {
     ensureOverlayLayer(wrapper).appendChild(container);
   }
 
-  private _createSuggestion(pdfId: string, pageIndex: number, table: DetectedTable): HTMLButtonElement {
+  /**
+   * A suggested region is drawn, not clicked.
+   *
+   * The region spans the whole table, so making it interactive stole every drag
+   * that started inside a table — exactly where someone wants to draw one by
+   * hand. The region is inert; a small button in its corner is what creates the
+   * link, and it is the only part in the tab order.
+   */
+  private _createSuggestion(pdfId: string, pageIndex: number, table: DetectedTable): HTMLDivElement {
     const bounds = table.bounds;
-    const element = document.createElement("button");
-    element.type = "button";
+    const element = document.createElement("div");
     element.className = "table-suggestions__region";
     element.style.left = `${bounds.x * 100}%`;
     element.style.top = `${bounds.y * 100}%`;
     element.style.width = `${bounds.width * 100}%`;
     element.style.height = `${bounds.height * 100}%`;
-    element.title = `Create table link (${Math.round(table.confidence * 100)}% confidence)`;
-    element.setAttribute("aria-label", "Create link from detected table");
 
     for (const column of table.columns.slice(0, -1)) {
       element.appendChild(this._line("column", (column.x1 - bounds.x) / bounds.width));
@@ -87,11 +87,20 @@ export class TableSuggestionOverlay {
         element.appendChild(header);
       }
     }
-    element.addEventListener("click", (event) => {
+
+    const action = document.createElement("button");
+    action.type = "button";
+    action.className = "table-suggestions__action";
+    action.textContent = "+";
+    action.title = `Create table link (${Math.round(table.confidence * 100)}% confidence)`;
+    action.setAttribute("aria-label", "Create link from detected table");
+    action.addEventListener("pointerdown", (event) => event.stopPropagation());
+    action.addEventListener("click", (event) => {
       event.preventDefault();
       event.stopPropagation();
       for (const callback of this._callbacks) callback(pdfId, pageIndex, table);
     });
+    element.appendChild(action);
     return element;
   }
 

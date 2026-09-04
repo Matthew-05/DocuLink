@@ -36,7 +36,10 @@ import {
   sendOpenFileManager,
   sendRotatePage,
 } from "../../host-bridge.js";
-import type { SearchMatch, LinkedRectEntry, LinkSelectionEntry, ZoomLevel } from "../../types/index.js";
+import type { DetectedTable } from "@doculink/shared";
+import type {
+  SearchMatch, LinkedRectEntry, LinkSelectionEntry, NormalizedRect, ZoomLevel,
+} from "../../types/index.js";
 import type { PdfEntry } from "../../types/index.js";
 import type { PdfViewer } from "./pdf-viewer.js";
 
@@ -230,7 +233,22 @@ export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLEleme
   const contextMenu     = new RectContextMenu();
   const selectionPanel  = new LinkSelectionPanel();
   const overlay         = new RectDrawOverlay(viewer, cache);
-  const editOverlay     = new RectEditOverlay(viewer, cache, tableCache, renderer);
+  /**
+   * Whether the detected table model may shape link rectangles.
+   *
+   * The model and the overlay that visualizes it are one feature behind one
+   * switch. Snapping a grid to the detector while its regions are invisible
+   * would change what a table link contains with nothing on screen to explain
+   * it, and no way for someone to compare the two. Off means the viewer uses
+   * the same purely visual grid detection it always did.
+   */
+  let _tableModelEnabled = false;
+  const detectedTableAt = (
+    pdfId: string, pageIndex: number, rect: NormalizedRect,
+  ): DetectedTable | null => (
+    _tableModelEnabled ? tableCache.tableAt(pdfId, pageIndex, rect) : null
+  );
+  const editOverlay     = new RectEditOverlay(viewer, cache, detectedTableAt, renderer);
   const tableGridEditor = new TableGridEditor(viewer, cache, renderer);
   const tableCopyModal  = new TableCopyModal();
   const charBboxDebug   = new CharBboxOverlay(viewer, cache);
@@ -243,7 +261,7 @@ export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLEleme
 
   const enrichTableMetadata = (entry: LinkedRectEntry): LinkedRectEntry => {
     if (entry.linkType !== "table" || !entry.table) return entry;
-    const detected = tableCache.tableAt(entry.pdfId, entry.page, entry.rect);
+    const detected = detectedTableAt(entry.pdfId, entry.page, entry.rect);
     if (!detected) return entry;
     const modelGrid = detectTableGrid(cache.get(entry.pdfId, entry.page), entry.rect, detected);
     return {
@@ -258,10 +276,25 @@ export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLEleme
     };
   };
 
+  /** Detector-derived hints are display state, so a rect keeps only fresh ones. */
+  const stripTableMetadata = (entry: LinkedRectEntry): LinkedRectEntry => {
+    if (entry.linkType !== "table" || !entry.table) return entry;
+    const { headerRowCount: _header, textLineBoundaries: _lines, ...table } = entry.table;
+    return { ...entry, table };
+  };
+
   const refreshTableMetadata = (): void => {
-    _currentRects = _currentRects.map(enrichTableMetadata);
+    _currentRects = _currentRects.map((entry) => enrichTableMetadata(stripTableMetadata(entry)));
     renderer.setRectangles(_currentRects);
     tableSuggestions.refresh();
+  };
+
+  const setTableModelEnabled = (enabled: boolean): void => {
+    if (_tableModelEnabled === enabled) return;
+    _tableModelEnabled = enabled;
+    if (enabled) tableSuggestions.show();
+    else tableSuggestions.hide();
+    refreshTableMetadata();
   };
 
   /** Rectangle the viewer is currently showing; marked as active in the panel. */
@@ -478,7 +511,7 @@ export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLEleme
       ? detectTableGrid(
           cache.get(payload.pdfId, payload.page),
           payload.rect,
-          tableCache.tableAt(payload.pdfId, payload.page, payload.rect),
+          detectedTableAt(payload.pdfId, payload.page, payload.rect),
         )
       : undefined;
     sendLinkRectangleCreated({ ...payload, linkType, ...(table ? { table } : {}) });
@@ -613,9 +646,9 @@ export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLEleme
     toggleCharBboxes: () => charBboxDebug.toggle(),
     showCharBboxes:   () => charBboxDebug.show(),
     hideCharBboxes:   () => charBboxDebug.hide(),
-    toggleTableSuggestions: () => tableSuggestions.toggle(),
-    showTableSuggestions: () => tableSuggestions.show(),
-    hideTableSuggestions: () => tableSuggestions.hide(),
+    toggleTableSuggestions: () => { setTableModelEnabled(!_tableModelEnabled); return _tableModelEnabled; },
+    showTableSuggestions: () => setTableModelEnabled(true),
+    hideTableSuggestions: () => setTableModelEnabled(false),
   };
 
   // ── Host bridge ───────────────────────────────────────────────────────────
@@ -673,10 +706,7 @@ export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLEleme
         if (visible) charBboxDebug.show();
         else charBboxDebug.hide();
       },
-      onSetTableSuggestionsVisible: (visible) => {
-        if (visible) tableSuggestions.show();
-        else tableSuggestions.hide();
-      },
+      onSetTableSuggestionsVisible: (visible) => { setTableModelEnabled(visible); },
       onClearRectangleHighlight: () => { renderer.clearHighlight(); },
       onHighlightRectangle: (id) => { renderer.highlightRectangle(id); },
       onLinkSelectionChanged: setLinkSelection,

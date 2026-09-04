@@ -57,7 +57,7 @@ class TableOverlayTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 render_overlay(source, output, show_rejected=False, report=report)
             written = json.loads(report.read_text(encoding="utf-8"))
-            self.assertEqual(written["detector"], "redesign")
+            self.assertEqual(written["document"], source.name)
 
             render_overlay(source, output, show_rejected=True, report=report)
             written = json.loads(report.read_text(encoding="utf-8"))

@@ -59,32 +59,6 @@ _PERIOD = re.compile(
 )
 
 
-def _cell_text(page_geometry: dict, column: dict, rows: list[dict], bounds: dict | None = None) -> str:
-    pieces: list[tuple[int, float, str]] = []
-    row_top = min(row["y0"] for row in rows)
-    row_bottom = max(row["y1"] for row in rows)
-    if bounds is not None:
-        # Row bands run to the table edge, so an unclamped scan can pull a caption
-        # sitting directly above the table into the first header label.
-        row_top = max(row_top, bounds["y"])
-        row_bottom = min(row_bottom, bounds["y"] + bounds["height"])
-    for character in page_geometry.get("characters", []):
-        char = str(character.get("char", ""))
-        center_x = float(character["x"]) + float(character["width"]) / 2
-        center_y = float(character["y"]) + float(character["height"]) / 2
-        if column["x0"] <= center_x <= column["x1"] and row_top <= center_y <= row_bottom:
-            pieces.append((int(character.get("lineIndex", 0)), float(character["x"]), char))
-    pieces.sort()
-    result = ""
-    previous_line = None
-    for line_index, _x, char in pieces:
-        if previous_line is not None and line_index != previous_line and result and not result.endswith(" "):
-            result += " "
-        result += char
-        previous_line = line_index
-    return " ".join(result.split())
-
-
 def _is_caption_row(values: list[str], filled_columns: list[int]) -> bool:
     """A section label such as "Deferred tax assets:" carrying no values."""
     return bool(values) and bool(values[0]) and not any(
@@ -313,37 +287,3 @@ def detect_header_cells(
         ]
         labels.append(" ".join(pieces).strip())
     return {"rowCount": count, "labels": labels}
-
-
-def detect_header(
-    page_geometry: dict,
-    columns: list[dict],
-    rows: list[dict],
-    *,
-    ruled: bool = False,
-    bounds: dict | None = None,
-) -> dict | None:
-    if len(rows) < 2 or len(columns) < 2:
-        return None
-    row_texts = [
-        [_cell_text(page_geometry, column, [row], bounds) for column in columns]
-        for row in rows[:3]
-    ]
-
-    def first_column_body(index: int) -> list[str]:
-        return [
-            _cell_text(page_geometry, columns[0], [row], bounds)
-            for row in rows[index : index + 5]
-        ]
-
-    row_count = header_row_count(
-        row_texts, first_column_body, ruled=ruled, column_count=len(columns)
-    )
-    if row_count == 0:
-        return None
-    for row in rows[:row_count]:
-        row["kind"] = "header"
-    return {
-        "rowCount": row_count,
-        "labels": [_cell_text(page_geometry, column, rows[:row_count], bounds) for column in columns],
-    }

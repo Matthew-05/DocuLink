@@ -1,25 +1,36 @@
 """Orchestrate OCR-adjacent table structure detection.
 
-Two detectors live here during the redesign. `redesign` is the layout-model
-pipeline in `engines.table.redesign`; `current` is the original page-global
-implementation, kept only so the diagnostic scripts can render the two side by
-side. Production uses `DEFAULT_DETECTOR`.
+Detection is optional work layered on top of a finished OCR result, so it runs
+under a wall-clock budget: a pathological document may not spend the whole OCR
+job inside the detector. Pages already detected are kept and the model records
+that it stopped early.
 """
 from __future__ import annotations
+
+import os
+import time
 
 import pymupdf as fitz
 
 from engines.binary_codec import json_to_base64
-from engines.table.columns import detect_columns
-from engines.table.headers import detect_header
 from engines.table.redesign import DETECTOR_VERSION, PERIOD_ANALYSIS, detect_page
-from engines.table.regions import discover_regions
-from engines.table.rows import detect_rows
-from engines.table.rulings import detect_page_rulings
 
 
-DEFAULT_DETECTOR = "redesign"
-DETECTORS = ("redesign", "current")
+# Wall-clock ceiling for detecting one document, in milliseconds. Deliberately
+# generous: it exists to bound a pathological page, not to trade accuracy for
+# speed, and a normal filing finishes orders of magnitude inside it. Override
+# with DOCULINK_TABLE_BUDGET_MS; zero or negative disables the budget entirely.
+DEFAULT_BUDGET_MS = 300_000
+
+
+def _budget_ms() -> int:
+    raw = os.environ.get("DOCULINK_TABLE_BUDGET_MS")
+    if raw is None:
+        return DEFAULT_BUDGET_MS
+    try:
+        return int(raw)
+    except ValueError:
+        return DEFAULT_BUDGET_MS
 
 
 def detect_tables(
@@ -27,17 +38,29 @@ def detect_tables(
     geometry: dict,
     progress_callback=None,
     *,
-    detector: str = DEFAULT_DETECTOR,
     diagnostics: dict | None = None,
     periods: bool | None = None,
+    budget_ms: int | None = None,
 ) -> dict:
-    if detector not in DETECTORS:
-        raise ValueError(f"unknown table detector: {detector}")
     geometry_by_page = {int(page["pageIndex"]): page for page in geometry.get("pages", [])}
+    budget = _budget_ms() if budget_ms is None else budget_ms
+    deadline = time.monotonic() + budget / 1000 if budget > 0 else None
     pages: list[dict] = []
+    truncated = False
     doc = fitz.open(stream=pdf_bytes, filetype="pdf")
     try:
         for page_index in range(doc.page_count):
+            # Checked before the page rather than after: the budget is there to
+            # stop the next expensive page, and abandoning a page's work after
+            # paying for it would buy nothing.
+            if deadline is not None and time.monotonic() >= deadline:
+                truncated = True
+                if progress_callback:
+                    progress_callback(
+                        f"Table structure detection stopped after page {page_index} "
+                        f"of {doc.page_count} at its time budget…"
+                    )
+                break
             if progress_callback:
                 progress_callback(
                     f"Detecting table structure page {page_index + 1} of {doc.page_count}…"
@@ -45,80 +68,33 @@ def detect_tables(
             page_geometry = geometry_by_page.get(
                 page_index, {"pageIndex": page_index, "characters": []}
             )
-            page = doc.load_page(page_index)
-            if detector == "redesign":
-                tables = detect_page(
-                    page_geometry,
-                    page,
-                    page_index=page_index,
-                    diagnostics=diagnostics,
-                    periods=periods,
-                )
-            else:
-                tables = _detect_page_current(page_geometry, page, page_index)
+            tables = detect_page(
+                page_geometry,
+                doc.load_page(page_index),
+                page_index=page_index,
+                diagnostics=diagnostics,
+                periods=periods,
+            )
             pages.append({"pageIndex": page_index, "tables": tables})
     finally:
         doc.close()
     if diagnostics is not None:
-        diagnostics["table_detector_version"] = (
-            DETECTOR_VERSION if detector == "redesign" else "table-detector-1"
+        diagnostics["table_detector_version"] = DETECTOR_VERSION
+        diagnostics["table_period_analysis"] = (
+            PERIOD_ANALYSIS if periods is None else bool(periods)
         )
-        if detector == "redesign":
-            diagnostics["table_period_analysis"] = (
-                PERIOD_ANALYSIS if periods is None else bool(periods)
-            )
-    return {"version": 1, "coordinateSpace": "normalized", "pages": pages}
-
-
-def _detect_page_current(page_geometry: dict, page, page_index: int) -> list[dict]:
-    """The original detector, retained for side-by-side comparison only."""
-    vertical, horizontal = detect_page_rulings(page)
-    tables: list[dict] = []
-    for candidate in discover_regions(page_geometry, vertical, horizontal):
-        bounds = candidate["bounds"]
-        columns = detect_columns(page_geometry, bounds, vertical)
-        if len(columns) < 2:
-            continue
-        rows = detect_rows(
-            page_geometry,
-            bounds,
-            horizontal,
-            columns,
-            grid=candidate["evidence"] == "ruled",
-        )
-        if len(rows) < 2:
-            continue
-        header = detect_header(
-            page_geometry,
-            columns,
-            rows,
-            ruled=candidate["evidence"] == "ruled",
-            bounds=bounds,
-        )
-        tables.append(
-            {
-                "id": f"page-{page_index}-table-{len(tables)}",
-                "bounds": bounds,
-                "evidence": candidate["evidence"],
-                "confidence": candidate["confidence"],
-                "columns": columns,
-                "rows": rows,
-                "header": header,
-                "rulings": {
-                    "vertical": [
-                        value
-                        for value in vertical
-                        if bounds["x"] - 0.002 <= value <= bounds["x"] + bounds["width"] + 0.002
-                    ],
-                    "horizontal": [
-                        value
-                        for value in horizontal
-                        if bounds["y"] - 0.002 <= value <= bounds["y"] + bounds["height"] + 0.002
-                    ],
-                },
-            }
-        )
-    return tables
+        diagnostics["table_pages_detected"] = len(pages)
+        if truncated:
+            diagnostics["table_structure_truncated"] = True
+    structure = {
+        "version": 1,
+        "coordinateSpace": "normalized",
+        "detectorVersion": DETECTOR_VERSION,
+        "pages": pages,
+    }
+    if truncated:
+        structure["truncated"] = True
+    return structure
 
 
 def structure_to_base64(structure: dict) -> str:

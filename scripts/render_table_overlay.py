@@ -20,9 +20,8 @@ if str(SCRIPTS) not in sys.path:
 import pymupdf as fitz  # noqa: E402
 from PIL import Image, ImageDraw, ImageFont  # noqa: E402
 
-from table_corpus import DEFAULT_DETECTOR, DETECTORS, geometry_for  # noqa: E402
+from table_corpus import geometry_for  # noqa: E402
 
-from engines.table.detector import _detect_page_current  # noqa: E402
 from engines.table.redesign import detect_page  # noqa: E402
 
 
@@ -156,7 +155,6 @@ def _draw_rejected(image: Image.Image, candidate: dict, page_number: int) -> Non
 def analyse(
     pdf_bytes: bytes,
     *,
-    detector: str = DEFAULT_DETECTOR,
     pages: set[int] | None = None,
     want_rejected: bool = False,
     periods: bool | None = None,
@@ -173,16 +171,13 @@ def analyse(
             page_geometry = by_page.get(page_index, {"pageIndex": page_index, "characters": []})
             page = document.load_page(page_index)
             rejected: list[dict] = [] if want_rejected else None
-            if detector == "redesign":
-                tables = detect_page(
-                    page_geometry,
-                    page,
-                    page_index=page_index,
-                    rejected=rejected,
-                    periods=periods,
-                )
-            else:
-                tables = _detect_page_current(page_geometry, page, page_index)
+            tables = detect_page(
+                page_geometry,
+                page,
+                page_index=page_index,
+                rejected=rejected,
+                periods=periods,
+            )
             results[page_index] = {"tables": tables, "rejected": rejected or []}
     finally:
         document.close()
@@ -194,7 +189,6 @@ def render_overlay(
     out_pdf: Path,
     *,
     dpi: int = 110,
-    detector: str = DEFAULT_DETECTOR,
     pages: set[int] | None = None,
     show_rejected: bool = False,
     report: Path | None = None,
@@ -205,7 +199,6 @@ def render_overlay(
     pdf_bytes = pdf_path.read_bytes()
     results = analyse(
         pdf_bytes,
-        detector=detector,
         pages=pages,
         want_rejected=show_rejected,
         periods=periods,
@@ -239,7 +232,6 @@ def render_overlay(
             json.dumps(
                 {
                     "document": pdf_path.name,
-                    "detector": detector,
                     "pages": [
                         {
                             "page": page_index + 1,
@@ -309,7 +301,6 @@ def main() -> int:
     parser.add_argument("pdf", type=Path)
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--dpi", type=int, default=110)
-    parser.add_argument("--detector", choices=DETECTORS, default=DEFAULT_DETECTOR)
     parser.add_argument("--page", action="append", help="1-based page, list or range")
     parser.add_argument("--show-rejected", action="store_true")
     parser.add_argument(
@@ -324,7 +315,6 @@ def main() -> int:
         args.pdf,
         args.out,
         dpi=args.dpi,
-        detector=args.detector,
         pages=_page_set(args.page),
         show_rejected=args.show_rejected,
         report=args.write_report,
