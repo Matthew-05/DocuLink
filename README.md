@@ -62,7 +62,7 @@ Before adding or changing a cross-boundary message or storage field, update the 
 * **Windows** with Microsoft Excel
 * **Visual Studio** with the Office/VSTO development tooling and MSBuild
 * **WebView2 Runtime**
-* **Node.js + npm** for building the TypeScript web apps
+* **Node.js 24+ + npm** for building the TypeScript web apps and running TypeScript build tooling directly
 * **Python 3.12+** for building the bundled OCR worker
 * **WiX Toolset v3** for building the MSI installer
 * **GitHub CLI (`gh`)** only if publishing releases
