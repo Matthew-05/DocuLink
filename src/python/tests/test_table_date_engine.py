@@ -5,9 +5,9 @@ from PIL import Image, ImageDraw
 
 from engines.table_date_engine import (
     _recognize_date,
-    detect_ruled_grid,
     normalize_date,
 )
+from engines.table.rulings import detect_ruled_grid, detect_ruled_grid_segments
 
 
 class DateNormalizationTests(unittest.TestCase):
@@ -28,6 +28,25 @@ class DateNormalizationTests(unittest.TestCase):
 
 
 class RuledGridDetectionTests(unittest.TestCase):
+    def test_detected_grid_segments_share_the_grid_envelope(self) -> None:
+        image = Image.new("L", (500, 300), 255)
+        draw = ImageDraw.Draw(image)
+        for x in (40, 140, 260, 460):
+            draw.line((x, 30, x, 270), fill=0, width=2)
+        for y in (30, 90, 170, 270):
+            draw.line((40, y, 460, y), fill=0, width=2)
+
+        segments = detect_ruled_grid_segments(image)
+        vertical = [item for item in segments if item.axis == "vertical"]
+        horizontal = [item for item in segments if item.axis == "horizontal"]
+
+        self.assertEqual(len(vertical), 4)
+        self.assertEqual(len(horizontal), 4)
+        self.assertTrue(all(item.start == vertical[0].start for item in vertical))
+        self.assertTrue(all(item.end == vertical[0].end for item in vertical))
+        self.assertTrue(all(item.start == horizontal[0].start for item in horizontal))
+        self.assertTrue(all(item.end == horizontal[0].end for item in horizontal))
+
     def test_detects_and_collapses_two_pixel_grid_lines(self) -> None:
         image = Image.new("L", (500, 300), 255)
         draw = ImageDraw.Draw(image)

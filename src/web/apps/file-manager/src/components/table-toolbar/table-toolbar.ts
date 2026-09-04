@@ -71,7 +71,7 @@ export class TableToolbar {
     this._processBtn.disabled = true;
     this._processBtn.textContent = "OCR";
     this._processBtn.title =
-      "OCR scanned documents or replace an embedded text layer";
+      "OCR scanned documents or refresh stored text geometry";
     this._processBtn.addEventListener("click", () => options.onProcessSelected());
 
     // Remove button (rightmost)

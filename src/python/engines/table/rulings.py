@@ -419,9 +419,25 @@ def detect_ruled_grid_segments(image: Image.Image) -> list[RulingSegment]:
             x_lines = _strip_projected_lines(dark, vertical=True)
             y_lines = _strip_projected_lines(dark, vertical=False)
         if len(x_lines) >= 3 and len(y_lines) >= 3:
-            return _measure_raster_extents(dark, x_lines, vertical=True) + _measure_raster_extents(
-                dark, y_lines, vertical=False
-            )
+            # Reaching this point means the projection pass found a coherent
+            # grid in both directions. Measure the individual rules when that
+            # preserves their shared envelope, but do not let anti-aliasing or
+            # text crossing a one-pixel sampling strip fragment the grid into
+            # unrelated components. This is especially common in scanned PDFs:
+            # the same ruled cell border drifts a pixel or two down the page.
+            vertical = _measure_raster_extents(dark, x_lines, vertical=True)
+            horizontal = _measure_raster_extents(dark, y_lines, vertical=False)
+            grid_top = min(y_lines) / height
+            grid_bottom = (max(y_lines) + 1) / height
+            grid_left = min(x_lines) / width
+            grid_right = (max(x_lines) + 1) / width
+            for rule in vertical:
+                rule.start = grid_top
+                rule.end = grid_bottom
+            for rule in horizontal:
+                rule.start = grid_left
+                rule.end = grid_right
+            return vertical + horizontal
     return []
 
 

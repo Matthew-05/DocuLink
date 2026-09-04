@@ -269,7 +269,7 @@ class ExtractPageCharactersFromRawdictTests(unittest.TestCase):
         finally:
             document.close()
 
-    def test_zero_opacity_text_is_forced_instead_of_redo_ocr(self) -> None:
+    def test_zero_opacity_text_is_selected_for_direct_ocr(self) -> None:
         document = fitz.open()
         try:
             page = document.new_page(width=self.PAGE_W, height=self.PAGE_H)
@@ -286,7 +286,7 @@ class ExtractPageCharactersFromRawdictTests(unittest.TestCase):
         finally:
             document.close()
 
-    def test_render_mode_three_text_can_still_use_redo_ocr(self) -> None:
+    def test_render_mode_three_text_is_strippable_before_direct_ocr(self) -> None:
         document = fitz.open()
         try:
             page = document.new_page(width=self.PAGE_W, height=self.PAGE_H)

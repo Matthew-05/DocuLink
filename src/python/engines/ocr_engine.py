@@ -1,12 +1,10 @@
-"""OCR engine: adds a searchable text layer to a PDF using ocrmypdf + Tesseract."""
+"""Direct Tesseract OCR that emits DocuLink text geometry."""
 from __future__ import annotations
 
 import os
 import re
 import statistics
 import sys
-import tempfile
-import threading
 import time
 import unicodedata
 import xml.etree.ElementTree as ET
@@ -16,7 +14,7 @@ from pathlib import Path
 
 def _configure_bundled_tools() -> None:
     """
-    Locates Tesseract and Ghostscript bundled alongside the worker scripts.
+    Locates Tesseract bundled alongside the worker scripts.
     Works for both PyInstaller frozen bundles and the embeddable Python layout
     (where tools sit in the same directory as worker.py, two levels above this file).
     """
@@ -37,11 +35,6 @@ def _configure_bundled_tools() -> None:
         tessdata = bundle_dir / "tesseract" / "tessdata"
         if tessdata.is_dir():
             os.environ.setdefault("TESSDATA_PREFIX", str(tessdata))
-
-    gs_exe = bundle_dir / "ghostscript" / "bin" / "gswin64c.exe"
-    if gs_exe.exists():
-        paths_to_prepend.append(gs_exe.parent)
-        which_overrides["gswin64c"] = str(gs_exe)
 
     if not paths_to_prepend:
         return
@@ -67,70 +60,13 @@ def _configure_bundled_tools() -> None:
 
 _configure_bundled_tools()
 
-import ocrmypdf  # noqa: E402 — must come after env setup
 from engines.text_lines import line_bounds, line_groups  # noqa: E402
-from engines.ocr_progress_plugin import (  # noqa: E402
-    configure_progress_callback,
-    progress_message_with_elapsed,
-)
 
 
 _ENGINE_DESCRIPTION_CACHE: str | None = None
 
-# ── Tuning knobs ──────────────────────────────────────────────────────────────
-# Both settings are benchmark knobs, overridable by environment variable so the
-# 2x2 matrix can be measured without rebuilding the worker:
-#
-#   DOCULINK_OCR_RASTERIZER   auto | pypdfium | ghostscript   (default ghostscript)
-#   DOCULINK_OCR_USE_THREADS  1 | 0                           (default 1)
-#
-# Defaults reproduce the fastest configuration measured so far. Ghostscript wins
-# today because OCRmyPDF runs page tasks in threads and its pypdfium2 plugin
-# serializes every rasterization behind one process-global lock, while
-# Ghostscript rasterizes out-of-process and parallelizes freely. use_threads=0
-# switches OCRmyPDF to a ProcessPoolExecutor, giving each process its own pdfium
-# instance — that is the configuration that could make pypdfium2 competitive.
-_DEFAULT_RASTERIZER = "ghostscript"
-_DEFAULT_USE_THREADS = True
-_OCR_PROGRESS_HEARTBEAT_SECONDS = 10.0
 _DIRECT_ROTATION_DETECTION_DPI = 150
 _DIRECT_ROTATION_MINIMUM_CONFIDENCE = 10.0
-
-
-def resolve_rasterizer() -> str:
-    """Rasterizer to request from OCRmyPDF, honouring the environment override."""
-    value = (os.environ.get("DOCULINK_OCR_RASTERIZER") or "").strip().lower()
-    if value in ("auto", "pypdfium", "ghostscript"):
-        return value
-    return _DEFAULT_RASTERIZER
-
-
-def resolve_use_threads() -> bool:
-    """Whether OCRmyPDF should use threads (True) or processes (False)."""
-    value = (os.environ.get("DOCULINK_OCR_USE_THREADS") or "").strip().lower()
-    if value in ("0", "false", "no"):
-        return False
-    if value in ("1", "true", "yes"):
-        return True
-    return _DEFAULT_USE_THREADS
-
-
-def active_rasterizer() -> str:
-    """
-    Report which rasterizer OCRmyPDF actually used, for diagnostics only.
-
-    Resolves "auto" the same way ocrmypdf.builtin_plugins.pypdfium does: the
-    pypdfium2 rasterizer is used whenever the package imports, and Ghostscript
-    handles the page otherwise. Never branch on this value.
-    """
-    setting = resolve_rasterizer()
-    if setting == "ghostscript":
-        return "ghostscript"
-    try:
-        import pypdfium2  # noqa: F401
-    except ImportError:
-        return "ghostscript"
-    return "pypdfium2"
 
 
 def active_ocr_engine() -> str:
@@ -173,21 +109,6 @@ def configure_tesseract() -> None:
         pytesseract.pytesseract.tesseract_cmd = str(tess_exe)
 
 
-MODE_REDO = "redo"
-MODE_FORCE = "force"
-
-PROFILE_DEFAULT = "default"
-PROFILE_HIGH_RESOLUTION_AUTO = "high-resolution-auto"
-PROFILE_TABLE_SINGLE_BLOCK = "table-single-block"
-PROFILE_TABLE_SPARSE = "table-sparse"
-
-_ADAPTIVE_OVERSAMPLE_DPI = 300
-_ADAPTIVE_PROFILE_PSMS = {
-    PROFILE_HIGH_RESOLUTION_AUTO: 3,
-    PROFILE_TABLE_SINGLE_BLOCK: 6,
-    PROFILE_TABLE_SPARSE: 11,
-}
-_LOW_RESOLUTION_SCAN_DPI = 225.0
 _MINIMUM_SCAN_IMAGE_COVERAGE = 0.05
 _HOCR_BBOX_PATTERN = re.compile(
     r"(?:x_bboxes|bbox)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)"
@@ -1097,306 +1018,3 @@ def merge_geometry_pages(
             for index, page in enumerate(source_geometry.get("pages", []))
         ],
     }
-
-
-def needs_high_resolution_retry(
-    pdf_bytes: bytes,
-    progress_callback: "callable[[str], None] | None" = None,
-) -> bool:
-    """Detect materially sized scan images whose effective DPI is too low for OCR."""
-    import pymupdf as fitz
-
-    doc = fitz.open(stream=pdf_bytes, filetype="pdf")
-    try:
-        found_low_resolution_scan = False
-        page_count = doc.page_count
-        for page_index, page in enumerate(doc):
-            page_area = page.rect.get_area()
-            if page_area > 0:
-                for image in page.get_image_info(xrefs=True):
-                    bbox = fitz.Rect(image["bbox"])
-                    displayed_area = bbox.get_area()
-                    if displayed_area <= 0:
-                        continue
-                    coverage = displayed_area / page_area
-                    if coverage < _MINIMUM_SCAN_IMAGE_COVERAGE:
-                        continue
-                    pixel_area = int(image.get("width", 0)) * int(
-                        image.get("height", 0)
-                    )
-                    if pixel_area <= 0:
-                        continue
-                    effective_dpi = 72.0 * (pixel_area / displayed_area) ** 0.5
-                    if effective_dpi < _LOW_RESOLUTION_SCAN_DPI:
-                        found_low_resolution_scan = True
-            if progress_callback:
-                progress_callback(
-                    f"Checking image quality page {page_index + 1} "
-                    f"of {page_count}…"
-                )
-        return found_low_resolution_scan
-    finally:
-        doc.close()
-
-
-def needs_low_resolution_quality_retry(
-    summary: dict,
-    low_resolution_scan: bool,
-) -> bool:
-    """Spend on high-resolution profiles only when low DPI also yielded weak text."""
-    if not low_resolution_scan:
-        return False
-
-    page_count = max(1, int(summary.get("page_count", 0)))
-    return (
-        int(summary.get("alphanumeric_characters", 0)) < page_count * 600
-        or int(summary.get("word_count", 0)) < page_count * 80
-    )
-
-
-def profile_ocr_options(profile: str) -> dict:
-    """Translate an internal OCR profile into OCRmyPDF/Tesseract options."""
-    if profile == PROFILE_DEFAULT:
-        return {"tesseract_pagesegmode": None, "oversample": 0}
-    if profile not in _ADAPTIVE_PROFILE_PSMS:
-        raise ValueError(f"Unknown OCR profile: {profile}")
-    return {
-        "tesseract_pagesegmode": _ADAPTIVE_PROFILE_PSMS[profile],
-        "oversample": _ADAPTIVE_OVERSAMPLE_DPI,
-    }
-
-
-def select_best_adaptive_profile(evaluations: list[dict]) -> dict:
-    """Prefer confidence and recall while giving coherent PSM 6 ordering a tie-break."""
-    if not evaluations:
-        raise ValueError("No adaptive OCR profiles were evaluated")
-
-    def score(evaluation: dict) -> float:
-        confidence = float(evaluation.get("mean_confidence", 0.0))
-        word_count = int(evaluation.get("word_count", 0))
-        order_bonus = (
-            3.0
-            if evaluation.get("profile")
-            in {PROFILE_HIGH_RESOLUTION_AUTO, PROFILE_TABLE_SINGLE_BLOCK}
-            else 0.0
-        )
-        return confidence + min(12.0, word_count / 20.0) + order_bonus
-
-    return max(evaluations, key=score)
-
-
-def evaluate_adaptive_profiles(
-    pdf_bytes: bytes,
-    language: str = "eng",
-    progress_callback: "callable[[str], None] | None" = None,
-) -> list[dict]:
-    """
-    Score high-resolution Tesseract layouts at 300 DPI before committing to a retry.
-
-    OCRmyPDF's final PDF does not retain word confidence, so this lightweight
-    preflight renders each source page once and asks Tesseract for TSV-equivalent
-    data for automatic, single-block, and sparse layouts. The chosen profile is
-    then run through OCRmyPDF so
-    text placement and PDF preservation remain in the existing engine.
-    """
-    configure_tesseract()
-
-    import pymupdf as fitz
-    import pytesseract
-    from PIL import Image
-
-    aggregates = {
-        profile: {"confidences": [], "words": [], "lines": set()}
-        for profile in _ADAPTIVE_PROFILE_PSMS
-    }
-    doc = fitz.open(stream=pdf_bytes, filetype="pdf")
-    try:
-        evaluation_count = 0
-        evaluation_total = doc.page_count * len(_ADAPTIVE_PROFILE_PSMS)
-        for page_index in range(doc.page_count):
-            page = doc.load_page(page_index)
-            pixmap = page.get_pixmap(dpi=_ADAPTIVE_OVERSAMPLE_DPI, alpha=False)
-            image = Image.frombytes(
-                "RGB",
-                (pixmap.width, pixmap.height),
-                pixmap.samples,
-            )
-
-            for profile, psm in _ADAPTIVE_PROFILE_PSMS.items():
-                data = pytesseract.image_to_data(
-                    image,
-                    lang=language,
-                    config=f"--psm {psm}",
-                    output_type=pytesseract.Output.DICT,
-                )
-                aggregate = aggregates[profile]
-                for index, raw_text in enumerate(data.get("text", [])):
-                    text = str(raw_text).strip()
-                    if not text:
-                        continue
-                    try:
-                        confidence = float(data["conf"][index])
-                    except (KeyError, TypeError, ValueError, IndexError):
-                        continue
-                    if confidence < 0:
-                        continue
-                    aggregate["confidences"].append(confidence)
-                    aggregate["words"].append(text)
-                    aggregate["lines"].add(
-                        (
-                            page_index,
-                            data.get("block_num", [0])[index],
-                            data.get("par_num", [0])[index],
-                            data.get("line_num", [0])[index],
-                        )
-                    )
-                evaluation_count += 1
-                if progress_callback:
-                    progress_callback(
-                        f"Evaluating OCR layout {evaluation_count} "
-                        f"of {evaluation_total}…"
-                    )
-    finally:
-        doc.close()
-
-    evaluations: list[dict] = []
-    for profile, aggregate in aggregates.items():
-        confidences = aggregate["confidences"]
-        words = aggregate["words"]
-        evaluations.append(
-            {
-                "profile": profile,
-                "mean_confidence": round(statistics.fmean(confidences), 2)
-                if confidences
-                else 0.0,
-                "median_confidence": round(statistics.median(confidences), 2)
-                if confidences
-                else 0.0,
-                "word_count": len(words),
-                "alphanumeric_characters": sum(
-                    sum(char.isalnum() for char in word) for word in words
-                ),
-                "populated_lines": len(aggregate["lines"]),
-            }
-        )
-    return evaluations
-
-
-def ocr_pdf_bytes(
-    pdf_bytes: bytes,
-    language: str = "eng",
-    auto_rotate_pages: bool = True,
-    rotate_pages_threshold: float = 2.0,
-    mode: str = MODE_REDO,
-    tesseract_pagesegmode: int | None = None,
-    oversample: int = 0,
-    pages: str | None = None,
-    progress_callback: "callable[[str], None] | None" = None,
-) -> bytes:
-    """
-    Accept raw PDF bytes, run OCR, and return the new PDF bytes with a fresh
-    invisible text layer.
-
-    mode selects OCRmyPDF's processing mode and is the difference between
-    preserving and destroying the document:
-
-      MODE_REDO  — strips the existing invisible text layer and OCRs the image
-                   regions, leaving original page content untouched. Vector text
-                   stays vector, so the viewer keeps full zoom fidelity and the
-                   stored PDF does not balloon. This is the correct default.
-      MODE_FORCE — rasterizes every page at a fixed DPI and OCRs the bitmap.
-                   Permanently discards vector content and inflates the file, so
-                   it is only reached by escalation from the ladder in worker.py
-                   when redo cannot produce a usable result.
-
-    When enabled, ocrmypdf uses Tesseract orientation detection to rotate pages
-    that appear sideways or upside down before writing the output PDF. The
-    default OCRmyPDF threshold is conservative, so use a lower value to avoid
-    silently leaving clearly rotated scans uncorrected.
-    Raises ocrmypdf.exceptions.OcrmypdfException on failure.
-    """
-    with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as src_f:
-        src_path = src_f.name
-        src_f.write(pdf_bytes)
-
-    dst_fd, dst_path = tempfile.mkstemp(suffix=".pdf")
-    os.close(dst_fd)
-
-    try:
-        if progress_callback:
-            progress_callback("Starting OCR…")
-
-        configure_progress_callback(progress_callback)
-
-        heartbeat_stop = threading.Event()
-        heartbeat_thread: threading.Thread | None = None
-        if progress_callback:
-            heartbeat_started = time.monotonic()
-
-            def report_elapsed_time() -> None:
-                while not heartbeat_stop.wait(_OCR_PROGRESS_HEARTBEAT_SECONDS):
-                    elapsed_seconds = int(time.monotonic() - heartbeat_started)
-                    minutes, seconds = divmod(elapsed_seconds, 60)
-                    elapsed = (
-                        f"{minutes}m {seconds:02d}s"
-                        if minutes
-                        else f"{seconds}s"
-                    )
-                    progress_callback(progress_message_with_elapsed(elapsed))
-
-            heartbeat_thread = threading.Thread(
-                target=report_elapsed_time,
-                name="doculink-ocr-progress",
-                daemon=True,
-            )
-            heartbeat_thread.start()
-
-        options = {
-            "language": language,
-            "mode": mode,
-            "rotate_pages": auto_rotate_pages,
-            "progress_bar": progress_callback is not None,
-            # See the tuning knobs above. Both are environment-overridable so the
-            # rasterizer/concurrency matrix can be benchmarked without a rebuild.
-            "rasterizer": resolve_rasterizer(),
-            "use_threads": resolve_use_threads(),
-            "output_type": "pdf",
-            # Recognition is complete before OCRmyPDF optimizes the output. The
-            # worker already normalizes the input, so repeating size optimization
-            # here adds latency without improving OCR quality.
-            "optimize": 0,
-            "fast_web_view": 0,
-        }
-        if auto_rotate_pages:
-            options["rotate_pages_threshold"] = rotate_pages_threshold
-        if tesseract_pagesegmode is not None:
-            options["tesseract_pagesegmode"] = tesseract_pagesegmode
-        if oversample > 0:
-            options["oversample"] = oversample
-        if pages:
-            options["pages"] = pages
-        if progress_callback:
-            options["plugins"] = ["engines.ocr_progress_plugin"]
-
-        try:
-            ocrmypdf.ocr(src_path, dst_path, **options)
-        finally:
-            heartbeat_stop.set()
-            if heartbeat_thread is not None:
-                heartbeat_thread.join()
-            configure_progress_callback(None)
-
-        if progress_callback:
-            progress_callback("OCR complete, reading output…")
-
-        with open(dst_path, "rb") as f:
-            return f.read()
-    finally:
-        try:
-            os.unlink(src_path)
-        except OSError:
-            pass
-        try:
-            os.unlink(dst_path)
-        except OSError:
-            pass

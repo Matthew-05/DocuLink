@@ -1,6 +1,7 @@
-"""Column-aware OCR and text-layer rebuilding for low-resolution ruled tables."""
+"""Column-aware OCR geometry recovery for low-resolution ruled tables."""
 from __future__ import annotations
 
+import copy
 import io
 import os
 import re
@@ -798,25 +799,82 @@ def _recognize_sparse_region(
     return items
 
 
-def _insert_invisible_cell(page: fitz.Page, rect: fitz.Rect, text: str) -> None:
-    font = fitz.Font("helv")
-    metric_height = font.ascender - font.descender
-    font_size = rect.height / metric_height
-    natural_width = max(
-        0.1,
-        fitz.get_text_length(text, fontname="helv", fontsize=font_size),
+def _geometry_characters_for_text(
+    text: str,
+    rect: fitz.Rect,
+    page_rect: fitz.Rect,
+    line_index: int,
+) -> list[dict]:
+    """Lay recognized text into its ink box without writing it into the PDF.
+
+    The old recovery path inserted horizontally-scaled Helvetica and then asked
+    PyMuPDF to extract the resulting glyph boxes. Producing those boxes directly
+    keeps geometry authoritative and removes the possibility of a second PDF
+    text layer while retaining the same proportional character placement.
+    """
+    if not text or rect.width <= 0 or rect.height <= 0:
+        return []
+    page_width = page_rect.width
+    page_height = page_rect.height
+    if page_width <= 0 or page_height <= 0:
+        return []
+
+    # A trailing blank is structural: when independently recovered cells share
+    # a baseline, the layout builder merges their source lines. The blank keeps
+    # the last glyph of one cell and the first glyph of the next from becoming
+    # one cross-boundary token even when their estimated boxes touch.
+    layout_text = text if text[-1].isspace() else text + " "
+    weights = [
+        max(0.1, fitz.get_text_length(char, fontname="helv", fontsize=1))
+        for char in layout_text
+    ]
+    total = sum(weights)
+    if total <= 0:
+        return []
+
+    characters: list[dict] = []
+    cursor = rect.x0
+    for char, weight in zip(layout_text, weights):
+        width = rect.width * weight / total
+        characters.append(
+            {
+                "char": char,
+                "x": (cursor - page_rect.x0) / page_width,
+                "y": (rect.y0 - page_rect.y0) / page_height,
+                "width": width / page_width,
+                "height": rect.height / page_height,
+                "lineIndex": line_index,
+            }
+        )
+        cursor += width
+    return characters
+
+
+def _character_center_in_rect(character: dict, rect: fitz.Rect, page_rect: fitz.Rect) -> bool:
+    x = page_rect.x0 + (
+        float(character.get("x", 0)) + float(character.get("width", 0)) / 2
+    ) * page_rect.width
+    y = page_rect.y0 + (
+        float(character.get("y", 0)) + float(character.get("height", 0)) / 2
+    ) * page_rect.height
+    return rect.x0 <= x <= rect.x1 and rect.y0 <= y <= rect.y1
+
+
+def _reindex_geometry_lines(characters: list[dict]) -> None:
+    """Keep recovered and retained lines in stable displayed-page reading order."""
+    groups: dict[int, list[dict]] = {}
+    for character in characters:
+        groups.setdefault(int(character.get("lineIndex", 0)), []).append(character)
+    ordered = sorted(
+        groups.values(),
+        key=lambda group: (
+            min(float(char.get("y", 0)) for char in group),
+            min(float(char.get("x", 0)) for char in group),
+        ),
     )
-    horizontal_scale = rect.width / natural_width
-    origin = fitz.Point(rect.x0, rect.y0 + font.ascender * font_size)
-    page.insert_text(
-        origin,
-        text,
-        fontsize=font_size,
-        fontname="helv",
-        render_mode=3,
-        morph=(origin, fitz.Matrix(horizontal_scale, 1.0)),
-        overlay=True,
-    )
+    for line_index, group in enumerate(ordered):
+        for character in group:
+            character["lineIndex"] = line_index
 
 
 def _is_table_recovery_useful(items: list[dict]) -> bool:
@@ -873,13 +931,13 @@ def has_recoverable_ruled_table(
         doc.close()
 
 
-def recover_table_cells(
+def recover_table_geometry(
     source_pdf_bytes: bytes,
-    ocr_pdf_bytes: bytes,
+    geometry: dict,
     language: str = "eng",
     progress_callback: Callable[[str], None] | None = None,
-) -> tuple[bytes, dict]:
-    """Recognize every cell in strongly ruled tables and rebuild their text layer."""
+) -> tuple[dict, dict]:
+    """Recognize ruled-table cells and replace only their geometry regions."""
     stats = {
         "date_tables_detected": 0,
         "date_cells_detected": 0,
@@ -899,14 +957,18 @@ def recover_table_cells(
     previous_thread_limit = os.environ.get("OMP_THREAD_LIMIT")
     os.environ["OMP_THREAD_LIMIT"] = "1"
     source_doc = fitz.open(stream=source_pdf_bytes, filetype="pdf")
-    output_doc = fitz.open(stream=ocr_pdf_bytes, filetype="pdf")
+    recovered_geometry = copy.deepcopy(geometry)
+    geometry_pages = {
+        int(page.get("pageIndex", -1)): page
+        for page in recovered_geometry.get("pages", [])
+    }
     page_tables: dict[int, list[dict]] = {}
     try:
-        for page_index in range(min(source_doc.page_count, output_doc.page_count)):
+        for page_index in range(source_doc.page_count):
             if progress_callback:
                 progress_callback(
                     f"Scanning tables page {page_index + 1} "
-                    f"of {min(source_doc.page_count, output_doc.page_count)}…"
+                    f"of {source_doc.page_count}…"
                 )
             source_page = source_doc.load_page(page_index)
             seen_xrefs: set[int] = set()
@@ -1151,6 +1213,16 @@ def recover_table_cells(
                     {
                         "placement": placement,
                         "image_size": image.size,
+                        "grid_rect": _map_image_rect(
+                            placement,
+                            image.size,
+                            (
+                                x_lines[0],
+                                y_lines[header_row],
+                                x_lines[-1],
+                                y_lines[-1],
+                            ),
+                        ),
                         "x_lines": x_lines,
                         "y_lines": y_lines,
                         "header_row": header_row,
@@ -1161,71 +1233,72 @@ def recover_table_cells(
                 )
 
         if not page_tables:
-            return ocr_pdf_bytes, stats
+            return recovered_geometry, stats
 
-        redacted_pages: set[int] = set()
+        changed_pages: set[int] = set()
+        next_line_index = -1
         for page_index, tables in page_tables.items():
-            page = output_doc.load_page(page_index)
+            geometry_page = geometry_pages.get(page_index)
+            if geometry_page is None:
+                continue
+            page_rect = source_doc.load_page(page_index).rect
+            characters = list(geometry_page.get("characters", []))
             for table in tables:
                 items = table["items"]
                 if not _is_table_recovery_useful(items):
-                    table["accepted"] = False
                     continue
-                table["accepted"] = True
-                # Replace cells independently. Unresolved ink keeps its existing
-                # whole-page OCR text, while confidently empty cells have grid
-                # artifacts removed without being counted as failures.
-                for item in items:
-                    if item["has_ink"] and not item["text"]:
-                        continue
-                    page.add_redact_annot(
-                        item["rect"],
-                        fill=False,
-                        cross_out=False,
-                    )
-                redacted_pages.add(page_index)
+
+                # The page-level OCR pass can produce words whose boxes span
+                # several cells. Removing per-cell rectangles by character
+                # centre cannot reliably erase such a word, so replace the
+                # complete recognized grid as one atomic geometry region.
+                replacement_rects: list[fitz.Rect] = [table["grid_rect"]]
+                recovered_segments: list[dict] = list(table["region_items"])
                 if table["region_rect"] is not None:
-                    page.add_redact_annot(
-                        table["region_rect"],
-                        fill=False,
-                        cross_out=False,
+                    replacement_rects.append(table["region_rect"])
+                for item in items:
+                    # Once the cell-aware pass is trustworthy, it owns the
+                    # complete grid. Keeping full-page OCR in unresolved cells
+                    # leaves fragments that cross cell boundaries and can also
+                    # duplicate a recovered neighbour. An unresolved cell is an
+                    # honest blank in sidecar geometry; it must not resurrect
+                    # the less reliable page-level pass.
+                    replacement_rects.append(item["rect"])
+                    if item["text"]:
+                        recovered_segments.extend(
+                            item["segments"]
+                            or [{"rect": item["rect"], "text": item["text"]}]
+                        )
+
+                characters = [
+                    character
+                    for character in characters
+                    if not any(
+                        _character_center_in_rect(character, rect, page_rect)
+                        for rect in replacement_rects
                     )
-
-        for page_index in redacted_pages:
-            output_doc.load_page(page_index).apply_redactions(
-                images=0,
-                graphics=0,
-                text=0,
-            )
-
-        for page_index, tables in page_tables.items():
-            page = output_doc.load_page(page_index)
-            for table in tables:
-                if not table.get("accepted", False):
-                    continue
-                for item in table["region_items"]:
-                    _insert_invisible_cell(
-                        page,
-                        item["rect"],
-                        item["text"],
+                ]
+                for segment in recovered_segments:
+                    characters.extend(
+                        _geometry_characters_for_text(
+                            segment["text"],
+                            segment["rect"],
+                            page_rect,
+                            next_line_index,
+                        )
                     )
-                for item in table["items"]:
-                    text = item["text"]
-                    if text:
-                        for segment in item["segments"]:
-                            _insert_invisible_cell(
-                                page,
-                                segment["rect"],
-                                segment["text"],
-                            )
+                    next_line_index -= 1
+                changed_pages.add(page_index)
+            geometry_page["characters"] = characters
 
-        if not redacted_pages:
-            return ocr_pdf_bytes, stats
+        for page_index in changed_pages:
+            _reindex_geometry_lines(geometry_pages[page_index]["characters"])
+        if not changed_pages:
+            return recovered_geometry, stats
         stats["changed"] = True
-        return output_doc.tobytes(garbage=4, deflate=True), stats
+        return recovered_geometry, stats
     finally:
         source_doc.close()
-        output_doc.close()
         if previous_thread_limit is None:
             os.environ.pop("OMP_THREAD_LIMIT", None)
         else:

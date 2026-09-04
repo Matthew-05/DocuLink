@@ -14,7 +14,7 @@ from engines.binary_codec import json_to_base64
 # measured ~210x faster over an 80-page scan (46.2s -> 0.22s) with byte-identical
 # character output. PyMuPDF sorts in unrotated page coordinates, so sorting is
 # used only for intrinsically upright pages. Rotated pages retain PDF content-
-# stream order, which OCRmyPDF writes in recognized reading order.
+# stream order, which native PDF producers usually write in reading order.
 _RAWDICT_FLAGS = fitz.TEXTFLAGS_RAWDICT & ~fitz.TEXT_PRESERVE_IMAGES
 
 _DUPLICATE_LINE_OVERLAP = 0.8
@@ -110,7 +110,7 @@ def _span_is_invisible(span: dict) -> bool:
 
 
 def _span_uses_unstrippable_hidden_text(span: dict) -> bool:
-    """Whether OCRmyPDF redo mode cannot reliably remove this hidden span.
+    """Whether this hidden span must be replaced by direct OCR geometry.
 
     Redo strips PDF text rendering mode 3. Text hidden with zero opacity while
     still marked as painted, or with a clipping-only rendering mode, survives
@@ -124,7 +124,7 @@ def _span_uses_unstrippable_hidden_text(span: dict) -> bool:
 
 
 def find_unstrippable_hidden_text_pages(pdf_bytes: bytes) -> list[int]:
-    """Return one-based pages that must be rasterized instead of redo-OCR'd."""
+    """Return one-based pages whose hidden source text cannot be trusted."""
     document = fitz.open(stream=pdf_bytes, filetype="pdf")
     pages: list[int] = []
     try:
@@ -345,7 +345,7 @@ def extract_text_geometry(
 
     Returns a text-geometry-v1 dict with normalized top-left coordinates.
     Word spacing comes from literal space characters in the text layer
-    (native PDFs for Enhance, ocrmypdf-embedded layer for OCR).
+    (native PDFs for Enhance; direct OCR geometry bypasses this extractor).
     """
     del language  # retained for worker API compatibility; rawdict is language-agnostic
 

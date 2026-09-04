@@ -24,7 +24,9 @@ def sanitize_pdf_bytes(
 
     DocuLink's viewer is a reference surface, so JavaScript, attachments, launch
     actions, links, thumbnails, response data, and XML metadata are unnecessary.
-    Visible page content and hidden OCR text are retained.
+    Visible page content is retained. Hidden text is left in the visual PDF and
+    excluded when the worker selects authoritative sidecar geometry; attempting
+    to redact it here could also remove visible text occupying the same bounds.
     """
     if not pdf_bytes:
         raise ValueError("PDF is empty.")

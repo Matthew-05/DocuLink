@@ -6,7 +6,6 @@
 # PREREQUISITES (on the build machine):
 #   - Python 3.12 with packages from requirements.txt installed
 #   - Tesseract: run download-tesseract.ps1 (or set TESSERACT_DIR)
-#   - Ghostscript: run download-ghostscript.ps1 (or set GHOSTSCRIPT_DIR)
 #
 # Build:
 #   pyinstaller worker.spec
@@ -17,8 +16,6 @@
 import os
 import sys
 from pathlib import Path
-
-from PyInstaller.utils.hooks import collect_data_files, collect_dynamic_libs, collect_submodules
 
 # ── Tesseract location ────────────────────────────────────────────────────────
 # Default: repo-local copy in src/python/tesseract/ (populated by download-tesseract.ps1).
@@ -44,7 +41,7 @@ datas = []
 if TESSERACT_DIR.is_dir():
     # Bundle tesseract.exe and every DLL it depends on (the Tesseract Windows
     # distribution ships ~70 DLLs alongside the exe; omitting them causes the
-    # exe to crash immediately and ocrmypdf reports "Could not find tesseract").
+    # exe to crash immediately when direct OCR invokes it).
     if tess_exe.exists():
         datas.append((str(tess_exe), "tesseract"))
     for dll in TESSERACT_DIR.glob("*.dll"):
@@ -55,45 +52,13 @@ if tessdata_dir.is_dir():
     # To include only English: bundle eng.traineddata + osd.traineddata.
     datas.append((str(tessdata_dir), "tesseract/tessdata"))
 
-# ── Ghostscript location ──────────────────────────────────────────────────────
-_default_gs = _spec_dir / "ghostscript"
-
-GHOSTSCRIPT_DIR = Path(os.environ.get("GHOSTSCRIPT_DIR", str(_default_gs)))
-
-gs_exe = GHOSTSCRIPT_DIR / "bin" / "gswin64c.exe"
-
-if not gs_exe.exists():
-    print(
-        f"WARNING: Ghostscript not found at {gs_exe}\n"
-        "Run src/python/download-ghostscript.ps1 to fetch it, or set GHOSTSCRIPT_DIR.",
-        file=sys.stderr,
-    )
-
-if GHOSTSCRIPT_DIR.is_dir() and gs_exe.exists():
-    # Bundle the full install tree (bin, lib, Resource, etc.).
-    datas.append((str(GHOSTSCRIPT_DIR), "ghostscript"))
-
-# ── ocrmypdf package data (fonts, ICC profiles, etc.) ────────────────────────
-# ocrmypdf ships data files (e.g. Occulta.ttf) that PyInstaller won't find
-# automatically via static import analysis.
-datas += collect_data_files("ocrmypdf")
-
 # ── Analysis ──────────────────────────────────────────────────────────────────
-# All builtin plugins must be bundled so register_options() runs and nested
-# namespaces like options.ghostscript exist (core validation accesses them).
-_plugin_imports = collect_submodules("ocrmypdf.builtin_plugins")
-_pdfium_binaries = collect_dynamic_libs("pypdfium2_raw")
-
 a = Analysis(
     ["worker.py"],
     pathex=["."],
-    binaries=_pdfium_binaries,
+    binaries=[],
     datas=datas,
     hiddenimports=[
-        "ocrmypdf",
-        "ocrmypdf.builtin_plugins",
-        "pypdfium2",
-        "pypdfium2_raw",
         "PIL",
         "PIL.Image",
         "PIL.ImageSequence",
@@ -109,7 +74,6 @@ a = Analysis(
         "openpyxl.utils",
         "xlrd",
         "pyxlsb",
-        *_plugin_imports,
     ],
     hookspath=[],
     hooksconfig={},

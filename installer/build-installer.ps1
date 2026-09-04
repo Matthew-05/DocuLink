@@ -6,7 +6,7 @@
 .DESCRIPTION
     Runs every build step from scratch in order:
       1. Clean all previous build artifacts
-      2. Build the Python OCR runtime (downloads Ghostscript + Tesseract if needed)
+      2. Build the Python OCR runtime (downloads Tesseract if needed)
       3. Build the C# add-in in Release mode (also builds TypeScript web apps and
          copies the worker into bin\Release\)
       4. Harvest the Release output into a WiX component group (doculink-files.wxs)

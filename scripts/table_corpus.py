@@ -16,34 +16,38 @@ PYTHON_ROOT = REPO_ROOT / "src" / "python"
 if str(PYTHON_ROOT) not in sys.path:
     sys.path.insert(0, str(PYTHON_ROOT))
 
-from engines.geometry_engine import extract_text_geometry  # noqa: E402
+from engines.geometry_engine import (  # noqa: E402
+    extract_text_geometry,
+    find_coincident_text_layer_pages,
+    find_unstrippable_hidden_text_pages,
+)
+from engines.ocr_engine import (  # noqa: E402
+    extract_direct_text_geometry,
+    merge_geometry_pages,
+    select_pages_requiring_ocr,
+    summarize_geometry_quality,
+)
 from engines.table.detector import DEFAULT_DETECTOR, DETECTORS, detect_tables  # noqa: E402
-
-
-# A page with fewer meaningful characters than this has no usable text layer.
-_SPARSE_PAGE_CHARACTERS = 20
+from engines.table_cell_engine import recover_table_geometry  # noqa: E402
 
 
 def geometry_for(pdf_bytes: bytes) -> dict:
-    """Text geometry, with direct OCR substituted on pages that have no text."""
+    """Build the same geometry-first input that production table detection uses."""
     geometry = extract_text_geometry(pdf_bytes)
-    sparse_pages = [
-        page["pageIndex"] + 1
-        for page in geometry["pages"]
-        if sum(bool(str(char.get("char", "")).strip()) for char in page["characters"])
-        < _SPARSE_PAGE_CHARACTERS
-    ]
-    if sparse_pages:
-        # Imported lazily: the OCR runtime pulls in Tesseract and Ghostscript, and
-        # a born-digital corpus should not pay for them.
-        from engines.ocr_engine import extract_direct_text_geometry
-
-        ocr_pages, _ = extract_direct_text_geometry(pdf_bytes, sparse_pages, dpi=300, psm=6)
-        replacements = {page_number - 1: page for page_number, page in ocr_pages.items()}
-        geometry["pages"] = [
-            replacements.get(page["pageIndex"], page) for page in geometry["pages"]
-        ]
-    return geometry
+    summary = summarize_geometry_quality(geometry)
+    selected = set(select_pages_requiring_ocr(pdf_bytes, summary))
+    selected.update(find_unstrippable_hidden_text_pages(pdf_bytes))
+    selected.update(find_coincident_text_layer_pages(pdf_bytes))
+    if selected:
+        ocr_pages, _ = extract_direct_text_geometry(
+            pdf_bytes,
+            sorted(selected),
+            dpi=300,
+            psm=3,
+        )
+        geometry = merge_geometry_pages(geometry, ocr_pages)
+    recovered, stats = recover_table_geometry(pdf_bytes, geometry)
+    return recovered if stats["changed"] else geometry
 
 
 def detect(

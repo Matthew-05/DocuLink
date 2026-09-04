@@ -4,9 +4,9 @@
 
 .DESCRIPTION
     Prerequisites:
-      - Internet access on first run (Python embeddable zip, Tesseract, and
-        Ghostscript are downloaded automatically if not already present).
-        Override tool locations with $env:TESSERACT_DIR or $env:GHOSTSCRIPT_DIR.
+      - Internet access on first run (Python embeddable zip and Tesseract are
+        downloaded automatically if not already present).
+        Override the tool location with $env:TESSERACT_DIR.
 
     Output:
       src/python/dist/worker/ (Python + scripts + tool binaries)
@@ -18,9 +18,8 @@
     # From the repo root:
     .\src\python\build-worker.ps1
 
-    # Custom tool paths:
+    # Custom tool path:
     $env:TESSERACT_DIR = "D:\Tools\Tesseract-OCR"
-    $env:GHOSTSCRIPT_DIR = "D:\Tools\gs\gs10.04.0"
     .\src\python\build-worker.ps1
 #>
 
@@ -58,30 +57,6 @@ if (-not (Test-Path (Join-Path $tessDir "tesseract.exe"))) {
 }
 
 $env:TESSERACT_DIR = $tessDir
-
-# ── Ensure Ghostscript is present (downloads if needed) ───────────────────────
-$defaultGsDir = Join-Path $scriptDir "ghostscript"
-
-$gsDir = $env:GHOSTSCRIPT_DIR
-if (-not $gsDir) {
-    $gsDir = $defaultGsDir
-}
-
-if (-not (Test-Path (Join-Path $gsDir "bin\gswin64c.exe"))) {
-    if ($gsDir -eq $defaultGsDir) {
-        Write-Host "`nGhostscript not found - running download-ghostscript.ps1..." -ForegroundColor Cyan
-        & (Join-Path $scriptDir "download-ghostscript.ps1") -NoPause
-        if ($LASTEXITCODE -ne 0) {
-            throw "Ghostscript download failed. Aborting build."
-        }
-    } else {
-        throw "GHOSTSCRIPT_DIR is set to '$gsDir' but bin\gswin64c.exe was not found there."
-    }
-} else {
-    Write-Host "Found Ghostscript at: $gsDir" -ForegroundColor Green
-}
-
-$env:GHOSTSCRIPT_DIR = $gsDir
 
 # ── Set up output directory ───────────────────────────────────────────────────
 $workerDir = Join-Path $scriptDir "dist\worker"
@@ -141,9 +116,6 @@ Copy-Item (Join-Path $scriptDir "schemas")  (Join-Path $workerDir "schemas")  -R
 Write-Host "Copying Tesseract..." -ForegroundColor Cyan
 Copy-Item $tessDir (Join-Path $workerDir "tesseract") -Recurse -Force
 
-Write-Host "Copying Ghostscript..." -ForegroundColor Cyan
-Copy-Item $gsDir (Join-Path $workerDir "ghostscript") -Recurse -Force
-
 # ── Verify output ─────────────────────────────────────────────────────────────
 $outputExe = Join-Path $workerDir "python.exe"
 if (Test-Path $outputExe) {
@@ -157,21 +129,14 @@ if (Test-Path $outputExe) {
         (Join-Path $sitePackages "setuptools"),
         (Join-Path $sitePackages "wheel"),
         (Join-Path $sitePackages "_distutils_hack"),
-        (Join-Path $sitePackages "distutils-precedence.pth"),
-        (Join-Path $workerDir "ghostscript\doc"),
-        (Join-Path $workerDir "ghostscript\examples"),
-        (Join-Path $workerDir 'ghostscript\$PLUGINSDIR'),
-        (Join-Path $workerDir "ghostscript\vcredist_x64.exe"),
-        (Join-Path $workerDir "ghostscript\uninstgs.exe.nsis"),
-        (Join-Path $workerDir "ghostscript\bin\gswin64.exe"),
-        (Join-Path $workerDir "ghostscript\bin\gsdll64.lib")
+        (Join-Path $sitePackages "distutils-precedence.pth")
     )
 
     $prunePaths += Get-ChildItem $sitePackages -Directory -ErrorAction SilentlyContinue |
         Where-Object { $_.Name -match '^(pip|setuptools|wheel)-.*\.dist-info$' } |
         ForEach-Object { $_.FullName }
     # Console-script launchers are build-time conveniences. The worker imports
-    # packages directly and resolves Tesseract/Ghostscript explicitly.
+    # packages directly and resolves Tesseract explicitly.
     $prunePaths += (Join-Path $workerDir "Scripts")
     $prunePaths += Get-ChildItem (Join-Path $workerDir "tesseract") -File -Filter "*.exe" -ErrorAction SilentlyContinue |
         Where-Object { $_.Name -ne "tesseract.exe" } |

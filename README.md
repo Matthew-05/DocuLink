@@ -28,7 +28,7 @@ DocuLink is currently in active development.
 * **Document Viewer:** View embedded PDFs in a WebView2 viewer with search, zoom, page controls, rotation, and rectangle editing.
 * **File Manager:** Manage embedded PDFs and folders from a dedicated task-pane UI.
 * **Document Matcher:** Select source and output ranges, then match document values into worksheet output columns.
-* **OCR Capabilities:** Tesseract, Ghostscript, OCRmyPDF, and PyMuPDF power local OCR and text-geometry extraction through the Python worker.
+* **OCR Capabilities:** Tesseract and PyMuPDF power local, geometry-first OCR through the Python worker. Recognized text is stored as sidecar geometry instead of being written into the PDF.
 
 ## Technical & Developer Documentation
 
@@ -42,7 +42,7 @@ DocuLink spans three runtime layers that communicate via versioned contracts in 
 | :--- | :--- | :--- |
 | **C# VSTO** | `src/DocuLink.Addin/` | Excel COM integration, WebView2 hosts, workbook lifecycle, Custom XML storage, domain services |
 | **TypeScript** | `src/web/` | Task pane and viewer UIs (`document-viewer`, `file-manager`, `document-matcher`) plus shared PDF/text utilities |
-| **Python** | `src/python/` | OCR and PDF text-geometry worker using Tesseract, Ghostscript, OCRmyPDF, and PyMuPDF |
+| **Python** | `src/python/` | Geometry-first OCR and PDF processing worker using Tesseract and PyMuPDF |
 
 Cross-boundary messages and storage formats are defined in `contracts/`:
 
@@ -67,7 +67,7 @@ Before adding or changing a cross-boundary message or storage field, update the 
 * **WiX Toolset v3** for building the MSI installer
 * **GitHub CLI (`gh`)** only if publishing releases
 
-> **Note:** Tesseract and Ghostscript binaries are not committed to the repository. The Python worker build can download them automatically, or you can provide existing installations with `TESSERACT_DIR` and `GHOSTSCRIPT_DIR`.
+> **Note:** Tesseract binaries are not committed to the repository. The Python worker build can download them automatically, or you can provide an existing installation with `TESSERACT_DIR`.
 
 ### Building
 

@@ -60,9 +60,9 @@ namespace DocuLink.Addin.Modules.Services
         }
 
         /// <summary>
-        /// Queues full OCR for every requested PDF. Existing native or OCR text
-        /// layers are replaced so users can rerun OCR when the stored result is
-        /// stale or inaccurate.
+        /// Queues geometry-first OCR for every requested PDF. Recognized text is
+        /// stored beside the sanitized visual PDF, so rerunning OCR replaces the
+        /// sidecar geometry without creating another PDF text layer.
         /// </summary>
         public Task RunOcrAsync(
             IList<string> pdfIds,
@@ -338,8 +338,7 @@ namespace DocuLink.Addin.Modules.Services
                                 var storageClock = Stopwatch.StartNew();
                                 try
                                 {
-                                    if (string.Equals(job.Mode, "geometry-only", StringComparison.Ordinal)
-                                        || job.PreserveSourcePdf)
+                                    if (string.Equals(job.Mode, "geometry-only", StringComparison.Ordinal))
                                     {
                                         _manageService.UpdatePdfGeometry(
                                             workbook, job.PdfId,
@@ -606,8 +605,6 @@ namespace DocuLink.Addin.Modules.Services
             PythonWorkerSession.AppendJsonString(sb, job.Base64);
             sb.Append(",\"mode\":");
             PythonWorkerSession.AppendJsonString(sb, job.Mode ?? "full");
-            sb.Append(",\"preserve_source_pdf\":");
-            sb.Append(job.PreserveSourcePdf ? "true" : "false");
             sb.Append('}');
             return sb.ToString();
         }
@@ -640,9 +637,6 @@ namespace DocuLink.Addin.Modules.Services
                     InputBytes = Base64DecodedLength(base64),
                     LoadMs = loadClock.ElapsedMilliseconds,
                     Mode = "full",
-                    // Store the worker's normalized OCR PDF rather than retaining
-                    // the original active-content container in the workbook.
-                    PreserveSourcePdf = false,
                     OriginalStatus = status,
                 });
             }
@@ -665,7 +659,6 @@ namespace DocuLink.Addin.Modules.Services
             public long InputBytes { get; set; }
             public long LoadMs { get; set; }
             public string Mode { get; set; }
-            public bool PreserveSourcePdf { get; set; }
             public string OriginalStatus { get; set; }
         }
 

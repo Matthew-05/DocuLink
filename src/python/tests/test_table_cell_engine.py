@@ -11,6 +11,7 @@ from engines.table_cell_engine import (
     _cleanup_text,
     _cleanup_sparse_word,
     _header_line_texts,
+    _geometry_characters_for_text,
     _ink_box,
     _ink_line_boxes,
     _is_table_recovery_useful,
@@ -53,6 +54,22 @@ class TextCleanupTests(unittest.TestCase):
 
 
 class InkGeometryTests(unittest.TestCase):
+    def test_recovered_cell_geometry_ends_with_a_structural_space(self) -> None:
+        characters = _geometry_characters_for_text(
+            "ALPHA",
+            fitz.Rect(10, 20, 60, 30),
+            fitz.Rect(0, 0, 100, 100),
+            7,
+        )
+
+        self.assertEqual("".join(item["char"] for item in characters), "ALPHA ")
+        self.assertTrue(all(item["lineIndex"] == 7 for item in characters))
+        self.assertAlmostEqual(characters[0]["x"], 0.1)
+        self.assertAlmostEqual(
+            sum(item["width"] for item in characters),
+            0.5,
+        )
+
     def test_detects_tight_single_line_ink_box(self) -> None:
         image = Image.new("L", (30, 12), 255)
         draw = ImageDraw.Draw(image)

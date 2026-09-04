@@ -11,7 +11,6 @@ class OcrJob:
     command: str
     pdf_base64: str
     mode: str = "full"
-    preserve_source_pdf: bool = False
 
     @staticmethod
     def from_dict(d: dict) -> "OcrJob":
@@ -23,7 +22,6 @@ class OcrJob:
             command=d["command"],
             pdf_base64=d["pdf_base64"],
             mode=mode,
-            preserve_source_pdf=bool(d.get("preserve_source_pdf", False)),
         )
 
 
