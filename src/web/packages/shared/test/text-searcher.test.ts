@@ -1,37 +1,19 @@
 import assert from "node:assert/strict";
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
-import ts from "typescript";
+import { registerHooks } from "node:module";
 
-const packageRoot = dirname(dirname(fileURLToPath(import.meta.url)));
-const outdir = join(packageRoot, "test", ".tmp");
-const outfile = join(outdir, "text-searcher.mjs");
-const sourceFile = join(packageRoot, "src", "text-searcher.ts");
-const zeroPlaceholderFile = join(packageRoot, "src", "zero-placeholder.ts");
+const textSearcherUrl = new URL("../src/text-searcher.ts", import.meta.url).href;
+const zeroPlaceholderUrl = new URL("../src/zero-placeholder.ts", import.meta.url).href;
 
-await rm(outdir, { recursive: true, force: true });
-await mkdir(outdir, { recursive: true });
-
-const source = await readFile(sourceFile, "utf8");
-const transpiled = ts.transpileModule(source, {
-  compilerOptions: {
-    module: ts.ModuleKind.ESNext,
-    target: ts.ScriptTarget.ES2022,
-    verbatimModuleSyntax: true,
+registerHooks({
+  resolve(specifier, context, nextResolve) {
+    if (specifier === "./zero-placeholder.js" && context.parentURL === textSearcherUrl) {
+      return { url: zeroPlaceholderUrl, shortCircuit: true };
+    }
+    return nextResolve(specifier, context);
   },
 });
-await writeFile(outfile, transpiled.outputText, "utf8");
-const zeroPlaceholderSource = await readFile(zeroPlaceholderFile, "utf8");
-const zeroPlaceholderTranspiled = ts.transpileModule(zeroPlaceholderSource, {
-  compilerOptions: {
-    module: ts.ModuleKind.ESNext,
-    target: ts.ScriptTarget.ES2022,
-    verbatimModuleSyntax: true,
-  },
-});
-await writeFile(join(outdir, "zero-placeholder.js"), zeroPlaceholderTranspiled.outputText, "utf8");
 
+const textSearcher = await import(textSearcherUrl) as typeof import("../src/text-searcher.ts");
 const {
   buildSearchPageIndexFromEntries,
   cleanAutoInsertedSearchQuery,
@@ -39,9 +21,9 @@ const {
   normalizeSearchQuery,
   searchPage,
   searchPageWithIndex,
-} = await import(pathToFileURL(outfile).href);
+} = textSearcher;
 
-function entriesFromText(text, lineBreaks = new Set()) {
+function entriesFromText(text: string, lineBreaks: ReadonlySet<number> = new Set<number>()) {
   let lineIndex = 0;
   return Array.from(text, (char, i) => {
     if (lineBreaks.has(i)) lineIndex++;
@@ -86,8 +68,8 @@ assert.equal(cleanAutoInsertedSearchQuery("Invoice)"), "Invoice");
   const entries = entriesFromText("total 1,000 due");
   const matches = searchPage("pdf-1", "Invoice", 0, entries, normalizeSearchQuery("1000"));
   assert.equal(matches.length, 1);
-  assert.equal(matches[0].id, "pdf-1:0:6");
-  assert.equal(matches[0].contextText, "1,000");
+  assert.equal(matches[0]!.id, "pdf-1:0:6");
+  assert.equal(matches[0]!.contextText, "1,000");
 }
 
 {
@@ -97,14 +79,14 @@ assert.equal(cleanAutoInsertedSearchQuery("Invoice)"), "Invoice");
   const dashIndex = text.indexOf("—");
 
   assert.equal(matches.length, 1, "a standalone em dash should match a zero search");
-  assert.equal(matches[0].id, `pdf-1:0:${dashIndex}`);
-  assert.equal(matches[0].exactMatch, true);
-  assert.equal(matches[0].contextText, "—");
-  assert.deepEqual(matches[0].matchInContext, { start: 0, end: 1 });
-  assert.ok(Math.abs(matches[0].highlightRect.x - dashIndex / text.length) < Number.EPSILON);
-  assert.ok(Math.abs(matches[0].highlightRect.width - 1 / text.length) < Number.EPSILON);
-  assert.equal(matches[0].highlightRect.y, 0);
-  assert.equal(matches[0].highlightRect.height, 0.05);
+  assert.equal(matches[0]!.id, `pdf-1:0:${dashIndex}`);
+  assert.equal(matches[0]!.exactMatch, true);
+  assert.equal(matches[0]!.contextText, "—");
+  assert.deepEqual(matches[0]!.matchInContext, { start: 0, end: 1 });
+  assert.ok(Math.abs(matches[0]!.highlightRect.x - dashIndex / text.length) < Number.EPSILON);
+  assert.ok(Math.abs(matches[0]!.highlightRect.width - 1 / text.length) < Number.EPSILON);
+  assert.equal(matches[0]!.highlightRect.y, 0);
+  assert.equal(matches[0]!.highlightRect.height, 0.05);
 }
 
 {
@@ -112,7 +94,7 @@ assert.equal(cleanAutoInsertedSearchQuery("Invoice)"), "Invoice");
   const matches = searchPage("pdf-1", "Balance Sheet", 0, entries, normalizeSearchQuery("0"));
 
   assert.equal(matches.length, 1, "a currency-prefixed standalone em dash should match zero");
-  assert.equal(matches[0].contextText, "—");
+  assert.equal(matches[0]!.contextText, "—");
 }
 
 {
@@ -124,47 +106,47 @@ assert.equal(cleanAutoInsertedSearchQuery("Invoice)"), "Invoice");
 
 {
   const entries = entriesFromText("A—B");
-  entries[0].normLeft = 0.05;
-  entries[0].normRight = 0.10;
-  entries[1].normLeft = 0.40;
-  entries[1].normRight = 0.45;
-  entries[2].normLeft = 0.75;
-  entries[2].normRight = 0.80;
+  entries[0]!.normLeft = 0.05;
+  entries[0]!.normRight = 0.10;
+  entries[1]!.normLeft = 0.40;
+  entries[1]!.normRight = 0.45;
+  entries[2]!.normLeft = 0.75;
+  entries[2]!.normRight = 0.80;
 
   const matches = searchPage("pdf-1", "Balance Sheet", 0, entries, normalizeSearchQuery("0"));
   assert.equal(matches.length, 1, "a visually isolated em dash should match zero without text spaces");
-  assert.equal(matches[0].contextText, "—");
+  assert.equal(matches[0]!.contextText, "—");
 }
 
 {
   const entries = entriesFromText("$—B");
-  entries[0].normLeft = 0.05;
-  entries[0].normRight = 0.10;
-  entries[1].normLeft = 0.40;
-  entries[1].normRight = 0.45;
-  entries[2].normLeft = 0.75;
-  entries[2].normRight = 0.80;
+  entries[0]!.normLeft = 0.05;
+  entries[0]!.normRight = 0.10;
+  entries[1]!.normLeft = 0.40;
+  entries[1]!.normRight = 0.45;
+  entries[2]!.normLeft = 0.75;
+  entries[2]!.normRight = 0.80;
 
   const matches = searchPage("pdf-1", "Balance Sheet", 0, entries, normalizeSearchQuery("0"));
   assert.equal(matches.length, 1, "a visually isolated currency dash should match zero without text spaces");
-  assert.equal(matches[0].contextText, "—");
+  assert.equal(matches[0]!.contextText, "—");
 }
 
 {
   const entries = entriesFromText("variance (1,000) due");
   const matches = searchPage("pdf-1", "Invoice", 0, entries, normalizeSearchQuery("-1000"));
   assert.equal(matches.length, 1);
-  assert.equal(matches[0].id, "pdf-1:0:9");
-  assert.equal(matches[0].contextText, "(1,000)");
-  assert.deepEqual(matches[0].matchInContext, { start: 0, end: 7 });
+  assert.equal(matches[0]!.id, "pdf-1:0:9");
+  assert.equal(matches[0]!.contextText, "(1,000)");
+  assert.deepEqual(matches[0]!.matchInContext, { start: 0, end: 7 });
 }
 
 {
   const entries = entriesFromText("variance (11) due");
   const matches = searchPage("pdf-1", "Invoice", 0, entries, normalizeSearchQuery("11"));
   assert.equal(matches.length, 1);
-  assert.equal(matches[0].contextText, "(11)");
-  assert.deepEqual(matches[0].matchInContext, { start: 1, end: 3 });
+  assert.equal(matches[0]!.contextText, "(11)");
+  assert.deepEqual(matches[0]!.matchInContext, { start: 1, end: 3 });
 }
 
 for (const sourceDate of ["03/05/2026", "2026-03-05", "March 5th, 2026", "5 Mar 2026", "03/05/26"]) {
@@ -179,9 +161,9 @@ for (const sourceDate of ["03/05/2026", "2026-03-05", "March 5th, 2026", "5 Mar 
     normalizeMatcherQuery("3/5/2026"),
   );
   assert.equal(matches.length, 1, `expected formatted date to match ${sourceDate}`);
-  assert.equal(matches[0].exactMatch, true);
-  assert.equal(matches[0].contextText, sourceDate);
-  assert.deepEqual(matches[0].matchInContext, { start: 0, end: sourceDate.length });
+  assert.equal(matches[0]!.exactMatch, true);
+  assert.equal(matches[0]!.contextText, sourceDate);
+  assert.deepEqual(matches[0]!.matchInContext, { start: 0, end: sourceDate.length });
 }
 
 {
@@ -210,7 +192,7 @@ for (const sourceDate of ["03/05/2026", "2026-03-05", "March 5th, 2026", "5 Mar 
     normalizeMatcherQuery("8/7/2026"),
   );
   assert.equal(matches.length, 1, "matcher should respect a PDF line boundary before a date");
-  assert.equal(matches[0].contextText, "08/07/26");
+  assert.equal(matches[0]!.contextText, "08/07/26");
 }
 
 {
@@ -264,4 +246,3 @@ for (const sourceDate of ["03/05/2026", "2026-03-05", "March 5th, 2026", "5 Mar 
 }
 
 console.log("[DocuLink] text-searcher tests passed");
-await rm(outdir, { recursive: true, force: true });

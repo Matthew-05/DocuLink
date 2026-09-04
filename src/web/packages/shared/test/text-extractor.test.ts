@@ -14,7 +14,7 @@ registerHooks({
   },
 });
 
-const { extractText } = await import(textExtractorUrl);
+const { extractText } = await import(textExtractorUrl) as typeof import("../src/text-extractor.ts");
 
 function entriesFromText(text: string) {
   return Array.from(text, (char, index) => ({
