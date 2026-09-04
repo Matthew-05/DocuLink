@@ -76,7 +76,17 @@ def strip_spanning_labels(grid: GridHypothesis) -> None:
         below = grid.rows[1]
         if not row.occupied or 0 in row.occupied:
             break
-        if any(token.is_value for line in row.lines for token in line.tokens):
+        # A bare period filling one cell over a band that titles the columns is
+        # the block's caption — "2025" above a segment or securities table — not
+        # a row and not a column title. The split that separates one block from
+        # the next has already read it by the time this runs.
+        titles_below = len(below.occupied) >= 2 and 0 not in below.occupied
+        block_caption = (
+            len(row.occupied) == 1
+            and titles_below
+            and _dated_band(row)
+        )
+        if any(token.is_value for line in row.lines for token in line.tokens) and not block_caption:
             break
         straddles = any(
             token.x0 < boundary < token.x1
@@ -91,7 +101,7 @@ def strip_spanning_labels(grid: GridHypothesis) -> None:
             and set(below.occupied) == set(range(1, len(grid.columns)))
             and _dated_band(below)
         )
-        if not straddles and not qualifies_a_dated_band:
+        if not straddles and not qualifies_a_dated_band and not block_caption:
             break
         grid.rows.pop(0)
 

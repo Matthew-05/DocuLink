@@ -321,6 +321,45 @@ class HeaderBandTests(unittest.TestCase):
         _candidate, grid = refine(whitespace_candidates(layout)[0], layout)[0]
         self.assertIn("Weighted-Average", " ".join(grid.rows[0].cells))
 
+    def test_a_title_stack_that_widens_is_one_band(self) -> None:
+        # Only the long titles wrap, so the upper lines cover fewer columns than
+        # the lower ones. It is still one header band.
+        rows = [
+            (0.100, [(0.62, "Cash and"), (0.78, "Current"), (0.92, "Non-Current")]),
+            (0.112, [(0.30, "Adjusted"), (0.46, "Unrealized"), (0.62, "Cash"),
+                     (0.78, "Marketable"), (0.92, "Marketable")]),
+            (0.124, [(0.30, "Cost"), (0.46, "Gains"), (0.62, "Equivalents"),
+                     (0.78, "Securities"), (0.92, "Securities")]),
+            (0.144, [(0.05, "Cash"), (0.31, "28,267"), (0.47, "—"), (0.63, "28,267"),
+                     (0.79, "—"), (0.93, "—")]),
+            (0.160, [(0.05, "Money market"), (0.31, "5,272"), (0.47, "—"), (0.63, "5,272"),
+                     (0.79, "—"), (0.93, "—")]),
+            (0.176, [(0.05, "Total"), (0.31, "33,539"), (0.47, "—"), (0.63, "33,539"),
+                     (0.79, "—"), (0.93, "—")]),
+        ]
+        layout = build_page_layout(page(rows))
+        _candidate, grid = refine(whitespace_candidates(layout)[0], layout)[0]
+        header = detect_header_cells(grid.cell_matrix(), grid.column_count)
+        self.assertEqual(header["rowCount"], 1)
+        self.assertEqual(grid.rows[0].cells[3], "Cash and Cash Equivalents")
+        self.assertEqual(grid.rows[0].cells[1], "Adjusted Cost")
+
+    def test_a_bare_period_above_a_title_band_is_the_blocks_caption(self) -> None:
+        # "2025" alone over a securities table names the block. The split that
+        # separates one year from the next has already read it by this point.
+        rows = [
+            (0.100, [(0.55, "2025")]),
+            (0.116, [(0.30, "Adjusted"), (0.55, "Unrealized"), (0.80, "Fair")]),
+            (0.128, [(0.30, "Cost"), (0.55, "Gains"), (0.80, "Value")]),
+            (0.148, [(0.05, "Cash"), (0.31, "28,267"), (0.56, "—"), (0.81, "28,267")]),
+            (0.164, [(0.05, "Money market"), (0.31, "5,272"), (0.56, "—"), (0.81, "5,272")]),
+            (0.180, [(0.05, "Total"), (0.31, "33,539"), (0.56, "—"), (0.81, "33,539")]),
+        ]
+        layout = build_page_layout(page(rows))
+        _candidate, grid = refine(whitespace_candidates(layout)[0], layout)[0]
+        self.assertNotIn("2025", " ".join(grid.rows[0].cells))
+        self.assertEqual(grid.rows[0].cells[1], "Adjusted Cost")
+
     def test_a_wrapped_column_title_inside_one_column_survives(self) -> None:
         # "Filing Date/" over "Period End" never straddles a boundary, so it is
         # the column's own title and stays.

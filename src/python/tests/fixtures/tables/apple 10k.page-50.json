@@ -5,12 +5,12 @@
       "id": "page-49-table-0",
       "bounds": {
         "x": 0.02797570571400761,
-        "y": 0.3107257765952987,
+        "y": 0.32521393901169904,
         "width": 0.9434449563618579,
-        "height": 0.12480397465253112
+        "height": 0.1103158122361308
       },
       "evidence": "mixed",
-      "confidence": 0.947,
+      "confidence": 0.9491,
       "columns": [
         {
           "x0": 0.02797570571400761,
@@ -47,46 +47,24 @@
       ],
       "rows": [
         {
-          "y0": 0.3107257765952987,
-          "y1": 0.32710479485868205,
-          "kind": "header",
-          "textLines": [
-            {
-              "y0": 0.31478575504187384,
-              "y1": 0.3249356818921638
-            }
-          ],
-          "merged": false,
-          "mergeConfidence": 0.0
-        },
-        {
-          "y0": 0.32710479485868205,
-          "y1": 0.3390368644637291,
+          "y0": 0.32521393901169904,
+          "y1": 0.3486249326455473,
           "kind": "header",
           "textLines": [
             {
               "y0": 0.32927391745827417,
               "y1": 0.33942382504241636
-            }
-          ],
-          "merged": false,
-          "mergeConfidence": 0.0
-        },
-        {
-          "y0": 0.3390368644637291,
-          "y1": 0.35096892925223916,
-          "kind": "header",
-          "textLines": [
+            },
             {
               "y0": 0.33864990388504185,
               "y1": 0.34879981146918404
             }
           ],
-          "merged": false,
-          "mergeConfidence": 0.0
+          "merged": true,
+          "mergeConfidence": 0.9688
         },
         {
-          "y0": 0.35096892925223916,
+          "y0": 0.3486249326455473,
           "y1": 0.3650316758589311,
           "kind": "body",
           "textLines": [
@@ -165,13 +143,13 @@
         }
       ],
       "header": {
-        "rowCount": 3,
+        "rowCount": 1,
         "labels": [
           "",
           "Americas",
           "Europe",
           "Greater China",
-          "2025 Japan",
+          "Japan",
           "Rest of Asia Pacific",
           "Corporate",
           "Total"
@@ -215,12 +193,12 @@
       "id": "page-49-table-1",
       "bounds": {
         "x": 0.02797570571400761,
-        "y": 0.44879348446624445,
+        "y": 0.46328409368341616,
         "width": 0.943427702959846,
-        "height": 0.12480395538638345
+        "height": 0.11031334616921173
       },
       "evidence": "mixed",
-      "confidence": 0.947,
+      "confidence": 0.9491,
       "columns": [
         {
           "x0": 0.02797570571400761,
@@ -257,46 +235,24 @@
       ],
       "rows": [
         {
-          "y0": 0.44879348446624445,
-          "y1": 0.46517372131347656,
-          "kind": "header",
-          "textLines": [
-            {
-              "y0": 0.4528534629128196,
-              "y1": 0.4630033704969618
-            }
-          ],
-          "merged": false,
-          "mergeConfidence": 0.0
-        },
-        {
-          "y0": 0.46517372131347656,
-          "y1": 0.4771057861019867,
+          "y0": 0.46328409368341616,
+          "y1": 0.486693237767075,
           "kind": "header",
           "textLines": [
             {
               "y0": 0.4673440721299913,
               "y1": 0.4774939797141335
-            }
-          ],
-          "merged": false,
-          "mergeConfidence": 0.0
-        },
-        {
-          "y0": 0.4771057861019867,
-          "y1": 0.48903661785703717,
-          "kind": "header",
-          "textLines": [
+            },
             {
               "y0": 0.4767175924898398,
               "y1": 0.486867500073982
             }
           ],
-          "merged": false,
-          "mergeConfidence": 0.0
+          "merged": true,
+          "mergeConfidence": 0.9688
         },
         {
-          "y0": 0.48903661785703717,
+          "y0": 0.486693237767075,
           "y1": 0.5030993644637292,
           "kind": "body",
           "textLines": [
@@ -375,13 +331,13 @@
         }
       ],
       "header": {
-        "rowCount": 3,
+        "rowCount": 1,
         "labels": [
           "",
           "Americas",
           "Europe",
           "Greater China",
-          "2024 Japan",
+          "Japan",
           "Rest of Asia Pacific",
           "Corporate",
           "Total"
@@ -425,12 +381,12 @@
       "id": "page-49-table-2",
       "bounds": {
         "x": 0.02797570571400761,
-        "y": 0.5868636391379617,
+        "y": 0.6013517822882142,
         "width": 0.9435311236412697,
-        "height": 0.12480395538638334
+        "height": 0.11031581223613085
       },
       "evidence": "mixed",
-      "confidence": 0.9477,
+      "confidence": 0.9491,
       "columns": [
         {
           "x0": 0.02797570571400761,
@@ -467,46 +423,24 @@
       ],
       "rows": [
         {
-          "y0": 0.5868636391379617,
-          "y1": 0.6032426429517341,
-          "kind": "header",
-          "textLines": [
-            {
-              "y0": 0.5909236175845368,
-              "y1": 0.6010735251686791
-            }
-          ],
-          "merged": false,
-          "mergeConfidence": 0.0
-        },
-        {
-          "y0": 0.6032426429517341,
-          "y1": 0.6156001042838048,
+          "y0": 0.6013517822882142,
+          "y1": 0.6251881724656231,
           "kind": "header",
           "textLines": [
             {
               "y0": 0.6054117607347893,
               "y1": 0.6155616683189316
-            }
-          ],
-          "merged": false,
-          "mergeConfidence": 0.0
-        },
-        {
-          "y0": 0.6156001042838048,
-          "y1": 0.6277448673440953,
-          "kind": "header",
-          "textLines": [
+            },
             {
               "y0": 0.6156385402486781,
               "y1": 0.6257884478328204
             }
           ],
-          "merged": false,
-          "mergeConfidence": 0.0
+          "merged": true,
+          "mergeConfidence": 0.9676
         },
         {
-          "y0": 0.6277448673440953,
+          "y0": 0.6251881724656231,
           "y1": 0.641380984373767,
           "kind": "body",
           "textLines": [
@@ -585,13 +519,13 @@
         }
       ],
       "header": {
-        "rowCount": 3,
+        "rowCount": 1,
         "labels": [
           "",
           "Americas",
           "Europe",
           "Greater China",
-          "2023 Japan",
+          "Japan",
           "Rest of Asia Pacific",
           "Corporate",
           "Total"

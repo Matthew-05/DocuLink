@@ -24,11 +24,23 @@ DETECTOR_VERSION = "table-detector-2"
 
 
 def _row_bands(grid: GridHypothesis, top: float, bottom: float) -> list[tuple[float, float]]:
-    centers = [(row.y0 + row.y1) / 2 for row in grid.rows]
+    """Split the region into bands, one per logical row.
+
+    The edge goes in the gap between two rows, not half way between their
+    centres: a row assembled from three wrapped lines has its centre far above
+    its last line, and a centre-based edge cut straight through the text it was
+    supposed to contain.
+    """
     edges = [top]
-    for index in range(len(centers) - 1):
-        edges.append((centers[index] + centers[index + 1]) / 2)
+    for index in range(len(grid.rows) - 1):
+        lower = grid.rows[index].y1
+        upper = grid.rows[index + 1].y0
+        edges.append((lower + upper) / 2 if upper >= lower else (lower + upper) / 2)
     edges.append(bottom)
+    # Keep the bands ordered even where two rows overlap vertically.
+    for index in range(1, len(edges)):
+        if edges[index] < edges[index - 1]:
+            edges[index] = edges[index - 1]
     return [(edges[index], edges[index + 1]) for index in range(len(grid.rows))]
 
 

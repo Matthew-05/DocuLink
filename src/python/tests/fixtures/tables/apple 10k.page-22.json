@@ -10,7 +10,7 @@
         "height": 0.19383778812909375
       },
       "evidence": "mixed",
-      "confidence": 0.9076,
+      "confidence": 0.8719,
       "columns": [
         {
           "x0": 0.02797570571400761,
@@ -36,7 +36,7 @@
       "rows": [
         {
           "y0": 0.2757840898301866,
-          "y1": 0.30750417709350586,
+          "y1": 0.31994239248410616,
           "kind": "header",
           "textLines": [
             {
@@ -50,16 +50,7 @@
             {
               "y0": 0.3002988449250809,
               "y1": 0.3104487525092231
-            }
-          ],
-          "merged": true,
-          "mergeConfidence": 0.9488
-        },
-        {
-          "y0": 0.30750417709350586,
-          "y1": 0.3273997788477426,
-          "kind": "header",
-          "textLines": [
+            },
             {
               "y0": 0.309673598318389,
               "y1": 0.31982350590253117
@@ -70,10 +61,10 @@
             }
           ],
           "merged": true,
-          "mergeConfidence": 0.9489
+          "mergeConfidence": 0.9488
         },
         {
-          "y0": 0.3273997788477426,
+          "y0": 0.31994239248410616,
           "y1": 0.3423145563915522,
           "kind": "header",
           "textLines": [
@@ -178,7 +169,7 @@
         }
       ],
       "header": {
-        "rowCount": 3,
+        "rowCount": 2,
         "labels": [
           "Periods",
           "Total Number of Shares Purchased",

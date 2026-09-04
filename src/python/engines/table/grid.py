@@ -451,13 +451,35 @@ def _continues_header_band(
     sit on wrapped leading — so they are one header band. Read as two rows, the
     years became the first body row and the header lost half its text.
 
+    A title stack is also allowed to widen as it descends: "Cash and / Current /
+    Non-Current" over the last three columns, then a line naming all seven. The
+    lines above fill a subset of the columns the line below fills, which is what
+    a title wrapped over several lines looks like when only some titles are long
+    enough to wrap.
+
     Only applies above the body: once a row has content in the first column, the
     table has started and two tightly spaced value lines are two rows.
     """
     if not previous.occupied or 0 in previous.occupied:
         return False
-    if occupied_columns(line, boundaries) != previous.occupied:
+    occupied = occupied_columns(line, boundaries)
+    if not occupied or 0 in occupied:
         return False
+    if set(previous.occupied) != set(occupied):
+        # A widening title stack, not a caption: a band that titles several
+        # columns at once is part of the header, while a phrase filling a single
+        # cell above them names the group and must stay its own row long enough
+        # to be recognized as one. A phrase lying across a boundary is naming the
+        # columns either side of it, so it is never a title stack.
+        if len(previous.occupied) < 2 or not set(previous.occupied) < set(occupied):
+            return False
+        if any(
+            token.x0 < boundary < token.x1
+            for other in previous.lines
+            for token in other.tokens
+            for boundary in boundaries
+        ):
+            return False
     return line.y0 - previous.y1 <= layout.line_height * 0.6
 
 
