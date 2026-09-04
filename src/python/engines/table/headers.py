@@ -216,6 +216,19 @@ def header_row_count(
         # from declaring itself a header.
         return 1
 
+    # A header that leaves the row-label column unnamed: "| Jurisdiction of
+    # Incorporation" above a list of subsidiaries. It labels every value column,
+    # the column it does not label carries the row labels, and the table may hold
+    # no numbers at all — so none of the numeric tests above can see it.
+    if (
+        len(row_texts) >= 3
+        and not row_texts[0][0]
+        and all(row_texts[0][index] for index in range(1, column_count))
+        and _header_score(row_texts[0]) >= 0.9
+        and labels_a_real_column(1)
+    ):
+        return 1
+
     # A stacked header: several label-only bands above the first numeric row, as
     # a share-repurchase or segment table sets its column titles across four or
     # five lines. Each band alone looks like a body row of words; together they

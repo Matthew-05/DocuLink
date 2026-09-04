@@ -10,7 +10,7 @@
         "height": 0.3084519896844421
       },
       "evidence": "whitespace",
-      "confidence": 0.8129,
+      "confidence": 0.9107,
       "columns": [
         {
           "x0": 0.027935426998761746,
@@ -24,32 +24,23 @@
       "rows": [
         {
           "y0": 0.13721099525991112,
-          "y1": 0.15196841172497683,
-          "kind": "body",
+          "y1": 0.16178514740683816,
+          "kind": "header",
           "textLines": [
             {
               "y0": 0.14178130602595782,
               "y1": 0.1519312039770261
-            }
-          ],
-          "merged": false,
-          "mergeConfidence": 0.0
-        },
-        {
-          "y0": 0.15196841172497683,
-          "y1": 0.16434122576858057,
-          "kind": "body",
-          "textLines": [
+            },
             {
               "y0": 0.1520056194729275,
               "y1": 0.1621555174239958
             }
           ],
-          "merged": false,
-          "mergeConfidence": 0.0
+          "merged": true,
+          "mergeConfidence": 0.874
         },
         {
-          "y0": 0.16434122576858057,
+          "y0": 0.16178514740683816,
           "y1": 0.17905803641887627,
           "kind": "body",
           "textLines": [
@@ -296,7 +287,13 @@
           "mergeConfidence": 0.0
         }
       ],
-      "header": null,
+      "header": {
+        "rowCount": 1,
+        "labels": [
+          "",
+          "Jurisdiction of Incorporation"
+        ]
+      },
       "rulings": {
         "vertical": [],
         "horizontal": []

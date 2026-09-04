@@ -189,6 +189,48 @@ class WrappedLabelTests(unittest.TestCase):
 
 
 class MarkerColumnTests(unittest.TestCase):
+    def test_a_trailing_currency_symbol_moves_to_the_amount_it_marks(self) -> None:
+        # The marker for the next column is set tight against the previous
+        # amount, so it is swept into that cell. Currency precedes its amount,
+        # so a symbol at the end of a filled cell is never that cell's own.
+        rows = [
+            (0.100, [(0.05, "Instrument"), (0.35, "Cost"), (0.60, "Gains"), (0.85, "Value")]),
+            (0.116, [(0.05, "Cash"), (0.30, "$"), (0.35, "28,267"), (0.56, "$"), (0.60, "—"),
+                     (0.81, "$"), (0.85, "28,267")]),
+            (0.132, [(0.05, "Money market"), (0.35, "5,272"), (0.60, "—"), (0.85, "5,272")]),
+            (0.148, [(0.05, "Total"), (0.35, "33,539"), (0.60, "—"), (0.85, "33,539")]),
+        ]
+        layout = build_page_layout(page(rows))
+        _candidate, grid = refine(whitespace_candidates(layout)[0], layout)[0]
+        self.assertEqual(grid.rows[1].cells[1], "$ 28,267")
+        self.assertEqual(grid.rows[1].cells[2], "$ —")
+        self.assertEqual(grid.rows[1].cells[3], "$ 28,267")
+
+    def test_the_boundary_falls_on_the_far_side_of_a_floated_marker(self) -> None:
+        """The published columns must agree with the cells they describe.
+
+        A consumer that only has the contract re-derives cells from the column
+        geometry. If the boundary sits between "$" and its amount, that consumer
+        reads the symbol into the row label however tidy the cell text looks.
+        """
+        rows = [
+            (0.100, [(0.05, "Expense"), (0.45, "2025"), (0.75, "2024")]),
+            (0.116, [(0.05, "Research"), (0.38, "$"), (0.45, "34,550"), (0.68, "$"), (0.75, "31,370")]),
+            (0.132, [(0.05, "Selling"), (0.45, "27,601"), (0.75, "26,097")]),
+            (0.148, [(0.05, "Total"), (0.38, "$"), (0.45, "62,151"), (0.68, "$"), (0.75, "57,467")]),
+        ]
+        layout = build_page_layout(page(rows))
+        _candidate, grid = refine(whitespace_candidates(layout)[0], layout)[0]
+        marker = [
+            token
+            for token in grid.rows[1].anchor.tokens
+            if token.kind == "currency"
+        ]
+        self.assertEqual(len(marker), 2)
+        for token, boundary in zip(marker, grid.boundaries):
+            self.assertLess(boundary, token.x0, "the boundary must sit left of the marker")
+        self.assertEqual(grid.rows[1].cells[1], "$ 34,550")
+
     def test_a_floated_currency_column_is_folded_into_its_amount(self) -> None:
         # "$   2,416" with a wide gap looks like two columns, one holding only a
         # currency symbol. It is one column, and the symbol belongs to the amount.
@@ -205,6 +247,93 @@ class MarkerColumnTests(unittest.TestCase):
         self.assertEqual(grid.column_count, 4)
         self.assertEqual(grid.rows[1].cells[2], "$ 2,416")
         self.assertEqual(grid.rows[1].cells[3], "$ 2,755")
+
+
+class HeaderBandTests(unittest.TestCase):
+    """A statement's column titles, as a filing actually sets them."""
+
+    def _statement(self, with_span: bool = True):
+        rows = []
+        if with_span:
+            # "Years ended" floats across the date columns, naming them.
+            rows.append((0.100, [(0.62, "Years ended")]))
+        rows += [
+            (0.116, [(0.50, "September 27,"), (0.68, "September 28,"), (0.86, "September 30,")]),
+            (0.126, [(0.55, "2025"), (0.73, "2024"), (0.91, "2023")]),
+            (0.146, [(0.05, "Net sales:")]),
+            (0.162, [(0.06, "Products"), (0.52, "307,003"), (0.70, "294,866"), (0.88, "298,085")]),
+            (0.178, [(0.06, "Services"), (0.52, "109,158"), (0.70, "96,169"), (0.88, "85,200")]),
+            (0.194, [(0.07, "Total net sales"), (0.52, "416,161"), (0.70, "391,035"), (0.88, "383,285")]),
+        ]
+        layout = build_page_layout(page(rows))
+        candidate, grid = refine(whitespace_candidates(layout)[0], layout)[0]
+        return grid
+
+    def test_a_wrapped_date_header_is_one_row(self) -> None:
+        # "September 27," and "2025" fill the same columns on wrapped leading:
+        # one header band, not a header and a stray first body row.
+        grid = self._statement(with_span=False)
+        self.assertTrue(grid.rows[0].merged)
+        self.assertEqual(grid.rows[0].cells[1], "September 27, 2025")
+        self.assertEqual(grid.rows[0].cells[3], "September 30, 2023")
+        header = detect_header_cells(grid.cell_matrix(), grid.column_count)
+        self.assertEqual(header["rowCount"], 1)
+        self.assertEqual(header["labels"][2], "September 28, 2024")
+
+    def test_a_band_naming_a_group_of_columns_is_not_a_row(self) -> None:
+        # "Years ended" carries no value, labels no row, and lies across the
+        # boundaries between the columns it spans.
+        grid = self._statement(with_span=True)
+        self.assertNotIn("Years", " ".join(grid.rows[0].cells))
+        self.assertEqual(grid.rows[0].cells[1], "September 27, 2025")
+
+    def test_a_caption_over_dated_columns_is_dropped_even_inside_one_column(self) -> None:
+        # "Years ended" centred over the middle date column straddles nothing, so
+        # position alone cannot betray it. What does is the band below: every
+        # value column is already titled with a date, and a dated column does not
+        # take a second title.
+        rows = [
+            (0.100, [(0.68, "Years ended")]),
+            (0.116, [(0.50, "September 27,"), (0.68, "September 28,"), (0.86, "September 30,")]),
+            (0.126, [(0.55, "2025"), (0.73, "2024"), (0.91, "2023")]),
+            (0.146, [(0.05, "Net income"), (0.52, "112,010"), (0.70, "93,736"), (0.88, "96,995")]),
+            (0.162, [(0.05, "Other income"), (0.52, "1,010"), (0.70, "736"), (0.88, "995")]),
+            (0.178, [(0.05, "Total"), (0.52, "113,020"), (0.70, "94,472"), (0.88, "97,990")]),
+        ]
+        layout = build_page_layout(page(rows))
+        _candidate, grid = refine(whitespace_candidates(layout)[0], layout)[0]
+        self.assertNotIn("Years", " ".join(grid.rows[0].cells))
+        self.assertEqual(grid.rows[0].cells[2], "September 28, 2024")
+        header = detect_header_cells(grid.cell_matrix(), grid.column_count)
+        self.assertEqual(header["rowCount"], 1)
+
+    def test_a_title_over_undated_columns_is_kept(self) -> None:
+        # The same shape, but the columns below carry words rather than dates:
+        # "Weighted-Average" is the first line of that column's own title.
+        rows = [
+            (0.100, [(0.70, "Weighted-Average")]),
+            (0.116, [(0.45, "Number of"), (0.70, "Grant-Date")]),
+            (0.132, [(0.05, "Balance 2024"), (0.47, "163,326"), (0.72, "158.32")]),
+            (0.148, [(0.05, "Granted"), (0.47, "44,624"), (0.72, "228.83")]),
+            (0.164, [(0.05, "Balance 2025"), (0.47, "151,574"), (0.72, "189.75")]),
+        ]
+        layout = build_page_layout(page(rows))
+        _candidate, grid = refine(whitespace_candidates(layout)[0], layout)[0]
+        self.assertIn("Weighted-Average", " ".join(grid.rows[0].cells))
+
+    def test_a_wrapped_column_title_inside_one_column_survives(self) -> None:
+        # "Filing Date/" over "Period End" never straddles a boundary, so it is
+        # the column's own title and stays.
+        rows = [
+            (0.100, [(0.80, "Filing Date/")]),
+            (0.110, [(0.80, "Period End")]),
+            (0.126, [(0.05, "Exhibit"), (0.40, "Description"), (0.80, "Date")]),
+            (0.142, [(0.05, "4.9"), (0.40, "Officer certificate"), (0.80, "9/17/15")]),
+            (0.158, [(0.05, "4.10"), (0.40, "Officer certificate"), (0.80, "2/23/16")]),
+        ]
+        layout = build_page_layout(page(rows))
+        _candidate, grid = refine(whitespace_candidates(layout)[0], layout)[0]
+        self.assertIn("Filing Date/ Period End", grid.rows[0].cells[-1])
 
 
 class RulingComponentTests(unittest.TestCase):

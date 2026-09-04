@@ -47,6 +47,55 @@ def _first_body_row(grid: GridHypothesis) -> int:
     return 0
 
 
+def _dated_band(row: LogicalRow) -> bool:
+    """Every cell this band fills is a period or a date."""
+    filled = [value for value in row.cells if value]
+    return bool(filled) and all(_PERIOD.match(value) for value in filled)
+
+
+def strip_spanning_labels(grid: GridHypothesis) -> None:
+    """Drop leading bands that name a group of columns rather than fill one.
+
+    "Years ended" above three dated columns, or "Incorporated by Reference" above
+    Form/Exhibit/Date, labels the header rather than belonging to it: it carries
+    no value and labels no row. Read as a row it produced an empty leading band
+    and glued its words onto whichever column label sat beneath it.
+
+    Two shapes give one away. It may lie across the boundary between the columns
+    it spans. Or it may fill a single column above a band that dates every value
+    column and labels no row — a column whose title is already a date does not
+    take a second title, so a lone phrase above the set of them qualifies all of
+    them.
+
+    A wrapped column title ("Filing Date/" over "Period End") sits inside one
+    column, never straddles, and the band below it labels the row column too, so
+    it survives — and merges into its own band.
+    """
+    while len(grid.rows) > 2:
+        row = grid.rows[0]
+        below = grid.rows[1]
+        if not row.occupied or 0 in row.occupied:
+            break
+        if any(token.is_value for line in row.lines for token in line.tokens):
+            break
+        straddles = any(
+            token.x0 < boundary < token.x1
+            for line in row.lines
+            for token in line.tokens
+            for boundary in grid.boundaries
+        )
+        qualifies_a_dated_band = (
+            len(row.occupied) == 1
+            and 0 not in below.occupied
+            and len(below.occupied) >= 2
+            and set(below.occupied) == set(range(1, len(grid.columns)))
+            and _dated_band(below)
+        )
+        if not straddles and not qualifies_a_dated_band:
+            break
+        grid.rows.pop(0)
+
+
 def _looks_like_header_band(row: LogicalRow) -> bool:
     """An unlabelled band of period or word cells: how a new table announces itself."""
     if not row.cells or row.cells[0]:
@@ -231,6 +280,7 @@ def refine(
                     parts.extend(refine(part, layout, depth + 1))
             if parts:
                 return parts
+    strip_spanning_labels(grid)
     tighten(candidate, grid, layout)
     return [(candidate, grid)]
 

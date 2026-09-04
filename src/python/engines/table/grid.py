@@ -80,7 +80,17 @@ def assign_tokens(line: VisualLine, boundaries: list[float]) -> list[list[TextTo
             buckets[index]
             and buckets[index][-1].kind == "currency"
             and buckets[index + 1]
-            and buckets[index + 1][0].is_value
+            and (
+                # The classic floated marker: "$" alone, then its amount.
+                buckets[index + 1][0].is_value
+                # Or a marker swept into the tail of the cell before it, because
+                # the amount it belongs to sits tight against that cell. Currency
+                # precedes its amount, so a symbol at the end of a cell that
+                # already holds something is never that cell's own. Pushing it
+                # right cascades: "$ 28,267 $" | "— $" | "—" becomes
+                # "$ 28,267" | "$ —" | "$ —".
+                or len(buckets[index]) > 1
+            )
         ):
             buckets[index + 1].insert(0, buckets[index].pop())
         while (
@@ -235,6 +245,76 @@ def infer_boundaries(
     return _vote(anchors, left, right, layout, _MAX_CROSSING) or proposed
 
 
+def align_boundaries_to_cells(
+    boundaries: list[float], lines: list[VisualLine], layout: PageLayout
+) -> list[float]:
+    """Move each boundary so the geometry agrees with the cell assignment.
+
+    A floated currency symbol is assigned to the amount it marks, but the
+    boundary between the two columns was voted on by whitespace alone and lands
+    between the symbol and its amount. The cell text then reads "$ 34,550" while
+    the published columns say the "$" belongs to the row label — and every
+    consumer that re-derives cells from the geometry, the viewer's extractor
+    included, puts it in the wrong column.
+
+    Each boundary is nudged past the markers that cross it, but never so far that
+    it swallows a word that genuinely belongs on the other side.
+    """
+    if not boundaries:
+        return boundaries
+    aligned = list(boundaries)
+    margin = layout.character_width * 0.3
+    # Only rows carrying amounts get to veto a move. A column title sits between
+    # the marker and the boundary — "2025" above the amounts it dates — and it
+    # belongs on the same side as the amounts, so letting it object would freeze
+    # the boundary in the one place that splits a cell.
+    body = {
+        line.index
+        for line in lines
+        if any(token.kind in ("numeric", "percent") for token in line.tokens)
+    } or {line.index for line in lines}
+    for index in range(len(aligned)):
+        pushed_right: list[TextToken] = []
+        pushed_left: list[TextToken] = []
+        kept_left: list[TextToken] = []
+        kept_right: list[TextToken] = []
+        for line in lines:
+            if not line.tokens:
+                continue
+            buckets = assign_tokens(line, aligned)
+            vetoes = line.index in body
+            for token in buckets[index + 1]:
+                if token.center < aligned[index]:
+                    pushed_right.append(token)
+                elif vetoes:
+                    kept_right.append(token)
+            for token in buckets[index]:
+                if token.center > aligned[index]:
+                    pushed_left.append(token)
+                elif vetoes:
+                    kept_left.append(token)
+        low = aligned[index - 1] if index else -1.0
+        high = aligned[index + 1] if index + 1 < len(aligned) else 2.0
+        # Only words that sit wholly on one side may veto the move. A centred
+        # header label already lies across the boundary, and a band that is
+        # broken wherever the line is drawn cannot argue about where to draw it.
+        if pushed_right:
+            candidate = min(token.x0 for token in pushed_right) - margin
+            floor = max(
+                (token.x1 for token in kept_left if token.x1 <= aligned[index]), default=low
+            )
+            if low < candidate < high and candidate > floor:
+                aligned[index] = candidate
+        elif pushed_left:
+            candidate = max(token.x1 for token in pushed_left) + margin
+            ceiling = min(
+                (token.x0 for token in kept_right if token.x0 >= aligned[index]), default=high
+            )
+            if low < candidate < high and candidate < ceiling:
+                aligned[index] = candidate
+    return aligned
+
+
 def _coalesce(
     boundaries: list[float], lines: list[VisualLine], left: float, right: float
 ) -> list[float]:
@@ -358,6 +438,29 @@ def _is_continuation(
     return line.x0 >= previous_start - layout.character_width
 
 
+def _continues_header_band(
+    previous: LogicalRow,
+    line: VisualLine,
+    boundaries: list[float],
+    layout: PageLayout,
+) -> bool:
+    """Is this the second line of a column title that wraps?
+
+    A statement dates its columns "September 27," on one line and "2025" on the
+    next. Both lines fill the same value columns, neither labels a row, and they
+    sit on wrapped leading — so they are one header band. Read as two rows, the
+    years became the first body row and the header lost half its text.
+
+    Only applies above the body: once a row has content in the first column, the
+    table has started and two tightly spaced value lines are two rows.
+    """
+    if not previous.occupied or 0 in previous.occupied:
+        return False
+    if occupied_columns(line, boundaries) != previous.occupied:
+        return False
+    return line.y0 - previous.y1 <= layout.line_height * 0.6
+
+
 def _absorbs_wrapped_label(
     previous: LogicalRow,
     line: VisualLine,
@@ -394,6 +497,7 @@ def build_logical_rows(
         )
 
     rows: list[LogicalRow] = []
+    body_started = False
     for line in lines:
         if not line.tokens:
             continue
@@ -401,6 +505,10 @@ def build_logical_rows(
         if previous is not None and (
             _is_continuation(line, previous, boundaries, layout)
             or _absorbs_wrapped_label(previous, line, boundaries, layout)
+            or (
+                not body_started
+                and _continues_header_band(previous, line, boundaries, layout)
+            )
         ):
             previous.lines.append(line)
             refresh(previous)
@@ -408,6 +516,8 @@ def build_logical_rows(
         row = LogicalRow(lines=[line])
         refresh(row)
         rows.append(row)
+        if 0 in row.occupied:
+            body_started = True
     for row in rows:
         if row.occupied == (0,):
             row.kind = "section"
@@ -485,6 +595,14 @@ def fit_grid(candidate, layout: PageLayout) -> GridHypothesis | None:
             break
     if not boundaries or len(rows) < 2:
         return None
+    if not ruled:
+        # Drawn rules are the truth about where a ruled table's columns are; a
+        # whitespace vote is only an estimate, and the cells it produced are the
+        # better evidence of where the boundary belongs.
+        aligned = align_boundaries_to_cells(boundaries, lines, layout)
+        if aligned != boundaries:
+            boundaries = aligned
+            rows = build_logical_rows(lines, boundaries, layout)
 
     edges = [left] + sorted(boundaries) + [right]
     columns = [{"x0": edges[index], "x1": edges[index + 1]} for index in range(len(edges) - 1)]

@@ -178,7 +178,7 @@
         "height": 0.3212385158346157
       },
       "evidence": "mixed",
-      "confidence": 0.9032,
+      "confidence": 0.9282,
       "columns": [
         {
           "x0": 0.027564840379104116,
@@ -200,32 +200,23 @@
       "rows": [
         {
           "y0": 0.42953365595653803,
-          "y1": 0.4438669031316584,
+          "y1": 0.4513242894952948,
           "kind": "header",
           "textLines": [
             {
               "y0": 0.43410395612620345,
               "y1": 0.44425386371034564
-            }
-          ],
-          "merged": false,
-          "mergeConfidence": 0.0
-        },
-        {
-          "y0": 0.4438669031316584,
-          "y1": 0.4536682861019867,
-          "kind": "header",
-          "textLines": [
+            },
             {
               "y0": 0.44347994255297113,
               "y1": 0.4536298501371133
             }
           ],
-          "merged": false,
-          "mergeConfidence": 0.0
+          "merged": true,
+          "mergeConfidence": 0.9375
         },
         {
-          "y0": 0.4536682861019867,
+          "y0": 0.4513242894952948,
           "y1": 0.4666193181818182,
           "kind": "header",
           "textLines": [
@@ -417,7 +408,7 @@
         }
       ],
       "header": {
-        "rowCount": 3,
+        "rowCount": 2,
         "labels": [
           "Exhibit",
           "Number Exhibit Description Form",
