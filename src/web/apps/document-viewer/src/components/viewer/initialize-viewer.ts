@@ -265,7 +265,7 @@ export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLEleme
   const tableSuggestions = new TableSuggestionOverlay(viewer, tableCache);
   const tableNotice     = new TableNotice();
   const matchRenderer   = new SearchMatchRenderer(viewer);
-  const searcher        = new PdfTextSearcher(cache);
+  const searcher        = new PdfTextSearcher(cache, fsValuesCache);
   const searchNavigator = createSearchNavigator(
     viewer, selector, matchRenderer, applyFitZoom, onNavigateToPage,
   );

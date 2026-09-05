@@ -18,6 +18,7 @@ class RecognizedSpan:
     currency: str = ""
     date_precision: str = ""
     date_order: str = ""
+    magnitude: int = 0
 
 
 MONTHS = {
@@ -32,6 +33,38 @@ MONTH_PATTERN = (
 )
 CURRENCY_CODES = {code: code for code in ("USD", "EUR", "GBP", "JPY", "CAD", "AUD", "CHF", "CNY", "INR", "KRW")}
 CURRENCY_SYMBOLS = {"$": "USD", "€": "EUR", "£": "GBP", "¥": "JPY", "₹": "INR", "₩": "KRW"}
+
+MAGNITUDES = {
+    "k": 1_000,
+    "th": 1_000,
+    "ths": 1_000,
+    "thou": 1_000,
+    "thousand": 1_000,
+    "thousands": 1_000,
+    "m": 1_000_000,
+    "mm": 1_000_000,
+    "mn": 1_000_000,
+    "mil": 1_000_000,
+    "mln": 1_000_000,
+    "million": 1_000_000,
+    "millions": 1_000_000,
+    "b": 1_000_000_000,
+    "bn": 1_000_000_000,
+    "bln": 1_000_000_000,
+    "bil": 1_000_000_000,
+    "billion": 1_000_000_000,
+    "billions": 1_000_000_000,
+    "t": 1_000_000_000_000,
+    "tn": 1_000_000_000_000,
+    "trn": 1_000_000_000_000,
+    "tril": 1_000_000_000_000,
+    "trillion": 1_000_000_000_000,
+    "trillions": 1_000_000_000_000,
+}
+MAGNITUDE_PATTERN = (
+    r"thousands?|millions?|billions?|trillions?|"
+    r"thou|tril|bln|mln|trn|ths|bil|mil|bn|mn|mm|tn|th|k|m|b|t"
+)
 
 _DATE_PATTERNS = (
     (re.compile(rf"\b(?P<month>{MONTH_PATTERN})\.?\s+(?P<day>\d{{1,2}})(?:st|nd|rd|th)?\s*,?\s+(?P<year>(?:19|20)\d{{2}})\b", re.I), "mdy"),
@@ -50,10 +83,13 @@ _NUMBER_RE = re.compile(
     r"(?P<sign>[+-])?\s*"
     r"(?P<number>(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?|\.\d+)"
     r"\s*(?P<percent>%|percent\b)?\s*"
+    rf"(?P<magnitude>{MAGNITUDE_PATTERN})?\s*"
     r"(?P<close>\))?"
     r"(?![\w\d])",
     re.I,
 )
+
+_MAGNITUDE_PREFIX_RE = re.compile(rf"^\s*(?P<magnitude>{MAGNITUDE_PATTERN})\b", re.I)
 
 
 def _month_number(value: str) -> int:
@@ -128,6 +164,22 @@ def _canonical_decimal(text: str, negative: bool) -> str:
     return rendered or "0"
 
 
+def _scaled_decimal(text: str, negative: bool, magnitude: int) -> str:
+    canonical = _canonical_decimal(text, negative)
+    if not canonical or not magnitude:
+        return canonical
+    return _canonical_decimal(str(Decimal(canonical) * magnitude), negative=False)
+
+
+def recognize_magnitude_prefix(text: str) -> tuple[int, str, int] | None:
+    """Return the first magnitude token when it begins the supplied line."""
+    match = _MAGNITUDE_PREFIX_RE.match(text)
+    if match is None:
+        return None
+    modifier = match.group("magnitude")
+    return match.end(), modifier, MAGNITUDES[modifier.lower()]
+
+
 def recognize_spans(text: str) -> list[RecognizedSpan]:
     """Return non-overlapping date/percent/number spans in source order."""
     results: list[RecognizedSpan] = []
@@ -154,16 +206,23 @@ def recognize_spans(text: str) -> list[RecognizedSpan]:
                 end = match.end("number")
         number_text = match.group("number")
         negative = match.group("sign") == "-" or bool(open_paren and close_paren)
-        normalized = _canonical_decimal(number_text, negative)
+        magnitude_text = match.group("magnitude") or ""
+        magnitude = MAGNITUDES.get(magnitude_text.lower(), 0)
+        normalized = _scaled_decimal(number_text, negative, magnitude)
         if not normalized:
             continue
         code = (match.group("code") or "").upper()
         currency = CURRENCY_CODES.get(code, "") or CURRENCY_SYMBOLS.get(match.group("symbol") or "", "")
         percent = bool(match.group("percent"))
+        if percent and magnitude:
+            # A magnitude following "percent" belongs to surrounding prose, not the percentage.
+            magnitude = 0
+            normalized = _canonical_decimal(number_text, negative)
+            end = match.end("percent")
         confidence = 0.99 if percent or currency else 0.94 if "," in number_text else 0.82 if "." in number_text else 0.62
         results.append(RecognizedSpan(
             start, end, "percent" if percent else "number", text[start:end].strip(), confidence,
-            normalized, currency=currency,
+            normalized, magnitude=magnitude, currency=currency,
         ))
         occupied.append((start, end))
 

@@ -70,3 +70,39 @@ test("incremental search returns later exact matches before earlier partial matc
   assert.deepEqual(partialBatch.matches.map((match) => match.contextText), ["111"]);
   assert.equal(partialBatch.matches[0]?.exactMatch, false);
 });
+
+test("magnitude aliases match both calculated and displayed values", () => {
+  const entries = entriesFromText("$1");
+  const cache = {
+    has: () => true,
+    getPageIndices: () => [0],
+    get: () => entries,
+    getSearchIndex: () => buildSearchPageIndexFromEntries(entries),
+  };
+  const fsValues = {
+    logicalValuesOnPage: () => [{
+        id: "wrapped",
+        kind: "number",
+        text: "$1 million",
+        normalizedValue: "1000000",
+        magnitude: 1000000,
+        bounds: { x: 0, y: 0, width: 1, height: 0.05 },
+        confidence: 0.9,
+    }],
+  };
+  const searcher = new PdfTextSearcher(cache as never, fsValues as never);
+  const pdf = { id: "pdf-1", name: "Statement", folderId: null } as never;
+
+  assert.equal(searcher.searchPage("1000000", pdf, 0)[0]?.contextText, "$1 million");
+  assert.equal(searcher.searchPage("1 million", pdf, 0)[0]?.contextText, "$1 million");
+
+  const sameLineEntries = entriesFromText("$1 million");
+  const sameLineCache = {
+    ...cache,
+    get: () => sameLineEntries,
+    getSearchIndex: () => buildSearchPageIndexFromEntries(sameLineEntries),
+  };
+  const literalMatches = new PdfTextSearcher(sameLineCache as never, fsValues as never)
+    .searchPage("1 million", pdf, 0);
+  assert.equal(literalMatches.length, 1, "the semantic alias must not duplicate the literal hit");
+});

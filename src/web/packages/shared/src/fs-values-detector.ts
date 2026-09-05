@@ -11,10 +11,32 @@ const DATE_PATTERNS = [
   /\b(?:Q[1-4]\s*(?:FY\s*)?(?:19|20)\d{2}|(?:FY\s*)?(?:19|20)\d{2}\s*Q[1-4])\b/gi,
   /\b(?:FY\s*)?(?:19|20)\d{2}\b/gi,
 ];
-const NUMBER = /(?<![\w\d])(?:\(\s*)?(?:(?:USD|EUR|GBP|JPY|CAD|AUD|CHF|CNY|INR|KRW|[$€£¥₹₩])\s*)?[+-]?\s*(?:(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?|\.\d+)\s*(?:%|percent\b)?\s*\)?(?![\w\d])/gi;
+const MAGNITUDE_PATTERN = "thousands?|millions?|billions?|trillions?|thou|tril|bln|mln|trn|ths|bil|mil|bn|mn|mm|tn|th|k|m|b|t";
+const MAGNITUDES: Readonly<Record<string, FinancialValue["magnitude"]>> = {
+  k: 1000, th: 1000, ths: 1000, thou: 1000, thousand: 1000, thousands: 1000,
+  m: 1000000, mm: 1000000, mn: 1000000, mil: 1000000, mln: 1000000, million: 1000000, millions: 1000000,
+  b: 1000000000, bn: 1000000000, bln: 1000000000, bil: 1000000000, billion: 1000000000, billions: 1000000000,
+  t: 1000000000000, tn: 1000000000000, trn: 1000000000000, tril: 1000000000000, trillion: 1000000000000, trillions: 1000000000000,
+};
+const NUMBER = new RegExp(
+  `(?<![\\w\\d])(?:\\(\\s*)?(?:(?:USD|EUR|GBP|JPY|CAD|AUD|CHF|CNY|INR|KRW|[$€£¥₹₩])\\s*)?[+-]?\\s*`+
+  `(?:(?:\\d{1,3}(?:,\\d{3})+|\\d+)(?:\\.\\d+)?|\\.\\d+)\\s*(?:%|percent\\b)?\\s*`+
+  `(?:${MAGNITUDE_PATTERN})?\\s*\\)?(?![\\w\\d])`,
+  "gi",
+);
+const MAGNITUDE_AT_END = new RegExp(`\\b(${MAGNITUDE_PATTERN})\\s*\\)?\\s*$`, "i");
+const MAGNITUDE_AT_START = new RegExp(`^\\s*(${MAGNITUDE_PATTERN})\\b`, "i");
+const BASE_NUMBER = /(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?|\.\d+/;
 
 interface LineText { text: string; source: Array<CharacterEntry | null> }
-interface Span { start: number; end: number; kind: FinancialValue["kind"]; text: string }
+interface Span {
+  start: number;
+  end: number;
+  kind: FinancialValue["kind"];
+  text: string;
+  normalizedValue?: string;
+  magnitude?: FinancialValue["magnitude"];
+}
 
 function buildLine(entries: CharacterEntry[]): LineText {
   const ordered = [...entries].sort((a, b) => a.normLeft - b.normLeft || a.itemIndex - b.itemIndex);
@@ -48,11 +70,21 @@ function recognize(text: string): Span[] {
   for (const match of text.matchAll(NUMBER)) {
     const start = match.index;
     if (start === undefined || overlaps(start, start + match[0].length)) continue;
+    const matchedText = match[0].trim();
+    const isPercent = /%|percent\b/i.test(matchedText);
+    const magnitudeToken = isPercent ? undefined : MAGNITUDE_AT_END.exec(matchedText)?.[1]?.toLowerCase();
+    const magnitude = magnitudeToken ? MAGNITUDES[magnitudeToken] : undefined;
+    const base = BASE_NUMBER.exec(matchedText)?.[0];
+    const negative = /-\s*(?:\d|\.)/.test(matchedText) || /^\s*\(/.test(matchedText);
+    const numeric = base === undefined ? Number.NaN : Number(base.replaceAll(",", ""));
+    const scaled = numeric * (magnitude ?? 1) * (negative ? -1 : 1);
     spans.push({
       start,
       end: start + match[0].length,
-      kind: /(?:%|percent)\s*\)?\s*$/i.test(match[0]) ? "percent" : "number",
-      text: match[0].trim(),
+      kind: isPercent ? "percent" : "number",
+      text: matchedText,
+      ...(Number.isFinite(scaled) ? { normalizedValue: String(scaled) } : {}),
+      ...(magnitude ? { magnitude } : {}),
     });
   }
   return spans.sort((a, b) => a.start - b.start);
@@ -71,6 +103,8 @@ function financialValue(span: Span, source: Array<CharacterEntry | null>, pageIn
     text: span.text,
     bounds: { x: left, y: top, width: right - left, height: bottom - top },
     confidence: 0.7,
+    ...(span.normalizedValue ? { normalizedValue: span.normalizedValue } : {}),
+    ...(span.magnitude ? { magnitude: span.magnitude } : {}),
   };
 }
 
@@ -82,11 +116,32 @@ export function detectFsValuesFromEntries(pageIndex: number, entries: CharacterE
     if (line) line.push(entry); else byLine.set(entry.lineIndex, [entry]);
   }
   const values: FinancialValue[] = [];
-  for (const lineEntries of [...byLine.entries()].sort((a, b) => a[0] - b[0]).map((entry) => entry[1])) {
-    const line = buildLine(lineEntries);
+  const lines = [...byLine.entries()].sort((a, b) => a[0] - b[0]).map((entry) => buildLine(entry[1]));
+  for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
+    const line = lines[lineIndex]!;
     for (const span of recognize(line.text)) {
       const value = financialValue(span, line.source, pageIndex, values.length);
-      if (value) values.push(value);
+      if (!value) continue;
+      const nextLine = lines[lineIndex + 1];
+      if (span.kind === "number" && !span.magnitude && !line.text.slice(span.end).trim() && nextLine) {
+        const modifier = MAGNITUDE_AT_START.exec(nextLine.text);
+        const token = modifier?.[1];
+        const magnitude = token ? MAGNITUDES[token.toLowerCase()] : undefined;
+        if (modifier && token && magnitude && value.normalizedValue) {
+          const modifierSpan: Span = { start: modifier.index, end: modifier.index + modifier[0].length, kind: "number", text: token };
+          const modifierValue = financialValue(modifierSpan, nextLine.source, pageIndex, values.length);
+          if (modifierValue) {
+            value.text = `${span.text} ${token}`;
+            value.normalizedValue = String(Number(value.normalizedValue) * magnitude);
+            value.magnitude = magnitude;
+            value.segments = [
+              { pageIndex, text: span.text, bounds: value.bounds },
+              { pageIndex, text: token, bounds: modifierValue.bounds },
+            ];
+          }
+        }
+      }
+      values.push(value);
     }
   }
   return { pageIndex, context: {}, values };

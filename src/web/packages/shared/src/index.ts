@@ -15,6 +15,7 @@ export type {
 export { decodeTableStructure, parseTableStructure } from "./table-structure-decoder.js";
 export type {
   FinancialValue,
+  FsValueSegment,
   FsValueBounds,
   FsValueContext,
   FsValueKind,

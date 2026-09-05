@@ -23,6 +23,8 @@ class SpanOracleTests(unittest.TestCase):
                         item["normalizedValue"] = span.normalized_value
                     if span.currency:
                         item["currency"] = span.currency
+                    if span.magnitude:
+                        item["magnitude"] = span.magnitude
                     if span.date_precision:
                         item["datePrecision"] = span.date_precision
                     if span.date_order == "ambiguous":
@@ -48,6 +50,27 @@ class DetectorTests(unittest.TestCase):
         self.assertEqual([value["kind"] for value in model["pages"][0]["values"]], ["date", "number"])
         self.assertEqual(model["pages"][0]["values"][1]["normalizedValue"], "1200")
         self.assertGreater(model["pages"][0]["values"][1]["bounds"]["width"], 0)
+
+    def test_attaches_a_wrapped_modifier_across_pages(self) -> None:
+        def characters(text: str, line_index: int = 0) -> list[dict]:
+            return [
+                {"char": char, "x": 0.02 + index * 0.01, "y": 0.10, "width": 0.01, "height": 0.02, "lineIndex": line_index}
+                for index, char in enumerate(text)
+            ]
+
+        model = detect_fs_values({
+            "version": 1,
+            "coordinateSpace": "normalized",
+            "pages": [
+                {"pageIndex": 0, "characters": characters("$1.0")},
+                {"pageIndex": 1, "characters": characters("million in revenue")},
+            ],
+        })
+        value = model["pages"][0]["values"][0]
+        self.assertEqual(value["text"], "$1.0 million")
+        self.assertEqual(value["normalizedValue"], "1000000")
+        self.assertEqual(value["magnitude"], 1_000_000)
+        self.assertEqual([segment["pageIndex"] for segment in value["segments"]], [0, 1])
 
 
 if __name__ == "__main__":

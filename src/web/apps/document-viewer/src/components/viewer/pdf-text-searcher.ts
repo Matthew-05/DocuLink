@@ -1,5 +1,6 @@
 import { normalizeSearchQuery, searchPageWithIndex } from "@doculink/shared";
 import type { TextContentCache } from "../../services/text-content-cache.js";
+import type { FsValuesCache } from "../../services/fs-values-cache.js";
 import type { PdfEntry, SearchMatch } from "../../types/index.js";
 
 export { normalizeSearchQuery } from "@doculink/shared";
@@ -17,9 +18,14 @@ export interface SearchBatch {
 
 export class PdfTextSearcher {
   private readonly _cache: TextContentCache;
+  private readonly _fsValues: FsValuesCache | undefined;
 
-  constructor(cache: TextContentCache) {
+  constructor(
+    cache: TextContentCache,
+    fsValues?: FsValuesCache,
+  ) {
     this._cache = cache;
+    this._fsValues = fsValues;
   }
 
   search(rawQuery: string, pdfEntries: PdfEntry[]): SearchMatch[] {
@@ -36,7 +42,9 @@ export class PdfTextSearcher {
         const searchIndex = this._cache.getSearchIndex(entry.id, pageIndex);
         if (!entries || entries.length === 0 || !searchIndex) continue;
 
-        results.push(...searchPageWithIndex(entry.id, entry.name, pageIndex, entries, searchIndex, normalizedQuery));
+        results.push(...searchPageIncludingMagnitudeAliases(
+          this._cache, this._fsValues, entry, pageIndex, normalizedQuery,
+        ));
       }
     }
 
@@ -44,7 +52,7 @@ export class PdfTextSearcher {
   }
 
   createSession(rawQuery: string, pdfEntries: PdfEntry[]): PdfTextSearchSession {
-    return new PdfTextSearchSession(this._cache, normalizeSearchQuery(rawQuery), pdfEntries);
+    return new PdfTextSearchSession(this._cache, this._fsValues, normalizeSearchQuery(rawQuery), pdfEntries);
   }
 
   searchPage(rawQuery: string, entry: PdfEntry, pageIndex: number): SearchMatch[] {
@@ -55,7 +63,7 @@ export class PdfTextSearcher {
     const searchIndex = this._cache.getSearchIndex(entry.id, pageIndex);
     if (!entries || entries.length === 0 || !searchIndex) return [];
 
-    return searchPageWithIndex(entry.id, entry.name, pageIndex, entries, searchIndex, normalizedQuery);
+    return searchPageIncludingMagnitudeAliases(this._cache, this._fsValues, entry, pageIndex, normalizedQuery);
   }
 }
 
@@ -70,10 +78,12 @@ export class PdfTextSearchSession {
 
   constructor(
     cache: TextContentCache,
+    fsValues: FsValuesCache | undefined,
     normalizedQuery: string,
     pdfEntries: PdfEntry[],
   ) {
     this._cache = cache;
+    this._fsValues = fsValues;
     this._normalizedQuery = normalizedQuery;
     this._pages = [];
 
@@ -90,6 +100,8 @@ export class PdfTextSearchSession {
       }
     }
   }
+
+  private readonly _fsValues: FsValuesCache | undefined;
 
   nextBatch(limit: number, pageBudget = 12): SearchBatch {
     if (this._complete || limit <= 0) {
@@ -123,12 +135,11 @@ export class PdfTextSearchSession {
         continue;
       }
 
-      const pageMatches = searchPageWithIndex(
-        page.entry.id,
-        page.entry.name,
+      const pageMatches = searchPageIncludingMagnitudeAliases(
+        this._cache,
+        this._fsValues,
+        page.entry,
         page.pageIndex,
-        entries,
-        searchIndex,
         this._normalizedQuery,
       ).filter((match) => match.exactMatch === (this._priority === "exact"));
 
@@ -150,4 +161,57 @@ export class PdfTextSearchSession {
 
     return { matches, complete: this._complete, hasMore: !this._complete };
   }
+}
+
+function searchPageIncludingMagnitudeAliases(
+  cache: TextContentCache,
+  fsValues: FsValuesCache | undefined,
+  entry: PdfEntry,
+  pageIndex: number,
+  normalizedQuery: string,
+): SearchMatch[] {
+  const entries = cache.get(entry.id, pageIndex);
+  const searchIndex = cache.getSearchIndex(entry.id, pageIndex);
+  if (!entries || entries.length === 0 || !searchIndex) return [];
+
+  const textMatches = searchPageWithIndex(
+    entry.id, entry.name, pageIndex, entries, searchIndex, normalizedQuery,
+  );
+  if (!fsValues) return textMatches;
+
+  const aliases: SearchMatch[] = [];
+  for (const value of fsValues.logicalValuesOnPage(entry.id, pageIndex)) {
+    if (!value.magnitude || !value.normalizedValue) continue;
+
+    const displayForms = [value.text, value.text.replace(
+      /^\s*(?:USD|EUR|GBP|JPY|CAD|AUD|CHF|CNY|INR|KRW|[$€£¥₹₩])\s*/i,
+      "",
+    )].map(normalizeSearchQuery);
+    const matchesDisplayText = displayForms.includes(normalizedQuery);
+    if (normalizedQuery !== value.normalizedValue && !matchesDisplayText) continue;
+
+    if (matchesDisplayText && textMatches.some(
+      (match) => displayForms.includes(normalizeSearchQuery(match.contextText)),
+    )) continue;
+
+    const duplicate = textMatches.some((match) => (
+      Math.abs(match.highlightRect.x - value.bounds.x) < 0.000001
+      && Math.abs(match.highlightRect.y - value.bounds.y) < 0.000001
+      && Math.abs(match.highlightRect.width - value.bounds.width) < 0.000001
+      && Math.abs(match.highlightRect.height - value.bounds.height) < 0.000001
+    ));
+    if (duplicate) continue;
+
+    aliases.push({
+      id: `${entry.id}:${pageIndex}:magnitude:${value.id}`,
+      pdfId: entry.id,
+      pdfName: entry.name,
+      pageIndex,
+      exactMatch: true,
+      contextText: value.text,
+      matchInContext: { start: 0, end: value.text.length },
+      highlightRect: value.bounds,
+    });
+  }
+  return aliases.concat(textMatches);
 }

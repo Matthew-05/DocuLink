@@ -7,6 +7,12 @@ export interface FsValueBounds {
   height: number;
 }
 
+export interface FsValueSegment {
+  pageIndex: number;
+  text: string;
+  bounds: FsValueBounds;
+}
+
 export interface FinancialValue {
   id: string;
   kind: FsValueKind;
@@ -14,6 +20,8 @@ export interface FinancialValue {
   bounds: FsValueBounds;
   confidence: number;
   normalizedValue?: string;
+  magnitude?: 1000 | 1000000 | 1000000000 | 1000000000000;
+  segments?: FsValueSegment[];
   currency?: string;
   datePrecision?: "day" | "month" | "quarter" | "year";
   dateOrder?: "mdy" | "dmy" | "ymd" | "ambiguous";
@@ -42,6 +50,7 @@ const CURRENCIES = new Set(["USD", "EUR", "GBP", "JPY", "CAD", "AUD", "CHF", "CN
 const PRECISIONS = new Set(["day", "month", "quarter", "year"]);
 const DATE_ORDERS = new Set(["mdy", "dmy", "ymd", "ambiguous"]);
 const SCALES = new Set([1, 1000, 1000000, 1000000000]);
+const MAGNITUDES = new Set([1000, 1000000, 1000000000, 1000000000000]);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -61,24 +70,44 @@ function parseContext(value: unknown): FsValueContext {
   return result;
 }
 
+function parseBounds(value: unknown): FsValueBounds | null {
+  if (!isRecord(value)) return null;
+  const { x, y, width, height } = value;
+  if (!unit(x) || !unit(y) || !unit(width) || !unit(height) || width <= 0 || height <= 0) return null;
+  if (x + width > 1.005 || y + height > 1.005) return null;
+  return { x, y, width, height };
+}
+
+function parseSegment(value: unknown): FsValueSegment | null {
+  if (!isRecord(value) || !Number.isInteger(value.pageIndex) || (value.pageIndex as number) < 0) return null;
+  if (typeof value.text !== "string" || value.text.length === 0) return null;
+  const bounds = parseBounds(value.bounds);
+  return bounds ? { pageIndex: value.pageIndex as number, text: value.text, bounds } : null;
+}
+
 function parseValue(value: unknown): FinancialValue | null {
   if (!isRecord(value)) return null;
   if (typeof value.id !== "string" || value.id.length === 0) return null;
   if (value.kind !== "number" && value.kind !== "percent" && value.kind !== "date") return null;
   if (typeof value.text !== "string" || value.text.length === 0) return null;
   if (typeof value.confidence !== "number" || !unit(value.confidence)) return null;
-  if (!isRecord(value.bounds)) return null;
-  const { x, y, width, height } = value.bounds;
-  if (!unit(x) || !unit(y) || !unit(width) || !unit(height) || width <= 0 || height <= 0) return null;
-  if (x + width > 1.005 || y + height > 1.005) return null;
+  const bounds = parseBounds(value.bounds);
+  if (!bounds) return null;
   const parsed: FinancialValue = {
     id: value.id,
     kind: value.kind,
     text: value.text,
-    bounds: { x, y, width, height },
+    bounds,
     confidence: value.confidence,
   };
   if (typeof value.normalizedValue === "string") parsed.normalizedValue = value.normalizedValue;
+  if (typeof value.magnitude === "number" && MAGNITUDES.has(value.magnitude)) {
+    parsed.magnitude = value.magnitude as NonNullable<FinancialValue["magnitude"]>;
+  }
+  if (Array.isArray(value.segments)) {
+    const segments = value.segments.map(parseSegment).filter((entry): entry is FsValueSegment => entry !== null);
+    if (segments.length >= 2) parsed.segments = segments;
+  }
   if (typeof value.currency === "string" && CURRENCIES.has(value.currency)) parsed.currency = value.currency;
   if (typeof value.datePrecision === "string" && PRECISIONS.has(value.datePrecision)) {
     parsed.datePrecision = value.datePrecision as "day" | "month" | "quarter" | "year";

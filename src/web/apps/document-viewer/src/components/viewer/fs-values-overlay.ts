@@ -65,6 +65,17 @@ export class FsValuesOverlay {
       event.preventDefault();
       event.stopPropagation();
     });
+    const setRelatedHover = (active: boolean): void => {
+      for (const related of Array.from(
+        this._viewer.element.querySelectorAll<HTMLElement>(".fs-values__value"),
+      ).filter((candidate) => candidate.dataset["fsValueId"] === value.id)) {
+        related.classList.toggle("fs-values__value--related-hover", active);
+      }
+    };
+    button.addEventListener("pointerenter", () => setRelatedHover(true));
+    button.addEventListener("pointerleave", () => setRelatedHover(false));
+    button.addEventListener("focus", () => setRelatedHover(true));
+    button.addEventListener("blur", () => setRelatedHover(false));
     button.addEventListener("click", (event) => {
       event.preventDefault(); event.stopPropagation();
       if (button.disabled) return;

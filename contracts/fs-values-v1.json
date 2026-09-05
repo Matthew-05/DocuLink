@@ -44,9 +44,26 @@
         "bounds": { "$ref": "#/definitions/Bounds" },
         "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
         "normalizedValue": { "type": "string", "description": "Exact canonical decimal for numbers/percentages, or ISO-like value for unambiguous dates. Never a binary float." },
+        "magnitude": { "type": "integer", "enum": [1000, 1000000, 1000000000, 1000000000000], "description": "Multiplier expressed by a modifier attached directly to this number. normalizedValue already includes this multiplier." },
+        "segments": {
+          "type": "array",
+          "minItems": 2,
+          "description": "Physical click regions when a logical value wraps across lines or pages. bounds remains the first segment; each segment creates the full logical value while drawing only its own rectangle.",
+          "items": { "$ref": "#/definitions/ValueSegment" }
+        },
         "currency": { "type": "string", "enum": ["USD", "EUR", "GBP", "JPY", "CAD", "AUD", "CHF", "CNY", "INR", "KRW"] },
         "datePrecision": { "type": "string", "enum": ["day", "month", "quarter", "year"] },
         "dateOrder": { "type": "string", "enum": ["mdy", "dmy", "ymd", "ambiguous"] }
+      }
+    },
+    "ValueSegment": {
+      "type": "object",
+      "required": ["pageIndex", "text", "bounds"],
+      "additionalProperties": false,
+      "properties": {
+        "pageIndex": { "type": "integer", "minimum": 0 },
+        "text": { "type": "string", "minLength": 1 },
+        "bounds": { "$ref": "#/definitions/Bounds" }
       }
     },
     "PageValues": {
