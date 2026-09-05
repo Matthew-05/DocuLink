@@ -96,6 +96,10 @@ _NUMBER_RE = re.compile(
     r"(?:(?P<code>USD|EUR|GBP|JPY|CAD|AUD|CHF|CNY|INR|KRW)\s*|(?P<symbol>[$€£¥₹₩])\s*)?"
     r"(?P<sign>[+-])?\s*"
     r"(?P<number>(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?|\.\d+)"
+    # A bracketed negative percentage closes before its sign: "(4)%". The
+    # lookahead keeps this alternative from claiming the ordinary "(1,234)"
+    # closer, which the group at the end of the pattern still owns.
+    r"\s*(?P<close_percent>\)(?=\s*(?:%|percent\b)))?"
     r"\s*(?P<percent>%|percent\b)?\s*"
     rf"(?P<magnitude>{MAGNITUDE_PATTERN})?\s*"
     r"(?P<close>\))?"
@@ -104,6 +108,33 @@ _NUMBER_RE = re.compile(
 )
 
 _MAGNITUDE_PREFIX_RE = re.compile(rf"^\s*(?P<magnitude>{MAGNITUDE_PATTERN})\b", re.I)
+
+# A hyphen, slash or colon binding two alphanumeric runs together makes an
+# identifier, not an arithmetic expression: "10-K", "001-36743", "3:13 PM",
+# "ASU 2024-03". The number pattern's own boundaries do not see these because
+# none of the three is a word character.
+_JOIN_CHARACTERS = "-/:"
+
+
+def is_joined_fragment(text: str, start: int, end: int) -> bool:
+    """Whether `text[start:end]` is one piece of a larger joined-up token.
+
+    The join has to be immediately adjacent on both sides of the punctuation:
+    "par value: 50,400,000" keeps its number because of the space after the colon.
+    A matched span can open or close on whitespace, so adjacency is measured from
+    the span's first and last printing characters rather than from its offsets.
+    """
+    while start < end and text[start].isspace():
+        start += 1
+    while end > start and text[end - 1].isspace():
+        end -= 1
+    if start >= end:
+        return False
+    if start >= 2 and text[start - 1] in _JOIN_CHARACTERS and text[start - 2].isalnum():
+        return True
+    if end + 1 < len(text) and text[end] in _JOIN_CHARACTERS and text[end + 1].isalnum():
+        return True
+    return False
 
 
 def _month_number(value: str) -> int:
@@ -233,13 +264,15 @@ def recognize_spans(text: str) -> list[RecognizedSpan]:
         start, end = match.span()
         if _overlaps(start, end, occupied):
             continue
-        open_paren, close_paren = match.group("open"), match.group("close")
+        open_paren = match.group("open")
+        close_paren = match.group("close") or match.group("close_percent")
         if bool(open_paren) != bool(close_paren):
             # Trim unmatched optional punctuation rather than claiming prose parens.
             if open_paren:
                 start = match.start("number")
-            if close_paren:
-                end = match.end("number")
+            else:
+                # A closer with no opener still leaves the percentage behind it.
+                end = match.end("percent") if match.group("percent") else match.end("number")
         number_text = match.group("number")
         negative = match.group("sign") == "-" or bool(open_paren and close_paren)
         magnitude_text = match.group("magnitude") or ""

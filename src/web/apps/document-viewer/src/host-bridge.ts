@@ -27,6 +27,7 @@ export interface HostMessageHandlers {
   onSetSearchQuery?: (query: string) => void;
   onSetCharBboxesVisible?: (visible: boolean) => void;
   onSetFsValuesVisible?: (visible: boolean) => void;
+  onSetFsValueNoiseVisible?: (visible: boolean) => void;
   onPdfUpdated?: (entry: PdfEntry) => void;
   onLinkRectanglesRemoved?: (ids: string[]) => void;
   onPdfNameUpdated?: (id: string, name: string) => void;
@@ -226,6 +227,11 @@ interface SetFsValuesVisibleMessage {
   visible: boolean;
 }
 
+interface SetFsValueNoiseVisibleMessage {
+  type: "set-fs-value-noise-visible";
+  visible: boolean;
+}
+
 function toLinkedRectEntry(rect: LinkedRectPayload): LinkedRectEntry {
   return {
     id: rect.id,
@@ -250,6 +256,7 @@ function handleMessage(raw: unknown, handlers: HostMessageHandlers): void {
     onSetSearchQuery,
     onSetCharBboxesVisible,
     onSetFsValuesVisible,
+    onSetFsValueNoiseVisible,
     onPdfUpdated,
     onLinkRectanglesRemoved,
     onPdfNameUpdated,
@@ -362,6 +369,13 @@ function handleMessage(raw: unknown, handlers: HostMessageHandlers): void {
       if (!onSetFsValuesVisible) return;
       const msg = parsed as SetFsValuesVisibleMessage;
       onSetFsValuesVisible(msg.visible === true);
+      return;
+    }
+
+    if (type === "set-fs-value-noise-visible") {
+      if (!onSetFsValueNoiseVisible) return;
+      const msg = parsed as SetFsValueNoiseVisibleMessage;
+      onSetFsValueNoiseVisible(msg.visible === true);
       return;
     }
 

@@ -39,3 +39,28 @@ test("indexes every segment of one wrapped logical value", async () => {
   assert.equal(cache.valuesOnPage("pdf", 1)[0]?.text, "$1 million");
   assert.equal(cache.valueCount("pdf"), 1);
 });
+
+test("keeps refused spans separate from the values they were kept from", async () => {
+  const model = {
+    version: 1, coordinateSpace: "normalized", detectorVersion: "test", documentContext: {},
+    pages: [{
+      pageIndex: 0,
+      context: {},
+      values: [{ id: "v", kind: "number", text: "1,234", bounds: { x: 0.1, y: 0.1, width: 0.1, height: 0.02 }, confidence: 0.94 }],
+      noise: [{ id: "n", kind: "number", text: "10", bounds: { x: 0.5, y: 0.1, width: 0.02, height: 0.02 }, reason: "joined-token" }],
+    }],
+  };
+  const cache = new FsValuesCache(async () => model as never);
+  await cache.build("pdf", "encoded");
+  assert.deepEqual(cache.valuesOnPage("pdf", 0).map((value) => value.text), ["1,234"]);
+  assert.deepEqual(cache.noiseOnPage("pdf", 0).map((entry) => entry.text), ["10"]);
+  assert.equal(cache.valueCount("pdf"), 1);
+  assert.equal(cache.noiseCount("pdf"), 1);
+});
+
+test("reports no noise for a document with no analyzed artifact", async () => {
+  const cache = new FsValuesCache();
+  await cache.build("native-pdf", undefined);
+  assert.equal(cache.noiseCount("native-pdf"), 0);
+  assert.deepEqual(cache.noiseOnPage("native-pdf", 0), []);
+});

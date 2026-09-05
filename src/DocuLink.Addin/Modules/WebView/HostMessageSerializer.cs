@@ -276,6 +276,13 @@ namespace DocuLink.Addin.Modules.WebView
                 : "{\"type\":\"set-fs-values-visible\",\"visible\":false}";
         }
 
+        public static string BuildSetFsValueNoiseVisible(bool visible)
+        {
+            return visible
+                ? "{\"type\":\"set-fs-value-noise-visible\",\"visible\":true}"
+                : "{\"type\":\"set-fs-value-noise-visible\",\"visible\":false}";
+        }
+
         /// <summary>Returns the JSON payload for a <c>page-rotations-updated</c> message.</summary>
         public static string BuildPageRotationsUpdated(string pdfId, Dictionary<int, int> rotations)
         {

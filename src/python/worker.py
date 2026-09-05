@@ -459,7 +459,7 @@ def _handle_job(job: OcrJob) -> None:
         values_started = time.perf_counter()
         try:
             on_progress("Detecting financial values…")
-            fs_values = detect_fs_values(geometry)
+            fs_values = detect_fs_values(geometry, diagnostics=diagnostics)
             fs_values_base64 = fs_values_to_base64(fs_values)
             counts = {"number": 0, "percent": 0, "date": 0}
             for page in fs_values["pages"]:

@@ -32,10 +32,32 @@ export interface FsValueContext {
   scale?: 1 | 1000 | 1000000 | 1000000000;
 }
 
+export type FsNoiseReason =
+  | "joined-token"
+  | "page-furniture"
+  | "phone-context"
+  | "identifier-context"
+  | "superscript"
+  | "citation-year";
+
+/**
+ * A span the detector recognized and then refused, with the rule that refused
+ * it. Diagnostics only — noise is never a click target and must not be treated
+ * as a value.
+ */
+export interface FsNoiseValue {
+  id: string;
+  kind: FsValueKind;
+  text: string;
+  bounds: FsValueBounds;
+  reason: FsNoiseReason;
+}
+
 export interface PageFsValues {
   pageIndex: number;
   context: FsValueContext;
   values: FinancialValue[];
+  noise: FsNoiseValue[];
 }
 
 export interface FsValues {
@@ -46,6 +68,14 @@ export interface FsValues {
   pages: PageFsValues[];
 }
 
+const NOISE_REASONS = new Set<string>([
+  "joined-token",
+  "page-furniture",
+  "phone-context",
+  "identifier-context",
+  "superscript",
+  "citation-year",
+]);
 const CURRENCIES = new Set(["USD", "EUR", "GBP", "JPY", "CAD", "AUD", "CHF", "CNY", "INR", "KRW"]);
 const PRECISIONS = new Set(["day", "month", "quarter", "year"]);
 const DATE_ORDERS = new Set(["mdy", "dmy", "ymd", "ambiguous"]);
@@ -118,6 +148,23 @@ function parseValue(value: unknown): FinancialValue | null {
   return parsed;
 }
 
+function parseNoise(value: unknown): FsNoiseValue | null {
+  if (!isRecord(value)) return null;
+  if (typeof value.id !== "string" || value.id.length === 0) return null;
+  if (value.kind !== "number" && value.kind !== "percent" && value.kind !== "date") return null;
+  if (typeof value.text !== "string" || value.text.length === 0) return null;
+  if (typeof value.reason !== "string" || !NOISE_REASONS.has(value.reason)) return null;
+  const bounds = parseBounds(value.bounds);
+  if (!bounds) return null;
+  return {
+    id: value.id,
+    kind: value.kind,
+    text: value.text,
+    bounds,
+    reason: value.reason as FsNoiseReason,
+  };
+}
+
 export function parseFsValues(value: unknown): FsValues {
   if (!isRecord(value) || value.version !== 1 || value.coordinateSpace !== "normalized") {
     throw new Error("Unsupported fs-values payload");
@@ -132,6 +179,9 @@ export function parseFsValues(value: unknown): FsValues {
       pageIndex: page.pageIndex as number,
       context: parseContext(page.context),
       values: page.values.map(parseValue).filter((entry): entry is FinancialValue => entry !== null),
+      noise: Array.isArray(page.noise)
+        ? page.noise.map(parseNoise).filter((entry): entry is FsNoiseValue => entry !== null)
+        : [],
     });
   }
   return {

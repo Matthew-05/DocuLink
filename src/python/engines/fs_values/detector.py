@@ -4,10 +4,13 @@ from __future__ import annotations
 import base64
 import gzip
 import json
+from collections import defaultdict
 from decimal import Decimal
 from statistics import median
 
 from .context import context_for_text, document_context
+from .evidence import suppression_reason
+from .profile import build_document_profile
 from .spans import (
     RecognizedSpan,
     TextFragment,
@@ -19,7 +22,7 @@ from .spans import (
 )
 
 
-DETECTOR_VERSION = "fs-values-detector-3"
+DETECTOR_VERSION = "fs-values-detector-4"
 
 
 def _line_characters(page: dict) -> list[list[dict]]:
@@ -113,6 +116,35 @@ def _line_envelope(source: list[dict | None]) -> tuple[float, float, float] | No
     return top, bottom, median(heights) if heights else max(0.001, bottom - top)
 
 
+def _span_height(start: int, end: int, source: list[dict | None]) -> float:
+    """The typical glyph height across a span, for comparison with its page."""
+    heights = [
+        float(item.get("height", 0))
+        for item in source[start:end]
+        if item is not None and str(item.get("char", "")).strip() and float(item.get("height", 0)) > 0
+    ]
+    return median(heights) if heights else 0.0
+
+
+def _noise(span: RecognizedSpan, bounds: dict, identifier: str, reason: str) -> dict:
+    """A recognized span the detector refused, and the rule that refused it."""
+    return {
+        "id": identifier,
+        "kind": span.kind,
+        "text": span.text,
+        "bounds": bounds,
+        "reason": reason,
+    }
+
+
+def _count_rejection(diagnostics: dict | None, reason: str) -> None:
+    if diagnostics is None:
+        return
+    key = f"fs_value_rejected_{reason.replace('-', '_')}"
+    diagnostics[key] = diagnostics.get(key, 0) + 1
+    diagnostics["fs_values_rejected"] = diagnostics.get("fs_values_rejected", 0) + 1
+
+
 def _is_isolated_fragment(fragment: TextFragment, source: list[dict | None]) -> bool:
     """Whether a token sits in its own cell-sized island rather than in prose."""
     characters = [
@@ -144,17 +176,17 @@ def _is_isolated_fragment(fragment: TextFragment, source: list[dict | None]) -> 
 
 
 def _wrapped_dates(
-    flat_lines: list[tuple[int, str, list[dict | None], dict]],
+    flat_lines: list[tuple[int, str, list[dict | None], dict, float]],
 ) -> tuple[
-    dict[int, list[tuple[int, RecognizedSpan, dict, list[dict]]]],
+    dict[int, list[tuple[int, int, RecognizedSpan, dict, list[dict]]]],
     dict[int, list[tuple[int, int]]],
 ]:
     """Pair month/day heads with aligned years on the tightly wrapped line below."""
-    values: dict[int, list[tuple[int, RecognizedSpan, dict, list[dict]]]] = {}
+    values: dict[int, list[tuple[int, int, RecognizedSpan, dict, list[dict]]]] = {}
     occupied: dict[int, list[tuple[int, int]]] = {}
     for line_index in range(len(flat_lines) - 1):
-        page_index, text, source, _ = flat_lines[line_index]
-        next_page, next_text, next_source, _ = flat_lines[line_index + 1]
+        page_index, text, source, _, _top = flat_lines[line_index]
+        next_page, next_text, next_source, _, _next_top = flat_lines[line_index + 1]
         if page_index != next_page:
             continue
         heads = wrapped_date_heads(text)
@@ -206,7 +238,9 @@ def _wrapped_dates(
                 {"pageIndex": page_index, "text": head.text, "bounds": head_bounds},
                 {"pageIndex": page_index, "text": year.text, "bounds": year_bounds},
             ]
-            values.setdefault(line_index, []).append((head.start, span, head_bounds, segments))
+            values.setdefault(line_index, []).append(
+                (head.start, head.end, span, head_bounds, segments)
+            )
             occupied.setdefault(line_index, []).append((head.start, head.end))
             occupied.setdefault(line_index + 1, []).append((year.start, year.end))
     return values, occupied
@@ -241,54 +275,96 @@ def _attach_wrapped_magnitude(
     return True
 
 
-def detect_fs_values(geometry: dict) -> dict:
+def detect_fs_values(geometry: dict, *, diagnostics: dict | None = None) -> dict:
+    """Build the fs-values-v1 model from text geometry.
+
+    Each page carries the values it publishes and, separately, the `noise` it
+    refused -- recognized spans with the rule that ruled them out. Noise is a
+    diagnostic: it is never a click target, and no consumer may treat it as a
+    value. `diagnostics` receives a count per reason.
+    """
     pages: list[dict] = []
     page_contexts: list[dict] = []
     prepared: list[tuple[int, list[tuple[str, list[dict | None]]], str]] = []
+    glyph_heights: dict[int, list[float]] = defaultdict(list)
     for page in geometry.get("pages", []):
         lines = [_line_text(chars) for chars in _line_characters(page)]
         text = "\n".join(line for line, _ in lines)
         index = int(page.get("pageIndex", len(prepared)))
         prepared.append((index, lines, text))
         page_contexts.append(context_for_text(text))
+        glyph_heights[index].extend(
+            height
+            for height in (float(char.get("height", 0)) for char in page.get("characters", []))
+            if height > 0
+        )
     doc_context = document_context(page_contexts)
 
     values_by_page: dict[int, list[dict]] = {page_index: [] for page_index, _, _ in prepared}
-    flat_lines: list[tuple[int, str, list[dict | None], dict]] = []
+    noise_by_page: dict[int, list[dict]] = {page_index: [] for page_index, _, _ in prepared}
+    flat_lines: list[tuple[int, str, list[dict | None], dict, float]] = []
+    profile_lines: list[tuple[int, str, float]] = []
     for (page_index, lines, _), page_context in zip(prepared, page_contexts):
         for text, source in lines:
-            flat_lines.append((page_index, text, source, page_context))
+            envelope = _line_envelope(source)
+            top = envelope[0] if envelope is not None else 0.0
+            flat_lines.append((page_index, text, source, page_context, top))
+            profile_lines.append((page_index, text, top))
+    profile = build_document_profile(profile_lines, dict(glyph_heights))
 
     wrapped_dates, wrapped_occupied = _wrapped_dates(flat_lines)
 
-    for line_index, (page_index, text, source, page_context) in enumerate(flat_lines):
+    for line_index, (page_index, text, source, page_context, top) in enumerate(flat_lines):
         context = dict(page_context)
         inherited_currency = context.get("currency") or doc_context.get("currency", "")
-        candidates: list[tuple[int, RecognizedSpan, dict, list[dict] | None]] = [
-            (start, span, bounds, segments)
-            for start, span, bounds, segments in wrapped_dates.get(line_index, [])
-        ]
+        candidates: list[tuple[int, int, RecognizedSpan, dict, list[dict] | None]] = list(
+            wrapped_dates.get(line_index, [])
+        )
         for span in recognize_spans(text):
             if any(span.start < end and span.end > start for start, end in wrapped_occupied.get(line_index, [])):
                 continue
             bounds = _bounds(span, source)
             if bounds is None:
                 continue
-            candidates.append((span.start, span, bounds, None))
+            candidates.append((span.start, span.end, span, bounds, None))
 
-        for _start, span, bounds, segments in sorted(candidates, key=lambda item: item[0]):
+        for start, end, span, bounds, segments in sorted(candidates, key=lambda item: item[0]):
+            reason = suppression_reason(
+                span,
+                line=text,
+                start=start,
+                end=end,
+                page_index=page_index,
+                top=top,
+                glyph_height=_span_height(start, end, source),
+                profile=profile,
+            )
+            if reason:
+                page_noise = noise_by_page[page_index]
+                page_noise.append(
+                    _noise(span, bounds, f"fsn-p{page_index}-n{len(page_noise)}", reason)
+                )
+                _count_rejection(diagnostics, reason)
+                continue
             page_values = values_by_page[page_index]
             identifier = f"fsv-p{page_index}-v{len(page_values)}"
             value = _value(span, bounds, identifier, inherited_currency)
             if segments is not None:
                 value["segments"] = segments
             if line_index + 1 < len(flat_lines) and span.kind == "number" and not span.magnitude and _ends_line(span, text):
-                next_page, next_text, next_source, _ = flat_lines[line_index + 1]
+                next_page, next_text, next_source, _, _next_top = flat_lines[line_index + 1]
                 _attach_wrapped_magnitude(value, span, page_index, next_page, next_text, next_source)
             page_values.append(value)
 
     for (page_index, _, _), page_context in zip(prepared, page_contexts):
-        pages.append({"pageIndex": page_index, "context": dict(page_context), "values": values_by_page[page_index]})
+        page = {
+            "pageIndex": page_index,
+            "context": dict(page_context),
+            "values": values_by_page[page_index],
+        }
+        if noise_by_page[page_index]:
+            page["noise"] = noise_by_page[page_index]
+        pages.append(page)
     return {
         "version": 1,
         "coordinateSpace": "normalized",

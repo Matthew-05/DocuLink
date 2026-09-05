@@ -15,6 +15,8 @@ export type {
 export { decodeTableStructure, parseTableStructure } from "./table-structure-decoder.js";
 export type {
   FinancialValue,
+  FsNoiseReason,
+  FsNoiseValue,
   FsValueSegment,
   FsValueBounds,
   FsValueContext,
@@ -23,7 +25,6 @@ export type {
   PageFsValues,
 } from "./fs-values-decoder.js";
 export { decodeFsValues, parseFsValues } from "./fs-values-decoder.js";
-export { detectFsValuesFromEntries } from "./fs-values-detector.js";
 export type { CharacterEntry } from "./char-entries.js";
 export type { SearchPageIndex, SearchPageOptions } from "./text-searcher.js";
 export { buildCharEntriesFromGeometry } from "./char-entries.js";

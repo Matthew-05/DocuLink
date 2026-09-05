@@ -1,8 +1,9 @@
-import type { FinancialValue, FsValues } from "@doculink/shared";
+import type { FinancialValue, FsNoiseValue, FsValues } from "@doculink/shared";
 
 export class FsValuesCache {
   private readonly _cache = new Map<string, Map<number, FinancialValue[]>>();
   private readonly _logicalValues = new Map<string, Map<number, FinancialValue[]>>();
+  private readonly _noise = new Map<string, Map<number, FsNoiseValue[]>>();
   private readonly _decoder: ((base64: string) => Promise<FsValues>) | undefined;
 
   constructor(decoder?: (base64: string) => Promise<FsValues>) {
@@ -16,6 +17,7 @@ export class FsValuesCache {
       // detection is deliberately a separate follow-up feature.
       this._cache.set(pdfId, new Map());
       this._logicalValues.set(pdfId, new Map());
+      this._noise.set(pdfId, new Map());
       return;
     }
     try {
@@ -23,7 +25,12 @@ export class FsValuesCache {
       const model = await decode(fsValuesBase64);
       const byPage = new Map<number, FinancialValue[]>();
       const logicalValues = new Map<number, FinancialValue[]>();
+      const noise = new Map<number, FsNoiseValue[]>();
       for (const page of model.pages) {
+        // Tolerated rather than required: an artifact cached before the detector
+        // published noise has no such array, and a decoder seam may omit it.
+        const pageNoise = page.noise ?? [];
+        if (pageNoise.length > 0) noise.set(page.pageIndex, pageNoise);
         for (const value of page.values) {
           const pageLogicalValues = logicalValues.get(page.pageIndex) ?? [];
           pageLogicalValues.push(value);
@@ -38,10 +45,12 @@ export class FsValuesCache {
       }
       this._cache.set(pdfId, byPage);
       this._logicalValues.set(pdfId, logicalValues);
+      this._noise.set(pdfId, noise);
     } catch {
       // A malformed optional artifact must not prevent the PDF itself loading.
       this._cache.set(pdfId, new Map());
       this._logicalValues.set(pdfId, new Map());
+      this._noise.set(pdfId, new Map());
     }
   }
 
@@ -61,13 +70,26 @@ export class FsValuesCache {
     return this._logicalValues.get(pdfId)?.get(pageIndex) ?? [];
   }
 
+  /** Spans the detector refused on this page. Diagnostics — never click targets. */
+  noiseOnPage(pdfId: string, pageIndex: number): FsNoiseValue[] {
+    return this._noise.get(pdfId)?.get(pageIndex) ?? [];
+  }
+
+  noiseCount(pdfId: string): number {
+    let total = 0;
+    for (const entries of this._noise.get(pdfId)?.values() ?? []) total += entries.length;
+    return total;
+  }
+
   clearPdf(pdfId: string): void {
     this._cache.delete(pdfId);
     this._logicalValues.delete(pdfId);
+    this._noise.delete(pdfId);
   }
 
   clear(): void {
     this._cache.clear();
     this._logicalValues.clear();
+    this._noise.clear();
   }
 }

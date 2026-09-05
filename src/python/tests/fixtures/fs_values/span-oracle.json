@@ -13,5 +13,9 @@
   {"text":"2025", "spans":[{"kind":"date","text":"2025","normalizedValue":"2025","datePrecision":"year"}]},
   {"text":"$1.0 million", "spans":[{"kind":"number","text":"$1.0 million","normalizedValue":"1000000","currency":"USD","magnitude":1000000}]},
   {"text":"2.5MM", "spans":[{"kind":"number","text":"2.5MM","normalizedValue":"2500000","magnitude":1000000}]},
-  {"text":"(3 billion)", "spans":[{"kind":"number","text":"(3 billion)","normalizedValue":"-3000000000","magnitude":1000000000}]}
+  {"text":"(3 billion)", "spans":[{"kind":"number","text":"(3 billion)","normalizedValue":"-3000000000","magnitude":1000000000}]},
+  {"text":"(4)%", "spans":[{"kind":"percent","text":"(4)%","normalizedValue":"-4"}]},
+  {"text":"(4) %", "spans":[{"kind":"percent","text":"(4) %","normalizedValue":"-4"}]},
+  {"text":"(4)percent", "spans":[{"kind":"percent","text":"(4)percent","normalizedValue":"-4"}]},
+  {"text":"(12.5)% and 3%", "spans":[{"kind":"percent","text":"(12.5)%","normalizedValue":"-12.5"},{"kind":"percent","text":"3%","normalizedValue":"3"}]}
 ]

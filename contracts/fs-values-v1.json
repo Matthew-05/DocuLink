@@ -66,6 +66,30 @@
         "bounds": { "$ref": "#/definitions/Bounds" }
       }
     },
+    "NoiseValue": {
+      "type": "object",
+      "description": "A span that was recognized as a value and then ruled out. Never a click target: page numbers, phone digits, statute years and footnote markers all read as well-formed values, and this records the ones the detector refused along with the rule that refused them. Carried so the viewer's noise debug view can show what was discarded and why.",
+      "required": ["id", "kind", "text", "bounds", "reason"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "kind": { "type": "string", "enum": ["number", "percent", "date"] },
+        "text": { "type": "string", "minLength": 1 },
+        "bounds": { "$ref": "#/definitions/Bounds" },
+        "reason": {
+          "type": "string",
+          "description": "Which rule refused the span. A new suppressor is added here before it is implemented.",
+          "enum": [
+            "joined-token",
+            "page-furniture",
+            "phone-context",
+            "identifier-context",
+            "superscript",
+            "citation-year"
+          ]
+        }
+      }
+    },
     "PageValues": {
       "type": "object",
       "required": ["pageIndex", "context", "values"],
@@ -73,7 +97,12 @@
       "properties": {
         "pageIndex": { "type": "integer", "minimum": 0 },
         "context": { "$ref": "#/definitions/Context" },
-        "values": { "type": "array", "items": { "$ref": "#/definitions/FinancialValue" } }
+        "values": { "type": "array", "items": { "$ref": "#/definitions/FinancialValue" } },
+        "noise": {
+          "type": "array",
+          "description": "Recognized spans this page refused. Absent or empty when nothing was refused. These are diagnostics, not values — no consumer may treat them as linkable.",
+          "items": { "$ref": "#/definitions/NoiseValue" }
+        }
       }
     }
   }

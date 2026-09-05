@@ -1059,6 +1059,31 @@ namespace DocuLink.Addin
             }
         }
 
+        private void OnFsValueNoiseChanged(object sender, bool visible)
+        {
+            foreach (WorkbookPaneEntry entry in _workbookPanes.ToArray())
+            {
+                try { entry.Host?.SendFsValueNoiseVisible(visible); }
+                catch (Exception ex)
+                {
+                    Modules.DocuLinkLog.Trace($"OnFsValueNoiseChanged skipping pane: {ex.Message}");
+                }
+            }
+
+            foreach (WorkbookViewerEntry entry in _workbookViewers.ToArray())
+            {
+                try
+                {
+                    if (entry.Window != null && !entry.Window.IsDisposed)
+                        entry.Window.SendFsValueNoiseVisible(visible);
+                }
+                catch (Exception ex)
+                {
+                    Modules.DocuLinkLog.Trace($"OnFsValueNoiseChanged skipping viewer window: {ex.Message}");
+                }
+            }
+        }
+
         /// <summary>Finds the standalone viewer owned by a workbook using COM identity.</summary>
         private WorkbookViewerEntry FindViewerEntryFor(Excel.Workbook wb)
         {
@@ -1167,6 +1192,7 @@ namespace DocuLink.Addin
             Modules.Infrastructure.DevSettings.CharBoundingBoxesChanged +=
                 OnCharBoundingBoxesChanged;
             Modules.Infrastructure.DevSettings.FsValuesChanged += OnFsValuesChanged;
+            Modules.Infrastructure.DevSettings.FsValueNoiseChanged += OnFsValueNoiseChanged;
 
             _ = CheckForUpdateOnOpenAsync();
 
@@ -1189,6 +1215,7 @@ namespace DocuLink.Addin
             Modules.Infrastructure.DevSettings.CharBoundingBoxesChanged -=
                 OnCharBoundingBoxesChanged;
             Modules.Infrastructure.DevSettings.FsValuesChanged -= OnFsValuesChanged;
+            Modules.Infrastructure.DevSettings.FsValueNoiseChanged -= OnFsValueNoiseChanged;
 
             Application.SheetSelectionChange -= Application_SheetSelectionChange;
 

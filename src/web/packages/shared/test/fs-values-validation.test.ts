@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { detectFsValuesFromEntries } from "../src/fs-values-detector.ts";
 import { parseFsValues } from "../src/fs-values-decoder.ts";
 
 test("validates fs-values and drops malformed individual values", () => {
@@ -20,23 +19,6 @@ test("validates fs-values and drops malformed individual values", () => {
   });
   assert.equal(parsed.pages[0]?.values.length, 1);
   assert.equal(parsed.documentContext.currency, "USD");
-});
-
-test("fallback detects dates before their component numbers", () => {
-  const text = "December 31, 2025  $ 1,200  5%";
-  const entries = [...text].map((char, index) => ({
-    char,
-    normLeft: index * 0.01,
-    normTop: 0.1,
-    normRight: (index + 1) * 0.01,
-    normBottom: 0.12,
-    lineIndex: 0,
-    itemIndex: index,
-    spacesPrecomputed: true,
-  }));
-  const page = detectFsValuesFromEntries(0, entries);
-  assert.deepEqual(page.values.map((value) => value.kind), ["date", "number", "percent"]);
-  assert.equal(page.values[0]?.text, "December 31, 2025");
 });
 
 test("validates magnitude values with split click segments", () => {
@@ -67,20 +49,34 @@ test("validates magnitude values with split click segments", () => {
   assert.equal(parsed.pages[0]?.values[0]?.segments?.[1]?.pageIndex, 1);
 });
 
-test("fallback calculates same-line magnitude values", () => {
-  const text = "$1.0 million";
-  const entries = [...text].map((char, index) => ({
-    char,
-    normLeft: index * 0.01,
-    normTop: 0.1,
-    normRight: (index + 1) * 0.01,
-    normBottom: 0.12,
-    lineIndex: 0,
-    itemIndex: index,
-    spacesPrecomputed: true,
-  }));
-  const value = detectFsValuesFromEntries(0, entries).values[0];
-  assert.equal(value?.text, "$1.0 million");
-  assert.equal(value?.normalizedValue, "1000000");
-  assert.equal(value?.magnitude, 1000000);
+test("parses page noise and drops entries with an unknown reason", () => {
+  const parsed = parseFsValues({
+    version: 1,
+    coordinateSpace: "normalized",
+    detectorVersion: "test",
+    documentContext: {},
+    pages: [{
+      pageIndex: 0,
+      context: {},
+      values: [],
+      noise: [
+        { id: "n0", kind: "number", text: "10", bounds: { x: 0.1, y: 0.1, width: 0.02, height: 0.02 }, reason: "joined-token" },
+        { id: "n1", kind: "date", text: "1934", bounds: { x: 0.2, y: 0.1, width: 0.04, height: 0.02 }, reason: "not-a-rule" },
+        { id: "n2", kind: "number", text: "7", bounds: { x: 2, y: 0, width: 1, height: 1 }, reason: "page-furniture" },
+      ],
+    }],
+  });
+  assert.deepEqual(parsed.pages[0]?.noise.map((entry) => entry.id), ["n0"]);
+  assert.equal(parsed.pages[0]?.noise[0]?.reason, "joined-token");
+});
+
+test("defaults noise to empty when a page omits it", () => {
+  const parsed = parseFsValues({
+    version: 1,
+    coordinateSpace: "normalized",
+    detectorVersion: "test",
+    documentContext: {},
+    pages: [{ pageIndex: 0, context: {}, values: [] }],
+  });
+  assert.deepEqual(parsed.pages[0]?.noise, []);
 });

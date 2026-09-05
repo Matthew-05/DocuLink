@@ -901,6 +901,21 @@
       ]
     },
 
+    "SetFsValueNoiseVisibleMessage": {
+      "description": "Sent by the C# host when the development financial-value noise toggle changes and once after viewer-ready. Noise is the set of spans the detector recognized and then refused; the overlay it drives is inert and draws nothing clickable.",
+      "type": "object",
+      "required": ["type", "visible"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "const": "set-fs-value-noise-visible" },
+        "visible": { "type": "boolean" }
+      },
+      "examples": [
+        { "type": "set-fs-value-noise-visible", "visible": true },
+        { "type": "set-fs-value-noise-visible", "visible": false }
+      ]
+    },
+
     "ResetUiMessage": {
       "description": "Sent by the C# host when the file-manager window is hidden. The web app should reset transient UI state so the next show starts fresh.",
       "type": "object",
@@ -1230,6 +1245,7 @@
     { "$ref": "#/definitions/SetSearchQueryMessage" },
     { "$ref": "#/definitions/SetCharBboxesVisibleMessage" },
     { "$ref": "#/definitions/SetFsValuesVisibleMessage" },
+    { "$ref": "#/definitions/SetFsValueNoiseVisibleMessage" },
     { "$ref": "#/definitions/ResetUiMessage" },
     { "$ref": "#/definitions/CancelOcrMessage" },
     { "$ref": "#/definitions/OcrPdfsMessage" },

@@ -47,3 +47,109 @@
 .fs-values__value:disabled {
   pointer-events: none;
 }
+
+/* ── Noise ────────────────────────────────────────────────────────────────
+   Spans the detector recognized and then refused. A separate debug view from
+   the value boxes above, and deliberately inert: the layer never takes a
+   pointer event, so a rectangle drag begun over a noise box still reaches the
+   page. The overlay hit-tests the cursor itself and explains each box in a
+   floating tip rather than labelling it in place. */
+
+.fs-values-noise {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.fs-values-noise__value {
+  position: absolute;
+  box-sizing: border-box;
+  min-width: 3px;
+  min-height: 3px;
+  border: 1px dashed rgba(190, 24, 93, 0.85);
+  border-radius: 2px;
+  background: rgba(219, 39, 119, 0.1);
+}
+
+/* One colour per suppressor, so a page reads at a glance. */
+.fs-values-noise__value[data-fs-noise-reason="joined-token"] {
+  border-color: rgba(190, 24, 93, 0.85);
+  background: rgba(219, 39, 119, 0.1);
+}
+
+.fs-values-noise__value[data-fs-noise-reason="page-furniture"] {
+  border-color: rgba(109, 40, 217, 0.85);
+  background: rgba(139, 92, 246, 0.1);
+}
+
+.fs-values-noise__value[data-fs-noise-reason="phone-context"] {
+  border-color: rgba(194, 65, 12, 0.85);
+  background: rgba(249, 115, 22, 0.1);
+}
+
+.fs-values-noise__value[data-fs-noise-reason="identifier-context"] {
+  border-color: rgba(133, 77, 14, 0.85);
+  background: rgba(202, 138, 4, 0.1);
+}
+
+.fs-values-noise__value[data-fs-noise-reason="superscript"] {
+  border-color: rgba(15, 118, 110, 0.85);
+  background: rgba(20, 184, 166, 0.1);
+}
+
+.fs-values-noise__value[data-fs-noise-reason="citation-year"] {
+  border-color: rgba(51, 65, 85, 0.85);
+  background: rgba(100, 116, 139, 0.12);
+}
+
+/* The tip is fixed to the window and lives on <body>, so it is never clipped
+   by a page wrapper and never scrolls out of step with the cursor. */
+.fs-values-noise__tip {
+  position: fixed;
+  z-index: 9000;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-width: 280px;
+  padding: 6px 8px;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  border-left: 3px solid rgba(190, 24, 93, 0.9);
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.98);
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.18);
+  color: rgba(15, 23, 42, 0.9);
+  font-size: 11px;
+  line-height: 1.35;
+  pointer-events: none;
+}
+
+.fs-values-noise__tip-reason {
+  color: rgba(157, 23, 77, 0.95);
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.fs-values-noise__tip-why {
+  color: rgba(51, 65, 85, 0.9);
+}
+
+.fs-values-noise__tip-text {
+  margin-top: 2px;
+  padding-top: 3px;
+  border-top: 1px solid rgba(15, 23, 42, 0.08);
+  color: rgba(71, 85, 105, 0.95);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  overflow-wrap: anywhere;
+}
+
+.fs-values-noise__tip[data-fs-noise-reason="page-furniture"] { border-left-color: rgba(109, 40, 217, 0.9); }
+.fs-values-noise__tip[data-fs-noise-reason="page-furniture"] .fs-values-noise__tip-reason { color: rgba(76, 29, 149, 0.95); }
+.fs-values-noise__tip[data-fs-noise-reason="phone-context"] { border-left-color: rgba(194, 65, 12, 0.9); }
+.fs-values-noise__tip[data-fs-noise-reason="phone-context"] .fs-values-noise__tip-reason { color: rgba(154, 52, 18, 0.95); }
+.fs-values-noise__tip[data-fs-noise-reason="identifier-context"] { border-left-color: rgba(133, 77, 14, 0.9); }
+.fs-values-noise__tip[data-fs-noise-reason="identifier-context"] .fs-values-noise__tip-reason { color: rgba(113, 63, 18, 0.95); }
+.fs-values-noise__tip[data-fs-noise-reason="superscript"] { border-left-color: rgba(15, 118, 110, 0.9); }
+.fs-values-noise__tip[data-fs-noise-reason="superscript"] .fs-values-noise__tip-reason { color: rgba(17, 94, 89, 0.95); }
+.fs-values-noise__tip[data-fs-noise-reason="citation-year"] { border-left-color: rgba(51, 65, 85, 0.9); }
+.fs-values-noise__tip[data-fs-noise-reason="citation-year"] .fs-values-noise__tip-reason { color: rgba(30, 41, 59, 0.95); }

@@ -20,7 +20,7 @@ namespace DocuLink.Addin.Modules.UI
         private const int CardGap = 16;
 
         /// <summary>Height of the Development card, which has a fixed set of controls.</summary>
-        private const int DevelopmentCardHeight = 222;
+        private const int DevelopmentCardHeight = 266;
 
         /// <summary>Height of the action bar holding the Close button.</summary>
         private const int FooterHeight = 56;
@@ -136,11 +136,30 @@ namespace DocuLink.Addin.Modules.UI
                 "Click targets are always active; this draws every detected target box.",
                 new Point(CardPadding + 18, 148)));
 
+            var noiseToggle = new CheckBox
+            {
+                Text = "Show financial-value noise",
+                AutoSize = true,
+                Location = new Point(CardPadding, 170),
+                Font = DialogTheme.BodyFont,
+                ForeColor = DialogTheme.Text,
+                Cursor = Cursors.Hand,
+                Checked = DevSettings.ShowFsValueNoise
+            };
+            noiseToggle.CheckedChanged += (s, e) =>
+                DevSettings.ShowFsValueNoise = noiseToggle.Checked;
+            card.Controls.Add(noiseToggle);
+
+            card.Controls.Add(DialogTheme.CreateCaption(
+                "Draws the spans the detector refused (page numbers, phone digits, "
+                + "identifiers), labelled with the rule that refused each one.",
+                new Point(CardPadding + 18, 192)));
+
             var openLogsBtn = new Button
             {
                 Text = "Open Log Folder",
                 Size = new Size(140, 30),
-                Location = new Point(CardPadding, 176)
+                Location = new Point(CardPadding, 220)
             };
             DialogTheme.StyleSecondaryButton(openLogsBtn);
             openLogsBtn.Click += OpenLogFolder;

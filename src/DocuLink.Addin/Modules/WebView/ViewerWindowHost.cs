@@ -51,6 +51,9 @@ namespace DocuLink.Addin.Modules.WebView
         public void SendFsValuesVisible(bool visible) =>
             _controller.SendFsValuesVisible(visible);
 
+        public void SendFsValueNoiseVisible(bool visible) =>
+            _controller.SendFsValueNoiseVisible(visible);
+
         public void NotifyViewerShown() => _controller.NotifyViewerShown();
 
         public void SendNavigateToRectangle(string id, string pdfId, int page) =>

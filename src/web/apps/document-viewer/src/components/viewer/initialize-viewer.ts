@@ -72,6 +72,9 @@ interface DocuLinkDebugApi {
   toggleFsValues: () => boolean;
   showFsValues: () => void;
   hideFsValues: () => void;
+  toggleFsValueNoise: () => boolean;
+  showFsValueNoise: () => void;
+  hideFsValueNoise: () => void;
   toggleTableSuggestions: () => boolean;
   showTableSuggestions: () => void;
   hideTableSuggestions: () => void;
@@ -766,6 +769,9 @@ export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLEleme
     toggleFsValues: () => fsValuesOverlay.toggle(),
     showFsValues: () => fsValuesOverlay.show(),
     hideFsValues: () => fsValuesOverlay.hide(),
+    toggleFsValueNoise: () => fsValuesOverlay.toggleNoise(),
+    showFsValueNoise: () => fsValuesOverlay.showNoise(),
+    hideFsValueNoise: () => fsValuesOverlay.hideNoise(),
     toggleTableSuggestions: () => { setTableModelEnabled(!_tableModelEnabled); return _tableModelEnabled; },
     showTableSuggestions: () => setTableModelEnabled(true),
     hideTableSuggestions: () => setTableModelEnabled(false),
@@ -834,6 +840,10 @@ export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLEleme
       onSetFsValuesVisible: (visible) => {
         if (visible) fsValuesOverlay.show();
         else fsValuesOverlay.hide();
+      },
+      onSetFsValueNoiseVisible: (visible) => {
+        if (visible) fsValuesOverlay.showNoise();
+        else fsValuesOverlay.hideNoise();
       },
       onClearRectangleHighlight: () => { renderer.clearHighlight(); },
       onHighlightRectangle: (id) => { renderer.highlightRectangle(id); },
