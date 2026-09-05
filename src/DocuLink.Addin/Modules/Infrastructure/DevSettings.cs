@@ -14,6 +14,8 @@ namespace DocuLink.Addin.Modules.Infrastructure
         /// <summary>Raised after <see cref="ShowCharBoundingBoxes"/> changes.</summary>
         internal static event EventHandler<bool> CharBoundingBoxesChanged;
 
+        internal static event EventHandler<bool> FsValuesChanged;
+
         /// <summary>
         /// Whether the document viewer draws the per-character bounding-box debug
         /// overlay built from its text cache.
@@ -47,6 +49,33 @@ namespace DocuLink.Addin.Modules.Infrastructure
                 }
 
                 CharBoundingBoxesChanged?.Invoke(null, value);
+            }
+        }
+
+        internal static bool ShowFsValues
+        {
+            get
+            {
+                try { return Settings.Default.ShowFsValues; }
+                catch (Exception ex)
+                {
+                    DocuLinkLog.Trace($"Could not read ShowFsValues: {ex.Message}");
+                    return false;
+                }
+            }
+            set
+            {
+                if (ShowFsValues == value) return;
+                try
+                {
+                    Settings.Default.ShowFsValues = value;
+                    Settings.Default.Save();
+                }
+                catch (Exception ex)
+                {
+                    DocuLinkLog.Trace($"Could not persist ShowFsValues: {ex.Message}");
+                }
+                FsValuesChanged?.Invoke(null, value);
             }
         }
     }

@@ -73,8 +73,8 @@ async function buildPageEntries(page: pdfjsLib.PDFPageProxy): Promise<CharacterE
       continue;
     }
 
-    const tx = item.transform[4];
-    const ty = item.transform[5];
+    const tx = item.transform[4] ?? 0;
+    const ty = item.transform[5] ?? 0;
     const [vx, vy] = viewport.convertToViewportPoint(tx, ty);
 
     const normLeft = vx / viewport.width;

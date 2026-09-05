@@ -727,6 +727,22 @@ namespace DocuLink.Addin.Modules.WebView
             }
         }
 
+        internal void SendFsValuesVisible(bool visible)
+        {
+            if (_disposed || !_webViewReady) return;
+
+            try
+            {
+                _webView.CoreWebView2.PostWebMessageAsString(
+                    HostMessageSerializer.BuildSetFsValuesVisible(visible));
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine(
+                    $"[DocuLink] SendFsValuesVisible failed: {ex.Message}");
+            }
+        }
+
         /// <summary>
         /// Pushes the persisted developer toggles to a freshly initialized web context
         /// so a viewer opened after the setting changed starts in the same state.
@@ -734,6 +750,7 @@ namespace DocuLink.Addin.Modules.WebView
         private void SendDevStateToWebView()
         {
             SendCharBboxesVisible(Infrastructure.DevSettings.ShowCharBoundingBoxes);
+            SendFsValuesVisible(Infrastructure.DevSettings.ShowFsValues);
         }
 
         private void FlushPendingSearchQuery()

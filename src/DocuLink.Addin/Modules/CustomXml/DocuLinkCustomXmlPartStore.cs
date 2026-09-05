@@ -50,23 +50,18 @@ namespace DocuLink.Addin.Modules.CustomXml
 
         // ── Per-PDF binary parts ──────────────────────────────────────────────
 
-        public void SavePdfBinary(string id, string base64, string geometryBase64,
-            string tableStructureBase64)
+        public void SavePdfBinary(string id, PdfBinaryParts parts)
         {
             if (string.IsNullOrWhiteSpace(id))
                 throw new ArgumentException("PDF id must be non-empty.", nameof(id));
 
-            string xml = DocuLinkPdfBinarySerializer.ToXml(
-                id, base64, geometryBase64, tableStructureBase64);
+            string xml = DocuLinkPdfBinarySerializer.ToXml(id, parts);
             ReplacePart(DocuLinkXml.PdfDataNamespaceUri(id), xml);
         }
 
-        public bool TryLoadPdfBinary(string id, out string base64, out string geometryBase64,
-            out string tableStructureBase64)
+        public bool TryLoadPdfBinary(string id, out PdfBinaryParts parts)
         {
-            base64 = string.Empty;
-            geometryBase64 = null;
-            tableStructureBase64 = null;
+            parts = new PdfBinaryParts();
 
             if (string.IsNullOrWhiteSpace(id))
                 return false;
@@ -75,8 +70,7 @@ namespace DocuLink.Addin.Modules.CustomXml
             if (part == null)
                 return false;
 
-            DocuLinkPdfBinarySerializer.FromXml(
-                part.XML, out base64, out geometryBase64, out tableStructureBase64);
+            parts = DocuLinkPdfBinarySerializer.FromXml(part.XML);
             return true;
         }
 
@@ -105,14 +99,14 @@ namespace DocuLink.Addin.Modules.CustomXml
                 return false;
             }
 
-            TryLoadPdfBinary(id, out string base64, out string geometryBase64,
-                out string tableStructureBase64);
-            pdf = new PdfDocument(metadata.Id, metadata.Name, base64 ?? string.Empty,
+            TryLoadPdfBinary(id, out PdfBinaryParts parts);
+            pdf = new PdfDocument(metadata.Id, metadata.Name, parts.Base64 ?? string.Empty,
                 metadata.FolderId, metadata.DateAdded, metadata.FileSizeBytes)
             {
                 OcrStatus     = metadata.OcrStatus,
-                GeometryBase64 = geometryBase64,
-                TableStructureBase64 = tableStructureBase64,
+                GeometryBase64 = parts.GeometryBase64,
+                TableStructureBase64 = parts.TableStructureBase64,
+                FsValuesBase64 = parts.FsValuesBase64,
                 PageRotations  = metadata.PageRotations,
             };
             return true;
@@ -124,14 +118,14 @@ namespace DocuLink.Addin.Modules.CustomXml
             var result = new List<PdfDocument>(content.Pdfs.Count);
             foreach (PdfMetadata m in content.Pdfs)
             {
-                TryLoadPdfBinary(m.Id, out string base64, out string geometryBase64,
-                    out string tableStructureBase64);
-                result.Add(new PdfDocument(m.Id, m.Name, base64 ?? string.Empty,
+                TryLoadPdfBinary(m.Id, out PdfBinaryParts parts);
+                result.Add(new PdfDocument(m.Id, m.Name, parts.Base64 ?? string.Empty,
                     m.FolderId, m.DateAdded, m.FileSizeBytes)
                 {
                     OcrStatus      = m.OcrStatus,
-                    GeometryBase64 = geometryBase64,
-                    TableStructureBase64 = tableStructureBase64,
+                    GeometryBase64 = parts.GeometryBase64,
+                    TableStructureBase64 = parts.TableStructureBase64,
+                    FsValuesBase64 = parts.FsValuesBase64,
                     PageRotations  = m.PageRotations,
                 });
             }
@@ -148,7 +142,13 @@ namespace DocuLink.Addin.Modules.CustomXml
                 PageRotations = pdf.PageRotations,
             };
             UpsertMetadata(metadata);
-            SavePdfBinary(pdf.Id, pdf.Base64, pdf.GeometryBase64, pdf.TableStructureBase64);
+            SavePdfBinary(pdf.Id, new PdfBinaryParts
+            {
+                Base64 = pdf.Base64,
+                GeometryBase64 = pdf.GeometryBase64,
+                TableStructureBase64 = pdf.TableStructureBase64,
+                FsValuesBase64 = pdf.FsValuesBase64,
+            });
         }
 
         // ── Metadata-only helpers ─────────────────────────────────────────────

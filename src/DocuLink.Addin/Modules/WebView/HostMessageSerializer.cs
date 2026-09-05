@@ -269,6 +269,13 @@ namespace DocuLink.Addin.Modules.WebView
                 : "{\"type\":\"set-char-bboxes-visible\",\"visible\":false}";
         }
 
+        public static string BuildSetFsValuesVisible(bool visible)
+        {
+            return visible
+                ? "{\"type\":\"set-fs-values-visible\",\"visible\":true}"
+                : "{\"type\":\"set-fs-values-visible\",\"visible\":false}";
+        }
+
         /// <summary>Returns the JSON payload for a <c>page-rotations-updated</c> message.</summary>
         public static string BuildPageRotationsUpdated(string pdfId, Dictionary<int, int> rotations)
         {
@@ -310,6 +317,11 @@ namespace DocuLink.Addin.Modules.WebView
             {
                 sb.Append(",\"tableStructureBase64\":");
                 AppendString(sb, pdf.TableStructureBase64);
+            }
+            if (!string.IsNullOrWhiteSpace(pdf.FsValuesBase64))
+            {
+                sb.Append(",\"fsValuesBase64\":");
+                AppendString(sb, pdf.FsValuesBase64);
             }
             AppendPageRotations(sb, pdf.PageRotations);
             sb.Append('}');

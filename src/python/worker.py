@@ -35,6 +35,7 @@ from engines.ocr_engine import (
     summarize_geometry_quality,
 )
 from engines.pdf_security import sanitize_pdf_bytes
+from engines.fs_values.detector import detect_fs_values, fs_values_to_base64
 from engines.table.detector import detect_tables, structure_to_base64
 from engines.table_cell_engine import recover_table_geometry
 from schemas.models import ConvertJob, ConvertResult, OcrJob, OcrProgress, OcrResult
@@ -454,6 +455,25 @@ def _handle_job(job: OcrJob) -> None:
             on_progress("Table structure detection unavailable; keeping OCR geometry…")
         diagnostics["table_structure_ms"] = elapsed_ms(table_started)
 
+        fs_values_base64 = ""
+        values_started = time.perf_counter()
+        try:
+            on_progress("Detecting financial values…")
+            fs_values = detect_fs_values(geometry)
+            fs_values_base64 = fs_values_to_base64(fs_values)
+            counts = {"number": 0, "percent": 0, "date": 0}
+            for page in fs_values["pages"]:
+                for value in page["values"]:
+                    counts[value["kind"]] += 1
+            diagnostics["fs_values_detected"] = sum(counts.values())
+            diagnostics["fs_value_numbers"] = counts["number"]
+            diagnostics["fs_value_percents"] = counts["percent"]
+            diagnostics["fs_value_dates"] = counts["date"]
+        except Exception as exc:  # noqa: BLE001 — optional stage must preserve OCR
+            diagnostics["fs_values_error"] = str(exc)
+            on_progress("Financial value detection unavailable; keeping OCR geometry…")
+        diagnostics["fs_values_ms"] = elapsed_ms(values_started)
+
         geometry_encode_started = time.perf_counter()
         geometry_base64 = geometry_to_base64(geometry)
         diagnostics["geometry_encode_ms"] = elapsed_ms(geometry_encode_started)
@@ -481,6 +501,7 @@ def _handle_job(job: OcrJob) -> None:
                 pdf_base64=pdf_base64,
                 geometry_base64=geometry_base64,
                 table_structure_base64=table_structure_base64,
+                fs_values_base64=fs_values_base64,
                 diagnostics=diagnostics,
             ).to_dict()
         )

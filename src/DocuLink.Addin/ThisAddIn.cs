@@ -1034,6 +1034,31 @@ namespace DocuLink.Addin
             }
         }
 
+        private void OnFsValuesChanged(object sender, bool visible)
+        {
+            foreach (WorkbookPaneEntry entry in _workbookPanes.ToArray())
+            {
+                try { entry.Host?.SendFsValuesVisible(visible); }
+                catch (Exception ex)
+                {
+                    Modules.DocuLinkLog.Trace($"OnFsValuesChanged skipping pane: {ex.Message}");
+                }
+            }
+
+            foreach (WorkbookViewerEntry entry in _workbookViewers.ToArray())
+            {
+                try
+                {
+                    if (entry.Window != null && !entry.Window.IsDisposed)
+                        entry.Window.SendFsValuesVisible(visible);
+                }
+                catch (Exception ex)
+                {
+                    Modules.DocuLinkLog.Trace($"OnFsValuesChanged skipping viewer window: {ex.Message}");
+                }
+            }
+        }
+
         /// <summary>Finds the standalone viewer owned by a workbook using COM identity.</summary>
         private WorkbookViewerEntry FindViewerEntryFor(Excel.Workbook wb)
         {
@@ -1141,6 +1166,7 @@ namespace DocuLink.Addin
 
             Modules.Infrastructure.DevSettings.CharBoundingBoxesChanged +=
                 OnCharBoundingBoxesChanged;
+            Modules.Infrastructure.DevSettings.FsValuesChanged += OnFsValuesChanged;
 
             _ = CheckForUpdateOnOpenAsync();
 
@@ -1162,6 +1188,7 @@ namespace DocuLink.Addin
 
             Modules.Infrastructure.DevSettings.CharBoundingBoxesChanged -=
                 OnCharBoundingBoxesChanged;
+            Modules.Infrastructure.DevSettings.FsValuesChanged -= OnFsValuesChanged;
 
             Application.SheetSelectionChange -= Application_SheetSelectionChange;
 

@@ -343,7 +343,8 @@ namespace DocuLink.Addin.Modules.Services
                                         _manageService.UpdatePdfGeometry(
                                             workbook, job.PdfId,
                                             parsed.GeometryBase64 ?? string.Empty,
-                                            parsed.TableStructureBase64 ?? string.Empty);
+                                            parsed.TableStructureBase64 ?? string.Empty,
+                                            parsed.FsValuesBase64 ?? string.Empty);
                                     }
                                     else
                                     {
@@ -352,7 +353,8 @@ namespace DocuLink.Addin.Modules.Services
                                             job.PdfId,
                                             parsed.PdfBase64 ?? string.Empty,
                                             parsed.GeometryBase64 ?? string.Empty,
-                                            parsed.TableStructureBase64 ?? string.Empty);
+                                            parsed.TableStructureBase64 ?? string.Empty,
+                                            parsed.FsValuesBase64 ?? string.Empty);
                                     }
                                     storageClock.Stop();
                                     storageMs = storageClock.ElapsedMilliseconds;
@@ -401,7 +403,8 @@ namespace DocuLink.Addin.Modules.Services
                             jobClock.ElapsedMilliseconds,
                             parsed.PdfBase64,
                             parsed.GeometryBase64,
-                            parsed.TableStructureBase64);
+                            parsed.TableStructureBase64,
+                            parsed.FsValuesBase64);
                     }
                 }
                 finally
@@ -432,7 +435,8 @@ namespace DocuLink.Addin.Modules.Services
             long totalMs,
             string outputPdfBase64 = null,
             string geometryBase64 = null,
-            string tableStructureBase64 = null)
+            string tableStructureBase64 = null,
+            string fsValuesBase64 = null)
         {
             var record = new Dictionary<string, object>
             {
@@ -448,6 +452,7 @@ namespace DocuLink.Addin.Modules.Services
                 ["output_pdf_bytes"] = Base64DecodedLength(outputPdfBase64),
                 ["geometry_bytes"] = Base64DecodedLength(geometryBase64),
                 ["table_structure_bytes"] = Base64DecodedLength(tableStructureBase64),
+                ["fs_values_bytes"] = Base64DecodedLength(fsValuesBase64),
                 ["workbook_binary_load_ms"] = job.LoadMs,
                 ["host"] = new Dictionary<string, object>
                 {
@@ -574,6 +579,7 @@ namespace DocuLink.Addin.Modules.Services
                         PdfBase64 = PythonWorkerSession.GetString(obj, "pdf_base64"),
                         GeometryBase64 = PythonWorkerSession.GetString(obj, "geometry_base64"),
                         TableStructureBase64 = PythonWorkerSession.GetString(obj, "table_structure_base64"),
+                        FsValuesBase64 = PythonWorkerSession.GetString(obj, "fs_values_base64"),
                         Diagnostics = PythonWorkerSession.GetDictionary(obj, "diagnostics"),
                     };
                 }
@@ -627,14 +633,14 @@ namespace DocuLink.Addin.Modules.Services
 
                 string status = metadata.OcrStatus ?? PdfStatus.None;
                 var loadClock = Stopwatch.StartNew();
-                store.TryLoadPdfBinary(id, out string base64, out _, out _);
+                store.TryLoadPdfBinary(id, out PdfBinaryParts parts);
                 loadClock.Stop();
                 result.Add(new OcrJobEntry
                 {
                     PdfId = id,
                     Name = metadata.Name ?? string.Empty,
-                    Base64 = base64 ?? string.Empty,
-                    InputBytes = Base64DecodedLength(base64),
+                    Base64 = parts.Base64 ?? string.Empty,
+                    InputBytes = Base64DecodedLength(parts.Base64),
                     LoadMs = loadClock.ElapsedMilliseconds,
                     Mode = "full",
                     OriginalStatus = status,
@@ -688,6 +694,7 @@ namespace DocuLink.Addin.Modules.Services
             public string PdfBase64 { get; set; }
             public string GeometryBase64 { get; set; }
             public string TableStructureBase64 { get; set; }
+            public string FsValuesBase64 { get; set; }
             public string Error { get; set; }
 
             /// <summary>

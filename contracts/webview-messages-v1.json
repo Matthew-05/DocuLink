@@ -70,6 +70,7 @@
         "folderId":        { "type": "string", "description": "GUID of the owning folder, omitted when uncategorised." },
         "geometryBase64":  { "type": "string", "description": "Optional gzip-compressed text-geometry-v1 JSON, base64-encoded." },
         "tableStructureBase64": { "type": "string", "description": "Optional gzip-compressed table-structure-v1 JSON, base64-encoded." },
+        "fsValuesBase64": { "type": "string", "description": "Optional gzip-compressed fs-values-v1 JSON, base64-encoded." },
         "pageRotations":   {
           "type": "object",
           "description": "Optional map of 0-based page index to clockwise rotation in degrees (0, 90, 180, 270). Omitted entries default to 0.",
@@ -885,6 +886,21 @@
       ]
     },
 
+    "SetFsValuesVisibleMessage": {
+      "description": "Sent by the C# host when the development financial-value overlay toggle changes and once after viewer-ready.",
+      "type": "object",
+      "required": ["type", "visible"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "const": "set-fs-values-visible" },
+        "visible": { "type": "boolean" }
+      },
+      "examples": [
+        { "type": "set-fs-values-visible", "visible": true },
+        { "type": "set-fs-values-visible", "visible": false }
+      ]
+    },
+
     "ResetUiMessage": {
       "description": "Sent by the C# host when the file-manager window is hidden. The web app should reset transient UI state so the next show starts fresh.",
       "type": "object",
@@ -1213,6 +1229,7 @@
     { "$ref": "#/definitions/LinkSelectionChangedMessage" },
     { "$ref": "#/definitions/SetSearchQueryMessage" },
     { "$ref": "#/definitions/SetCharBboxesVisibleMessage" },
+    { "$ref": "#/definitions/SetFsValuesVisibleMessage" },
     { "$ref": "#/definitions/ResetUiMessage" },
     { "$ref": "#/definitions/CancelOcrMessage" },
     { "$ref": "#/definitions/OcrPdfsMessage" },

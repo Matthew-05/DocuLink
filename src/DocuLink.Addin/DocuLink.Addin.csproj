@@ -212,6 +212,7 @@
     <Compile Include="Modules\CustomXml\Models\LinkType.cs" />
     <Compile Include="Modules\CustomXml\Models\TableGrid.cs" />
     <Compile Include="Modules\CustomXml\Models\PdfDocument.cs" />
+    <Compile Include="Modules\CustomXml\Models\PdfBinaryParts.cs" />
     <Compile Include="Modules\CustomXml\Models\PdfFolder.cs" />
     <Compile Include="Modules\CustomXml\Models\PdfMetadata.cs" />
     <Compile Include="Modules\CustomXml\Models\PdfRectangle.cs" />

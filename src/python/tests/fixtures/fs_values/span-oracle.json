@@ -1,0 +1,14 @@
+[
+  {"text":"$1,000", "spans":[{"kind":"number","text":"$1,000","normalizedValue":"1000","currency":"USD"}]},
+  {"text":"$ 50.14", "spans":[{"kind":"number","text":"$ 50.14","normalizedValue":"50.14","currency":"USD"}]},
+  {"text":"(1,234.50)", "spans":[{"kind":"number","text":"(1,234.50)","normalizedValue":"-1234.5"}]},
+  {"text":"5% .15% 0.2 percent", "spans":[{"kind":"percent","text":"5%","normalizedValue":"5"},{"kind":"percent","text":".15%","normalizedValue":"0.15"},{"kind":"percent","text":"0.2 percent","normalizedValue":"0.2"}]},
+  {"text":"December 31, 2025", "spans":[{"kind":"date","text":"December 31, 2025","normalizedValue":"2025-12-31","datePrecision":"day"}]},
+  {"text":"31 Dec. 2025", "spans":[{"kind":"date","text":"31 Dec. 2025","normalizedValue":"2025-12-31","datePrecision":"day"}]},
+  {"text":"2025-09-27", "spans":[{"kind":"date","text":"2025-09-27","normalizedValue":"2025-09-27","datePrecision":"day"}]},
+  {"text":"9/27/25", "spans":[{"kind":"date","text":"9/27/25","normalizedValue":"2025-09-27","datePrecision":"day"}]},
+  {"text":"03/04/2025", "spans":[{"kind":"date","text":"03/04/2025","datePrecision":"day","dateOrder":"ambiguous"}]},
+  {"text":"September 2025", "spans":[{"kind":"date","text":"September 2025","normalizedValue":"2025-09","datePrecision":"month"}]},
+  {"text":"Q3 2025", "spans":[{"kind":"date","text":"Q3 2025","normalizedValue":"2025-Q3","datePrecision":"quarter"}]},
+  {"text":"2025", "spans":[{"kind":"date","text":"2025","normalizedValue":"2025","datePrecision":"year"}]}
+]

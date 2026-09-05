@@ -33,6 +33,7 @@ class OcrResult:
     pdf_base64: str = "" # populated on full OCR success
     geometry_base64: str = ""
     table_structure_base64: str = ""
+    fs_values_base64: str = ""
     error: str = ""      # populated on error
     # OcrDiagnostics per contracts/python-worker-v1.json. Host debug logging
     # only — the host must tolerate this being absent and must not branch on it.
@@ -47,6 +48,8 @@ class OcrResult:
                 d["geometry_base64"] = self.geometry_base64
             if self.table_structure_base64:
                 d["table_structure_base64"] = self.table_structure_base64
+            if self.fs_values_base64:
+                d["fs_values_base64"] = self.fs_values_base64
             if self.diagnostics:
                 d["diagnostics"] = self.diagnostics
         else:

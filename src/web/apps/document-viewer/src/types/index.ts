@@ -15,6 +15,8 @@ export interface PdfEntry {
   geometryBase64?: string;
   /** Gzip-compressed table-structure-v1 JSON, base64-encoded. */
   tableStructureBase64?: string;
+  /** Gzip-compressed fs-values-v1 JSON, base64-encoded. */
+  fsValuesBase64?: string;
   linkCount?: number;
   /** Per-page clockwise rotation in degrees (0, 90, 180, 270). Absent entries default to 0. */
   pageRotations?: Record<number, number>;

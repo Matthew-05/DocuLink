@@ -26,6 +26,7 @@ export interface HostMessageHandlers {
   onLinkSelectionChanged?: (entries: LinkSelectionEntry[]) => void;
   onSetSearchQuery?: (query: string) => void;
   onSetCharBboxesVisible?: (visible: boolean) => void;
+  onSetFsValuesVisible?: (visible: boolean) => void;
   onPdfUpdated?: (entry: PdfEntry) => void;
   onLinkRectanglesRemoved?: (ids: string[]) => void;
   onPdfNameUpdated?: (id: string, name: string) => void;
@@ -41,6 +42,7 @@ interface PdfPayload {
   folderId?: string;
   geometryBase64?: string;
   tableStructureBase64?: string;
+  fsValuesBase64?: string;
   pageRotations?: Record<string, number>;
 }
 
@@ -193,6 +195,7 @@ function toPdfEntry(pdf: PdfPayload): PdfEntry {
     ...(pdf.folderId !== undefined ? { folderId: pdf.folderId } : {}),
     ...(pdf.geometryBase64 !== undefined ? { geometryBase64: pdf.geometryBase64 } : {}),
     ...(pdf.tableStructureBase64 !== undefined ? { tableStructureBase64: pdf.tableStructureBase64 } : {}),
+    ...(pdf.fsValuesBase64 !== undefined ? { fsValuesBase64: pdf.fsValuesBase64 } : {}),
     ...(pageRotations !== undefined ? { pageRotations } : {}),
   };
 }
@@ -215,6 +218,11 @@ interface SetSearchQueryMessage {
 
 interface SetCharBboxesVisibleMessage {
   type: "set-char-bboxes-visible";
+  visible: boolean;
+}
+
+interface SetFsValuesVisibleMessage {
+  type: "set-fs-values-visible";
   visible: boolean;
 }
 
@@ -241,6 +249,7 @@ function handleMessage(raw: unknown, handlers: HostMessageHandlers): void {
     onLinkSelectionChanged,
     onSetSearchQuery,
     onSetCharBboxesVisible,
+    onSetFsValuesVisible,
     onPdfUpdated,
     onLinkRectanglesRemoved,
     onPdfNameUpdated,
@@ -346,6 +355,13 @@ function handleMessage(raw: unknown, handlers: HostMessageHandlers): void {
       if (!onSetCharBboxesVisible) return;
       const msg = parsed as SetCharBboxesVisibleMessage;
       onSetCharBboxesVisible(msg.visible === true);
+      return;
+    }
+
+    if (type === "set-fs-values-visible") {
+      if (!onSetFsValuesVisible) return;
+      const msg = parsed as SetFsValuesVisibleMessage;
+      onSetFsValuesVisible(msg.visible === true);
       return;
     }
 

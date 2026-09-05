@@ -621,8 +621,9 @@ namespace DocuLink.Addin.Modules.WebView
                 var pdfEntries = new List<MatcherPdfEntry>();
                 foreach (var meta in matchingPdfs)
                 {
-                    session.Store.TryLoadPdfBinary(meta.Id, out string base64,
-                        out string geometryBase64, out _);
+                    session.Store.TryLoadPdfBinary(meta.Id, out PdfBinaryParts parts);
+                    string base64 = parts.Base64;
+                    string geometryBase64 = parts.GeometryBase64;
                     bool hasGeometry = !string.IsNullOrEmpty(geometryBase64);
                     if (!hasGeometry
                         && Globals.ThisAddIn.TryGetTransientPdfGeometry(

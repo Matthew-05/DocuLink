@@ -46,5 +46,17 @@ namespace DocuLink.Addin.Properties {
                 this["ShowCharBoundingBoxes"] = value;
             }
         }
+
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("False")]
+        public bool ShowFsValues {
+            get {
+                return ((bool)(this["ShowFsValues"]));
+            }
+            set {
+                this["ShowFsValues"] = value;
+            }
+        }
     }
 }

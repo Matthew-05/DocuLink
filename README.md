@@ -29,6 +29,7 @@ DocuLink is currently in active development.
 * **File Manager:** Manage embedded PDFs and folders from a dedicated task-pane UI.
 * **Document Matcher:** Select source and output ranges, then match document values into worksheet output columns.
 * **OCR Capabilities:** Tesseract and PyMuPDF power local, geometry-first OCR through the Python worker. Recognized text is stored as sidecar geometry instead of being written into the PDF.
+* **Financial Value Cache:** OCR cache building detects financial numbers, percentages, and dates with normalized bounds and conservative currency/scale context. Development and beta builds can enable the clickable overlay under Settings → Development; clicking a value creates the ordinary linked rectangle for the active Excel cell.
 
 ## Technical & Developer Documentation
 
@@ -51,11 +52,15 @@ Cross-boundary messages and storage formats are defined in `contracts/`:
 | `webview-messages-v1.json` | C# to WebView2 postMessage protocol |
 | `python-worker-v1.json` | C# to Python worker NDJSON protocol |
 | `text-geometry-v1.json` | OCR/text layout data |
+| `table-structure-v1.json` | Detected table grids, headers, and periods |
+| `fs-values-v1.json` | Detected financial numbers, percentages, dates, and page/document context |
 | `doculink-storage-content-v1.xsd` | PDF/folder catalogue in workbook Custom XML |
 | `doculink-storage-pdf-binary-v1.xsd` | Embedded PDF binary storage in workbook Custom XML |
 | `doculink-storage-links-v1.xsd` | Linked rectangles and cell references in workbook Custom XML |
 
 Before adding or changing a cross-boundary message or storage field, update the matching contract first, then update the implementation.
+
+The financial-value recognizer is intentionally a sidecar stage over text geometry: it never performs another OCR pass and failure does not discard an otherwise successful OCR result. Its span oracle can be run with `python scripts/score_fs_values.py`, and `python scripts/render_fs_values_overlay.py input.pdf --out overlay.pdf --write-report values.json` draws a corpus diagnostic. Python tests live in `src/python/tests/test_fs_values.py`, and the viewer uses a TypeScript fallback when an older workbook has no stored `fs-values-v1` artifact.
 
 ### Prerequisites
 

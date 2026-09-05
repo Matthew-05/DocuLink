@@ -126,6 +126,12 @@
         "table_text_recovery_error": { "type": "string", "description": "Present when optional full-table cell recovery failed and the worker safely retained the selected OCR result." },
         "table_structure_ms": { "type": "integer", "minimum": 0, "description": "Milliseconds spent detecting and encoding the table-structure-v1 model." },
         "table_structure_error": { "type": "string", "description": "Present when optional table-structure detection failed and the worker safely retained the OCR result." },
+        "fs_values_ms": { "type": "integer", "minimum": 0, "description": "Milliseconds spent detecting and encoding the fs-values-v1 model." },
+        "fs_values_error": { "type": "string", "description": "Present when optional financial-value detection failed and the worker safely retained the OCR result." },
+        "fs_values_detected": { "type": "integer", "minimum": 0, "description": "Financial numbers, percentages and dates published in the fs-values-v1 model." },
+        "fs_value_numbers": { "type": "integer", "minimum": 0 },
+        "fs_value_percents": { "type": "integer", "minimum": 0 },
+        "fs_value_dates": { "type": "integer", "minimum": 0 },
         "table_detector_version": { "type": "string", "description": "Identifier of the table detector that produced the returned table-structure-v1 model. Bumped whenever detection behaviour changes, so cached structures from an older detector can be told apart." },
         "table_pages_detected": { "type": "integer", "minimum": 0, "description": "Pages examined by table detection. Fewer than page_count when detection stopped at its time budget." },
         "table_structure_truncated": { "type": "boolean", "description": "Present when detection stopped early against its wall-clock budget. The pages already detected are published; later pages carry no tables because they were never examined." },
@@ -176,6 +182,7 @@
         "pdf_base64":       { "type": "string", "description": "Base-64 encoded sanitized visual PDF bytes. Omitted for geometry-only jobs. OCR text is never written into these bytes." },
         "geometry_base64":  { "type": "string", "description": "Gzip-compressed text-geometry-v1 JSON, base64-encoded." },
         "table_structure_base64": { "type": "string", "description": "Gzip-compressed table-structure-v1 JSON, base64-encoded. Present for full OCR jobs when optional table detection succeeds." },
+        "fs_values_base64": { "type": "string", "description": "Gzip-compressed fs-values-v1 JSON, base64-encoded when optional value detection succeeds." },
         "diagnostics":      { "$ref": "#/definitions/OcrDiagnostics" }
       },
       "examples": [

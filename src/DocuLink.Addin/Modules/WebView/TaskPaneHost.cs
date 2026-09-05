@@ -30,6 +30,9 @@ namespace DocuLink.Addin.Modules.WebView
         public void SendCharBboxesVisible(bool visible) =>
             _controller.SendCharBboxesVisible(visible);
 
+        public void SendFsValuesVisible(bool visible) =>
+            _controller.SendFsValuesVisible(visible);
+
         public void NotifyViewerShown() => _controller.NotifyViewerShown();
 
         public void SendNavigateToRectangle(string id, string pdfId, int page) =>

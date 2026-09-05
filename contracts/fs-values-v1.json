@@ -1,0 +1,63 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "http://doculink.dev/schemas/fs-values/1",
+  "title": "DocuLink Financial Statement Values v1",
+  "description": "Financial numbers, percentages and dates detected from text geometry. Coordinates use normalized displayed-page, top-left-origin 0–1 space.",
+  "type": "object",
+  "required": ["version", "coordinateSpace", "detectorVersion", "documentContext", "pages"],
+  "additionalProperties": false,
+  "properties": {
+    "version": { "const": 1 },
+    "coordinateSpace": { "const": "normalized" },
+    "detectorVersion": { "type": "string", "minLength": 1 },
+    "documentContext": { "$ref": "#/definitions/Context" },
+    "pages": { "type": "array", "items": { "$ref": "#/definitions/PageValues" } }
+  },
+  "definitions": {
+    "Bounds": {
+      "type": "object",
+      "required": ["x", "y", "width", "height"],
+      "additionalProperties": false,
+      "properties": {
+        "x": { "type": "number", "minimum": 0, "maximum": 1 },
+        "y": { "type": "number", "minimum": 0, "maximum": 1 },
+        "width": { "type": "number", "exclusiveMinimum": 0, "maximum": 1 },
+        "height": { "type": "number", "exclusiveMinimum": 0, "maximum": 1 }
+      }
+    },
+    "Context": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "currency": { "type": "string", "enum": ["USD", "EUR", "GBP", "JPY", "CAD", "AUD", "CHF", "CNY", "INR", "KRW"] },
+        "scale": { "type": "integer", "enum": [1, 1000, 1000000, 1000000000] }
+      }
+    },
+    "FinancialValue": {
+      "type": "object",
+      "required": ["id", "kind", "text", "bounds", "confidence"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "kind": { "type": "string", "enum": ["number", "percent", "date"] },
+        "text": { "type": "string", "minLength": 1 },
+        "bounds": { "$ref": "#/definitions/Bounds" },
+        "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+        "normalizedValue": { "type": "string", "description": "Exact canonical decimal for numbers/percentages, or ISO-like value for unambiguous dates. Never a binary float." },
+        "currency": { "type": "string", "enum": ["USD", "EUR", "GBP", "JPY", "CAD", "AUD", "CHF", "CNY", "INR", "KRW"] },
+        "datePrecision": { "type": "string", "enum": ["day", "month", "quarter", "year"] },
+        "dateOrder": { "type": "string", "enum": ["mdy", "dmy", "ymd", "ambiguous"] }
+      }
+    },
+    "PageValues": {
+      "type": "object",
+      "required": ["pageIndex", "context", "values"],
+      "additionalProperties": false,
+      "properties": {
+        "pageIndex": { "type": "integer", "minimum": 0 },
+        "context": { "$ref": "#/definitions/Context" },
+        "values": { "type": "array", "items": { "$ref": "#/definitions/FinancialValue" } }
+      }
+    }
+  }
+}

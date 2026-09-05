@@ -21,6 +21,8 @@ import { createSearchNavigator } from "./search-navigator.js";
 import { TableCopyModal } from "../table-copy-modal/table-copy-modal.js";
 import { TextContentCache } from "../../services/text-content-cache.js";
 import { TableStructureCache } from "../../services/table-structure-cache.js";
+import { FsValuesCache } from "../../services/fs-values-cache.js";
+import { FsValuesOverlay } from "./fs-values-overlay.js";
 import { extractText } from "@doculink/shared";
 import {
   detectCopiedTable,
@@ -66,6 +68,9 @@ interface DocuLinkDebugApi {
   toggleCharBboxes: () => boolean;
   showCharBboxes: () => void;
   hideCharBboxes: () => void;
+  toggleFsValues: () => boolean;
+  showFsValues: () => void;
+  hideFsValues: () => void;
   toggleTableSuggestions: () => boolean;
   showTableSuggestions: () => void;
   hideTableSuggestions: () => void;
@@ -232,6 +237,7 @@ export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLEleme
 
   const cache           = new TextContentCache();
   const tableCache      = new TableStructureCache();
+  const fsValuesCache   = new FsValuesCache();
   const renderer        = new RectRenderer(viewer);
   const contextMenu     = new RectContextMenu();
   const selectionPanel  = new LinkSelectionPanel();
@@ -255,6 +261,7 @@ export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLEleme
   const tableGridEditor = new TableGridEditor(viewer, cache, renderer);
   const tableCopyModal  = new TableCopyModal();
   const charBboxDebug   = new CharBboxOverlay(viewer, cache);
+  const fsValuesOverlay = new FsValuesOverlay(viewer, fsValuesCache);
   const tableSuggestions = new TableSuggestionOverlay(viewer, tableCache);
   const tableNotice     = new TableNotice();
   const matchRenderer   = new SearchMatchRenderer(viewer);
@@ -634,6 +641,25 @@ export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLEleme
     });
   });
 
+  fsValuesOverlay.onValueClicked((pdfId, page, value) => {
+    const selectedType = linkTypeSelector.getLinkType();
+    const linkType = selectedType === "table" ? "auto" : selectedType;
+    sendLinkRectangleCreated({
+      pdfId,
+      page,
+      rect: value.bounds,
+      text: value.text,
+      linkType,
+    });
+    renderer.addRectangle({
+      id: `temp-fs-${Date.now()}`,
+      pdfId,
+      page,
+      rect: value.bounds,
+      linkType,
+    });
+  });
+
   editOverlay.onRectUpdated((payload) => {
     sendLinkRectangleUpdated(payload);
   });
@@ -700,12 +726,13 @@ export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLEleme
 
     const finish = (): void => {
       charBboxDebug.refresh();
+      fsValuesOverlay.refresh();
       if (search.getQuery()) {
         applyActivePdfHighlights();
       }
     };
 
-    if (cache.has(pdfId)) {
+    if (cache.has(pdfId) && fsValuesCache.has(pdfId)) {
       finish();
       return;
     }
@@ -719,6 +746,7 @@ export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLEleme
       : cache.buildFromDoc(pdfId, doc);
 
     void buildPromise
+      .then(() => fsValuesCache.build(pdfId, entry?.fsValuesBase64, cache))
       .then(() => {
         if (gen !== cacheGeneration) return;
         finish();
@@ -733,6 +761,9 @@ export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLEleme
     toggleCharBboxes: () => charBboxDebug.toggle(),
     showCharBboxes:   () => charBboxDebug.show(),
     hideCharBboxes:   () => charBboxDebug.hide(),
+    toggleFsValues: () => fsValuesOverlay.toggle(),
+    showFsValues: () => fsValuesOverlay.show(),
+    hideFsValues: () => fsValuesOverlay.hide(),
     toggleTableSuggestions: () => { setTableModelEnabled(!_tableModelEnabled); return _tableModelEnabled; },
     showTableSuggestions: () => setTableModelEnabled(true),
     hideTableSuggestions: () => setTableModelEnabled(false),
@@ -755,6 +786,7 @@ export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLEleme
     folderFilter,
     cache,
     tableCache,
+    fsValuesCache,
     (indexing) => {
       if (indexing) {
         search.disable();
@@ -768,7 +800,7 @@ export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLEleme
         }
       }
     },
-    refreshTableMetadata,
+    () => { refreshTableMetadata(); fsValuesOverlay.refresh(); },
     {
       onLinkedRectangles: (rects) => {
         contextMenu.hide();
@@ -796,6 +828,10 @@ export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLEleme
       onSetCharBboxesVisible: (visible) => {
         if (visible) charBboxDebug.show();
         else charBboxDebug.hide();
+      },
+      onSetFsValuesVisible: (visible) => {
+        if (visible) fsValuesOverlay.show();
+        else fsValuesOverlay.hide();
       },
       onClearRectangleHighlight: () => { renderer.clearHighlight(); },
       onHighlightRectangle: (id) => { renderer.highlightRectangle(id); },
