@@ -64,3 +64,24 @@ test("reports no noise for a document with no analyzed artifact", async () => {
   assert.equal(cache.noiseCount("native-pdf"), 0);
   assert.deepEqual(cache.noiseOnPage("native-pdf", 0), []);
 });
+
+test("retains the canonical note catalogue and its resolved references", async () => {
+  const bounds = { x: 0.1, y: 0.1, width: 0.2, height: 0.02 };
+  const model = {
+    version: 1, coordinateSpace: "normalized", detectorVersion: "test", documentContext: {},
+    notes: [{
+      id: "fs-note-0", identifier: "3.1", description: "Revenue Recognition",
+      headers: [{ id: "h0", pageIndex: 2, text: "Note 3.1 — Revenue Recognition", bounds, continuation: false }],
+    }],
+    noteReferences: [{
+      id: "r0", noteId: "fs-note-0", identifier: "3.1", description: "Revenue Recognition",
+      pageIndex: 1, text: "Note 3.1", bounds, descriptionPresent: false,
+    }],
+    pages: [{ pageIndex: 1, context: {}, values: [] }],
+  };
+  const cache = new FsValuesCache(async () => model as never);
+  await cache.build("pdf", "encoded");
+
+  assert.equal(cache.notes("pdf")[0]?.description, "Revenue Recognition");
+  assert.equal(cache.noteReferences("pdf")[0]?.noteId, "fs-note-0");
+});

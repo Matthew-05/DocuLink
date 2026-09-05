@@ -15,8 +15,12 @@ export type {
 export { decodeTableStructure, parseTableStructure } from "./table-structure-decoder.js";
 export type {
   FinancialValue,
+  FsNoiseKind,
   FsNoiseReason,
   FsNoiseValue,
+  FsNote,
+  FsNoteHeader,
+  FsNoteReference,
   FsValueSegment,
   FsValueBounds,
   FsValueContext,
@@ -25,7 +29,7 @@ export type {
   PageFsValues,
 } from "./fs-values-decoder.js";
 export { decodeFsValues, parseFsValues } from "./fs-values-decoder.js";
-export { describeFsNoise, describeFsValue } from "./fs-values-describe.js";
+export { describeFsNoise, describeFsNoteHeader, describeFsValue } from "./fs-values-describe.js";
 export type { HoverTipContent, HoverTipOptions } from "./hover-tip.js";
 export { HoverTip } from "./hover-tip.js";
 export type { CharacterEntry } from "./char-entries.js";

@@ -1,9 +1,17 @@
-import type { FinancialValue, FsNoiseValue, FsValues } from "@doculink/shared";
+import type {
+  FinancialValue,
+  FsNoiseValue,
+  FsNote,
+  FsNoteReference,
+  FsValues,
+} from "@doculink/shared";
 
 export class FsValuesCache {
   private readonly _cache = new Map<string, Map<number, FinancialValue[]>>();
   private readonly _logicalValues = new Map<string, Map<number, FinancialValue[]>>();
   private readonly _noise = new Map<string, Map<number, FsNoiseValue[]>>();
+  private readonly _notes = new Map<string, FsNote[]>();
+  private readonly _noteReferences = new Map<string, FsNoteReference[]>();
   private readonly _decoder: ((base64: string) => Promise<FsValues>) | undefined;
 
   constructor(decoder?: (base64: string) => Promise<FsValues>) {
@@ -18,6 +26,8 @@ export class FsValuesCache {
       this._cache.set(pdfId, new Map());
       this._logicalValues.set(pdfId, new Map());
       this._noise.set(pdfId, new Map());
+      this._notes.set(pdfId, []);
+      this._noteReferences.set(pdfId, []);
       return;
     }
     try {
@@ -46,11 +56,15 @@ export class FsValuesCache {
       this._cache.set(pdfId, byPage);
       this._logicalValues.set(pdfId, logicalValues);
       this._noise.set(pdfId, noise);
+      this._notes.set(pdfId, model.notes ?? []);
+      this._noteReferences.set(pdfId, model.noteReferences ?? []);
     } catch {
       // A malformed optional artifact must not prevent the PDF itself loading.
       this._cache.set(pdfId, new Map());
       this._logicalValues.set(pdfId, new Map());
       this._noise.set(pdfId, new Map());
+      this._notes.set(pdfId, []);
+      this._noteReferences.set(pdfId, []);
     }
   }
 
@@ -81,15 +95,29 @@ export class FsValuesCache {
     return total;
   }
 
+  /** Canonical financial-statement notes detected across the document. */
+  notes(pdfId: string): FsNote[] {
+    return this._notes.get(pdfId) ?? [];
+  }
+
+  /** Narrative citations resolved to entries in the canonical note catalogue. */
+  noteReferences(pdfId: string): FsNoteReference[] {
+    return this._noteReferences.get(pdfId) ?? [];
+  }
+
   clearPdf(pdfId: string): void {
     this._cache.delete(pdfId);
     this._logicalValues.delete(pdfId);
     this._noise.delete(pdfId);
+    this._notes.delete(pdfId);
+    this._noteReferences.delete(pdfId);
   }
 
   clear(): void {
     this._cache.clear();
     this._logicalValues.clear();
     this._noise.clear();
+    this._notes.clear();
+    this._noteReferences.clear();
   }
 }

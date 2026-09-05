@@ -33,7 +33,13 @@ ORACLE = ROOT / "src" / "python" / "tests" / "fixtures" / "fs_values" / "span-or
 # The recognizer's own refusals are exempt: it rejects whole tokens, and a token
 # like "5,200-acre" or "10-K," carries a comma without ever having been a value.
 _STRONG_MARKS = "$€£¥₹₩,%"
-_RECOGNIZER_REASONS = frozenset({"identifier", "alphanumeric", "partial-token"})
+_NON_VALUE_NOISE_REASONS = frozenset({
+    "identifier",
+    "alphanumeric",
+    "partial-token",
+    "note-header",
+    "note-reference",
+})
 
 
 def _span_dict(span) -> dict:
@@ -77,7 +83,7 @@ def score_document(pdf: Path) -> dict:
     suspicious = [
         candidate
         for candidate in rejected
-        if candidate["reason"] not in _RECOGNIZER_REASONS
+        if candidate["reason"] not in _NON_VALUE_NOISE_REASONS
         and any(mark in candidate["text"] for mark in _STRONG_MARKS)
     ]
     return {
@@ -90,6 +96,8 @@ def score_document(pdf: Path) -> dict:
         "recognized": len(published) + len(rejected),
         "publishedByKind": dict(Counter(value["kind"] for value in published)),
         "rejectedByReason": dict(Counter(candidate["reason"] for candidate in rejected)),
+        "notes": len(model.get("notes", [])),
+        "noteReferences": len(model.get("noteReferences", [])),
         "rejectedCarryingFinancialMarks": [
             {"reason": candidate["reason"], "text": candidate["text"]} for candidate in suspicious
         ],

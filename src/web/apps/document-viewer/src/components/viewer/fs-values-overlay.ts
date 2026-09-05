@@ -1,11 +1,29 @@
-import type { FinancialValue, FsNoiseValue, HoverTipContent } from "@doculink/shared";
-import { HoverTip, describeFsNoise, describeFsValue } from "@doculink/shared";
+import type {
+  FinancialValue,
+  FsNoiseValue,
+  FsNoteHeader,
+  FsValueBounds,
+  HoverTipContent,
+} from "@doculink/shared";
+import {
+  HoverTip,
+  describeFsNoise,
+  describeFsNoteHeader,
+  describeFsValue,
+} from "@doculink/shared";
 import type { FsValuesCache } from "../../services/fs-values-cache.js";
 import type { PdfViewer } from "./pdf-viewer.js";
 import { ensureOverlayLayer } from "./page-renderer.js";
 
 const OVERLAY_CLASS = "fs-values";
 const NOISE_CLASS = "fs-values-noise";
+
+function sameBounds(left: FsValueBounds, right: FsValueBounds): boolean {
+  return left.x === right.x
+    && left.y === right.y
+    && left.width === right.width
+    && left.height === right.height;
+}
 
 export class FsValuesOverlay {
   private _debugVisible = false;
@@ -44,9 +62,9 @@ export class FsValuesOverlay {
   toggleNoise(): boolean { this._noiseVisible ? this.hideNoise() : this.showNoise(); return this._noiseVisible; }
 
   /**
-   * Show the spans the detector recognized and then refused, each labelled with
-   * the rule that refused it. Diagnostics only: noise draws nothing clickable,
-   * so it can be left on while linking values.
+   * Show spans classified as noise, each labelled with its group. This includes
+   * refused values and complete note headings/references. Diagnostics only:
+   * noise draws nothing clickable, so it can be left on while linking values.
    */
   showNoise(): void { this._noiseVisible = true; this._syncTip(); this._renderAll(); }
 
@@ -177,12 +195,29 @@ export class FsValuesOverlay {
       }
       if (this._noiseVisible) {
         for (const entry of this._cache.noiseOnPage(pdfId, pageIndex)) {
-          consider(entry.bounds, () => describeFsNoise(entry));
+          consider(entry.bounds, () => this._describeNoise(pdfId, pageIndex, entry));
         }
       }
       return best;
     }
     return null;
+  }
+
+  private _describeNoise(
+    pdfId: string,
+    pageIndex: number,
+    entry: FsNoiseValue,
+  ): HoverTipContent {
+    if (entry.reason !== "note-header") return describeFsNoise(entry);
+    for (const note of this._cache.notes(pdfId)) {
+      const header = note.headers.find((candidate: FsNoteHeader) => (
+        candidate.pageIndex === pageIndex
+        && candidate.text === entry.text
+        && sameBounds(candidate.bounds, entry.bounds)
+      ));
+      if (header) return describeFsNoteHeader(entry, note, header);
+    }
+    return describeFsNoise(entry);
   }
 
   private _clearAll(): void {

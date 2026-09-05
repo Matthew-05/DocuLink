@@ -15,10 +15,9 @@ the end of the text rather than sitting at the foot of the sheet moves by half a
 page between pages. What holds is that furniture sits outside the body -- above
 every ordinary line, or below every ordinary line.
 
-The two are found in layers. Document labels and page numbers are established
-first and then set aside, which is what lets a running section head be
-recognised as the topmost line that remains rather than having to be the
-literal first line on the page.
+Document labels and page numbers are deliberately the only furniture inferred
+from repetition. Financial-statement note headings and their narrative
+references have their own explicit, structured detector.
 """
 from __future__ import annotations
 
@@ -27,14 +26,12 @@ from collections import defaultdict
 from dataclasses import dataclass
 from statistics import median
 
-from .reasons import PAGE_FURNITURE, RUNNING_SECTION_HEAD
+from .reasons import PAGE_FURNITURE
 from .spans import MONTHS
 
 
 _DIGITS = re.compile(r"\d+")
 _WORDS = re.compile(r"[^\W\d_]+")
-# A line that says it continues one is telling you it is a running head.
-_CONTINUED = re.compile(r"\b(?:continued|cont(?:inue)?d?\.?|cont'd)\b", re.I)
 # A line that is nothing but a small integer: the shape a bare page number takes.
 _ONLY_NUMBER = re.compile(r"^[(\[]?-?\s*(\d{1,4})\s*[)\]]?[.,]?$")
 # A page-number sequence runs through consecutive pages by its nature.
@@ -52,8 +49,6 @@ _PLACE_TOLERANCE = 120
 # treated as furniture rather than as content that happens to repeat.
 _REPEAT_SHARE = 0.25
 _REPEAT_MINIMUM = 3
-# A section head only has to survive the turn of one page.
-_SECTION_RUN_MINIMUM = 2
 # A footnote marker measures about two thirds of the text it annotates. The
 # corpus shows markers at 0.65 and nothing at all between there and 0.8.
 _SUPERSCRIPT_RATIO = 0.72
@@ -101,7 +96,6 @@ class DocumentProfile:
     """Which lines are furniture on which page, and the ordinary glyph height."""
 
     labels: dict[int, frozenset[str]]
-    section_heads: dict[int, frozenset[str]]
     page_numbers: dict[int, frozenset[tuple[str, int]]]
     glyph_heights: dict[int, float]
     typical_glyph_height: float
@@ -113,8 +107,6 @@ class DocumentProfile:
             return PAGE_FURNITURE
         if (" ".join(text.split()), _place(top)) in self.page_numbers.get(page_index, frozenset()):
             return PAGE_FURNITURE
-        if key in self.section_heads.get(page_index, frozenset()):
-            return RUNNING_SECTION_HEAD
         return ""
 
     def is_superscript(self, page_index: int, height: float) -> bool:
@@ -124,7 +116,7 @@ class DocumentProfile:
 
 
 EMPTY_PROFILE = DocumentProfile(
-    labels={}, section_heads={}, page_numbers={}, glyph_heights={}, typical_glyph_height=0.0
+    labels={}, page_numbers={}, glyph_heights={}, typical_glyph_height=0.0
 )
 
 
@@ -238,53 +230,6 @@ def _edge_matter(texts: list[str], candidates: set[str]) -> set[int]:
     }
 
 
-def _section_heads(
-    page_lines: dict[int, list[str]],
-    labels: dict[int, frozenset[str]],
-    candidates: set[str],
-) -> dict[int, set[str]]:
-    """Heads that repeat across a run of pages, once the labels are set aside.
-
-    A section head names the section it continues, so it changes as the document
-    moves on: it is never document-wide, and it earns its place by surviving the
-    turn of a page at the top of the next one.
-    """
-    remaining = {
-        page: [text for text in texts if skeleton(text) not in labels.get(page, frozenset())]
-        for page, texts in page_lines.items()
-    }
-    topmost = {page: skeleton(texts[0]) for page, texts in remaining.items() if texts}
-
-    heads: dict[int, set[str]] = defaultdict(set)
-    # A continuation marker says outright that the line is a running head, so it
-    # needs no run behind it -- only the position.
-    for page, texts in remaining.items():
-        for text in texts:
-            if _CONTINUED.search(text) and skeleton(text) == topmost.get(page):
-                heads[page].add(skeleton(text))
-
-    seen: dict[str, list[int]] = defaultdict(list)
-    for page, texts in remaining.items():
-        for text in texts:
-            key = skeleton(text)
-            if key in candidates:
-                seen[key].append(page)
-    for key, pages in seen.items():
-        ordered = sorted(set(pages))
-        run: list[int] = []
-        for page in ordered + [None]:  # type: ignore[list-item]
-            if run and page is not None and page == run[-1] + 1:
-                run.append(page)
-                continue
-            if len(run) >= _SECTION_RUN_MINIMUM and all(
-                topmost.get(later) == key for later in run[1:]
-            ):
-                for member in run:
-                    heads[member].add(key)
-            run = [] if page is None else [page]
-    return heads
-
-
 def build_document_profile(
     lines: list[tuple[int, str, float]],
     glyph_heights: dict[int, list[float]],
@@ -322,7 +267,6 @@ def build_document_profile(
         if keys:
             labels[page] = frozenset(keys)
 
-    heads = _section_heads(ordered, labels, candidates - document_wide)
     typical = {
         page: median(heights)
         for page, heights in glyph_heights.items()
@@ -331,7 +275,6 @@ def build_document_profile(
     everything = [height for heights in glyph_heights.values() for height in heights]
     return DocumentProfile(
         labels=labels,
-        section_heads={page: frozenset(keys) for page, keys in heads.items() if keys},
         page_numbers={page: frozenset(found) for page, found in numbers.items() if found},
         glyph_heights=typical,
         typical_glyph_height=median(everything) if everything else 0.0,

@@ -2,15 +2,25 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "http://doculink.dev/schemas/fs-values/1",
   "title": "DocuLink Financial Statement Values v1",
-  "description": "Financial numbers, percentages and dates detected from text geometry. Coordinates use normalized displayed-page, top-left-origin 0–1 space.",
+  "description": "Financial numbers, percentages, dates, and structured financial-statement notes detected from text geometry. Coordinates use normalized displayed-page, top-left-origin 0–1 space.",
   "type": "object",
-  "required": ["version", "coordinateSpace", "detectorVersion", "documentContext", "pages"],
+  "required": ["version", "coordinateSpace", "detectorVersion", "documentContext", "notes", "noteReferences", "pages"],
   "additionalProperties": false,
   "properties": {
     "version": { "const": 1 },
     "coordinateSpace": { "const": "normalized" },
     "detectorVersion": { "type": "string", "minLength": 1 },
     "documentContext": { "$ref": "#/definitions/Context" },
+    "notes": {
+      "type": "array",
+      "description": "Canonical document-level footnote catalogue. One item is emitted per normalized note identifier; continuation headings are occurrences of the same note, never duplicate catalogue entries.",
+      "items": { "$ref": "#/definitions/Note" }
+    },
+    "noteReferences": {
+      "type": "array",
+      "description": "Narrative citations linked to the canonical note catalogue. A citation naming several notes produces one reference per identifier, sharing the source text and bounds.",
+      "items": { "$ref": "#/definitions/NoteReference" }
+    },
     "pages": { "type": "array", "items": { "$ref": "#/definitions/PageValues" } }
   },
   "definitions": {
@@ -66,25 +76,78 @@
         "bounds": { "$ref": "#/definitions/Bounds" }
       }
     },
+    "NoteHeader": {
+      "type": "object",
+      "description": "One physical occurrence of a complete note heading. A continuation occurrence remains attached to the canonical note rather than creating a second catalogue item.",
+      "required": ["id", "pageIndex", "text", "bounds", "continuation"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "pageIndex": { "type": "integer", "minimum": 0 },
+        "text": { "type": "string", "minLength": 1 },
+        "bounds": { "$ref": "#/definitions/Bounds" },
+        "continuation": { "type": "boolean" },
+        "segments": {
+          "type": "array",
+          "minItems": 2,
+          "description": "Physical lines of a wrapped heading, in reading order. bounds encloses all segments on the page.",
+          "items": { "$ref": "#/definitions/ValueSegment" }
+        }
+      }
+    },
+    "Note": {
+      "type": "object",
+      "description": "One canonical financial-statement note, keyed by a normalized integer, decimal or Roman-numeral identifier.",
+      "required": ["id", "identifier", "description", "headers"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "identifier": { "type": "string", "minLength": 1 },
+        "description": { "type": "string", "description": "Canonical heading description without the Note identifier or continuation marker. Empty only when no heading supplies one." },
+        "headers": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/definitions/NoteHeader" }
+        }
+      }
+    },
+    "NoteReference": {
+      "type": "object",
+      "description": "One note identifier cited by narrative text and linked to its canonical catalogue entry.",
+      "required": ["id", "noteId", "identifier", "description", "pageIndex", "text", "bounds", "descriptionPresent"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "noteId": { "type": "string", "minLength": 1 },
+        "identifier": { "type": "string", "minLength": 1 },
+        "description": { "type": "string", "description": "Canonical description resolved from the note catalogue." },
+        "pageIndex": { "type": "integer", "minimum": 0 },
+        "text": { "type": "string", "minLength": 1, "description": "The complete citation as printed, including an explicit description when present." },
+        "bounds": { "$ref": "#/definitions/Bounds" },
+        "descriptionPresent": { "type": "boolean", "description": "True when the printed citation supplied a description; false when description was resolved only from the catalogue." },
+        "sourceDescription": { "type": "string", "minLength": 1, "description": "Description printed in the citation. Present only when descriptionPresent is true." }
+      }
+    },
     "NoiseValue": {
       "type": "object",
-      "description": "A span that was recognized as a value and then ruled out. Never a click target: page numbers, phone digits, statute years and footnote markers all read as well-formed values, and this records the ones the detector refused along with the rule that refused them. Carried so the viewer's noise debug view can show what was discarded and why.",
+      "description": "A text span classified as non-linkable diagnostic noise. Most entries are recognized values later refused by evidence, while structured note headings and references are captured as complete text spans. Noise is never a click target.",
       "required": ["id", "kind", "text", "bounds", "reason"],
       "additionalProperties": false,
       "properties": {
         "id": { "type": "string", "minLength": 1 },
-        "kind": { "type": "string", "enum": ["number", "percent", "date"] },
+        "kind": { "type": "string", "enum": ["number", "percent", "date", "text"] },
         "text": { "type": "string", "minLength": 1 },
         "bounds": { "$ref": "#/definitions/Bounds" },
         "reason": {
           "type": "string",
-          "description": "Which rule refused the span. The first three are refused by the recognizer, because the token could never have been a value; the rest are well-formed values that a rule objected to. A new reason is added here before it is implemented.",
+          "description": "The classification group for this noise span. A new group is added here before it is implemented.",
           "enum": [
             "identifier",
             "alphanumeric",
             "partial-token",
             "page-furniture",
-            "running-section-head",
+            "note-header",
+            "note-reference",
             "phone-context",
             "identifier-context",
             "superscript",
@@ -103,7 +166,7 @@
         "values": { "type": "array", "items": { "$ref": "#/definitions/FinancialValue" } },
         "noise": {
           "type": "array",
-          "description": "Recognized spans this page refused. Absent or empty when nothing was refused. These are diagnostics, not values — no consumer may treat them as linkable.",
+          "description": "Text spans this page classified as noise. Absent or empty when nothing was refused or classified. These are diagnostics, not values — no consumer may treat them as linkable.",
           "items": { "$ref": "#/definitions/NoiseValue" }
         }
       }

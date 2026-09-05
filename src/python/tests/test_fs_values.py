@@ -298,51 +298,171 @@ class PageFurnitureTests(unittest.TestCase):
         self.assertEqual(published, ["4,058.00"] * 4)
 
 
-class SectionHeadTests(unittest.TestCase):
-    """A head that carries over the turn of a page, once the labels are aside."""
+class NoteDetectionTests(unittest.TestCase):
+    def test_full_note_headers_build_a_catalog_and_are_noise(self) -> None:
+        model = detect_fs_values(_geometry([
+            _line("Note 12 — Income Taxes", y=0.10, line_index=0),
+            _line("NOTE IV. Fair Value Measurements", y=0.10, line_index=0),
+            _line("Note 3.1: Revenue Recognition", y=0.10, line_index=0),
+        ]))
 
-    @staticmethod
-    def _document(heads: dict[int, str], pages: int = 16) -> list[list[dict]]:
-        """A label on every page, body on every page, heads where asked.
+        self.assertEqual(
+            [(note["identifier"], note["description"]) for note in model["notes"]],
+            [
+                ("12", "Income Taxes"),
+                ("IV", "Fair Value Measurements"),
+                ("3.1", "Revenue Recognition"),
+            ],
+        )
+        self.assertEqual(
+            [page["noise"][0]["text"] for page in model["pages"]],
+            [
+                "Note 12 — Income Taxes",
+                "NOTE IV. Fair Value Measurements",
+                "Note 3.1: Revenue Recognition",
+            ],
+        )
+        self.assertEqual(
+            {page["noise"][0]["reason"] for page in model["pages"]},
+            {"note-header"},
+        )
+        self.assertTrue(all(page["noise"][0]["kind"] == "text" for page in model["pages"]))
+        self.assertTrue(all(not page["values"] for page in model["pages"]))
 
-        The label sits above the head, so "top" cannot mean the first line on
-        the page -- it has to mean the first line that is not already furniture.
-        """
-        document = []
-        for index in range(pages):
-            characters = _line("Acme Corp Annual Report", y=0.04, line_index=0)
-            if index in heads:
-                characters += _line(heads[index], y=0.12, line_index=1)
-            characters += _line(f"Revenue of 1,{index}00 in the period", y=0.40, line_index=2)
-            document.append(characters)
-        return document
+    def test_numbered_headers_without_note_are_scoped_to_a_notes_section(self) -> None:
+        model = detect_fs_values(_geometry([[
+            *_line("NOTES TO CONSOLIDATED FINANCIAL STATEMENTS", y=0.05, line_index=0),
+            *_line("1 Description of the Business", y=0.10, line_index=1),
+            *_line("2025. The adoption did not affect the statements", y=0.20, line_index=2),
+            *_line("2 Summary of Significant Accounting Policies", y=0.30, line_index=3),
+        ]]))
 
-    def test_a_head_repeated_over_a_run_is_refused(self) -> None:
-        heads = {4: "Note 12 Income Taxes", 5: "Note 12 Income Taxes", 6: "Note 12 Income Taxes"}
-        published, refused, _ = _detect(self._document(heads))
-        self.assertNotIn("12", published)
-        self.assertIn("running-section-head", {item["reason"] for item in refused})
+        self.assertEqual(
+            [(note["identifier"], note["description"]) for note in model["notes"]],
+            [
+                ("1", "Description of the Business"),
+                ("2", "Summary of Significant Accounting Policies"),
+            ],
+        )
 
-    def test_a_head_that_changes_every_page_is_content(self) -> None:
-        heads = {4: "Note 12 Income Taxes", 5: "Note 13 Leases", 6: "Note 14 Debt"}
-        published, refused, _ = _detect(self._document(heads))
-        self.assertNotIn("running-section-head", {item["reason"] for item in refused})
-        self.assertEqual([t for t in published if t in {"12", "13", "14"}], ["12", "13", "14"])
+        outside = detect_fs_values(_geometry([
+            _line("1 Description of the Business", y=0.10, line_index=0),
+        ]))
+        self.assertEqual(outside["notes"], [])
 
-    def test_a_continuation_marker_carries_a_head_on_its_own(self) -> None:
-        heads = {4: "Note 12 Income Taxes", 5: "Note 12 Income Taxes (continued)"}
-        _, refused, _ = _detect(self._document(heads))
-        self.assertIn("running-section-head", {item["reason"] for item in refused})
+    def test_a_bare_heading_split_across_source_lines_is_reassembled(self) -> None:
+        model = detect_fs_values(_geometry([[
+            *_line("NOTES TO CONSOLIDATED FINANCIAL STATEMENTS", y=0.05, line_index=0),
+            *_line("2.", y=0.10, line_index=1, height=0.020, x=0.08),
+            *_line("Summary of Significant Accounting Policies", y=0.103, line_index=2, x=0.12),
+        ]]))
 
-    def test_a_head_below_the_body_is_not_a_head(self) -> None:
-        document = []
-        for index in range(16):
-            characters = _line(f"Revenue of 1,{index}00 in the period", y=0.10, line_index=0)
-            if index in (4, 5, 6):
-                characters += _line("Note 12 Income Taxes", y=0.60, line_index=1)
-            document.append(characters)
-        _, refused, _ = _detect(document)
-        self.assertNotIn("running-section-head", {item["reason"] for item in refused})
+        self.assertEqual(model["notes"][0]["identifier"], "2")
+        self.assertEqual(model["notes"][0]["description"], "Summary of Significant Accounting Policies")
+        self.assertEqual(model["notes"][0]["headers"][0]["text"], "2. Summary of Significant Accounting Policies")
+
+    def test_explicit_note_headings_disable_a_competing_bare_number_system(self) -> None:
+        model = detect_fs_values(_geometry([[
+            *_line("NOTES TO CONSOLIDATED FINANCIAL STATEMENTS", y=0.05, line_index=0),
+            *_line("Note 8 — Leases", y=0.10, line_index=1),
+            *_line("8-K", y=0.20, line_index=2),
+            *_line("220-40: Disaggregation of Income Statement Expenses", y=0.30, line_index=3),
+        ]]))
+
+        self.assertEqual(
+            [(note["identifier"], note["description"]) for note in model["notes"]],
+            [("8", "Leases")],
+        )
+
+    def test_continuation_heading_attaches_to_the_existing_note(self) -> None:
+        model = detect_fs_values(_geometry([
+            _line("Note 6. Fair Value Measurements", y=0.10, line_index=0),
+            _line("Note 6. Fair Value Measurements (Continued)", y=0.10, line_index=0),
+            _line("Note 6 (continued)", y=0.10, line_index=0),
+        ]))
+
+        self.assertEqual(len(model["notes"]), 1)
+        note = model["notes"][0]
+        self.assertEqual(note["identifier"], "6")
+        self.assertEqual(note["description"], "Fair Value Measurements")
+        self.assertEqual(
+            [header["continuation"] for header in note["headers"]],
+            [False, True, True],
+        )
+
+    def test_a_wrapped_heading_is_stored_as_one_complete_heading(self) -> None:
+        model = detect_fs_values(_geometry([[
+            *_line("Note 2 — Summary of Significant", y=0.10, line_index=0),
+            *_line("Accounting Policies", y=0.118, line_index=1, x=0.08),
+            *_line("The Company recognizes revenue when control transfers.", y=0.18, line_index=2),
+        ]]))
+
+        header = model["notes"][0]["headers"][0]
+        self.assertEqual(
+            header["text"],
+            "Note 2 — Summary of Significant Accounting Policies",
+        )
+        self.assertEqual(model["notes"][0]["description"], "Summary of Significant Accounting Policies")
+        self.assertEqual(len(header["segments"]), 2)
+
+    def test_a_following_body_subhead_is_not_part_of_the_note_heading(self) -> None:
+        model = detect_fs_values(_geometry([[
+            *_line("Note 2 — Revenue", y=0.10, line_index=0),
+            *_line("Revenue Recognition", y=0.118, line_index=1),
+        ]]))
+
+        header = model["notes"][0]["headers"][0]
+        self.assertEqual(header["text"], "Note 2 — Revenue")
+        self.assertNotIn("segments", header)
+
+    def test_narrative_references_resolve_descriptions_from_the_catalog(self) -> None:
+        model = detect_fs_values(_geometry([
+            [
+                *_line("Note 7 — Income Taxes", y=0.10, line_index=0),
+                *_line("Note 3.1 — Revenue Recognition", y=0.20, line_index=1),
+                *_line("Note IV — Fair Value", y=0.30, line_index=2),
+            ],
+            [
+                *_line("See Note 7 for details.", y=0.10, line_index=0),
+                *_line("Refer to Note 7, “Income Taxes” for more information.", y=0.20, line_index=1),
+                *_line("The policies in Notes 3.1 and IV apply.", y=0.30, line_index=2),
+            ],
+        ]))
+
+        references = model["noteReferences"]
+        self.assertEqual(
+            [(reference["identifier"], reference["description"]) for reference in references],
+            [
+                ("7", "Income Taxes"),
+                ("7", "Income Taxes"),
+                ("3.1", "Revenue Recognition"),
+                ("IV", "Fair Value"),
+            ],
+        )
+        self.assertFalse(references[0]["descriptionPresent"])
+        self.assertTrue(references[1]["descriptionPresent"])
+        self.assertEqual(references[1]["sourceDescription"], "Income Taxes")
+        self.assertEqual(references[2]["text"], "Notes 3.1 and IV")
+        self.assertEqual(references[2]["bounds"], references[3]["bounds"])
+        reference_noise = [
+            item
+            for item in model["pages"][1]["noise"]
+            if item["reason"] == "note-reference"
+        ]
+        self.assertEqual(len(reference_noise), 3)
+        self.assertTrue(all(item["kind"] == "text" for item in reference_noise))
+        self.assertNotIn("7", [value["text"] for value in model["pages"][1]["values"]])
+
+    def test_sentence_starting_with_a_note_reference_is_not_a_header(self) -> None:
+        model = detect_fs_values(_geometry([[
+            *_line("Note 12 — Income Taxes", y=0.10, line_index=0),
+            *_line("Note 12 describes the uncertain tax positions.", y=0.30, line_index=1),
+        ]]))
+
+        self.assertEqual(len(model["notes"]), 1)
+        self.assertEqual(len(model["notes"][0]["headers"]), 1)
+        self.assertEqual(len(model["noteReferences"]), 1)
+        self.assertEqual(model["noteReferences"][0]["text"], "Note 12")
 
 
 if __name__ == "__main__":

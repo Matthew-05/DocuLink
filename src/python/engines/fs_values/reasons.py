@@ -14,7 +14,8 @@ PARTIAL_TOKEN = "partial-token"
 
 # Refused by the evidence stage: a well-formed value that a rule objected to.
 PAGE_FURNITURE = "page-furniture"
-RUNNING_SECTION_HEAD = "running-section-head"
+NOTE_HEADER = "note-header"
+NOTE_REFERENCE = "note-reference"
 PHONE_CONTEXT = "phone-context"
 IDENTIFIER_CONTEXT = "identifier-context"
 SUPERSCRIPT = "superscript"
@@ -25,7 +26,8 @@ REASONS = (
     ALPHANUMERIC,
     PARTIAL_TOKEN,
     PAGE_FURNITURE,
-    RUNNING_SECTION_HEAD,
+    NOTE_HEADER,
+    NOTE_REFERENCE,
     PHONE_CONTEXT,
     IDENTIFIER_CONTEXT,
     SUPERSCRIPT,

@@ -1,4 +1,5 @@
 export type FsValueKind = "number" | "percent" | "date";
+export type FsNoiseKind = FsValueKind | "text";
 
 export interface FsValueBounds {
   x: number;
@@ -37,7 +38,8 @@ export type FsNoiseReason =
   | "alphanumeric"
   | "partial-token"
   | "page-furniture"
-  | "running-section-head"
+  | "note-header"
+  | "note-reference"
   | "phone-context"
   | "identifier-context"
   | "superscript"
@@ -50,10 +52,38 @@ export type FsNoiseReason =
  */
 export interface FsNoiseValue {
   id: string;
-  kind: FsValueKind;
+  kind: FsNoiseKind;
   text: string;
   bounds: FsValueBounds;
   reason: FsNoiseReason;
+}
+
+export interface FsNoteHeader {
+  id: string;
+  pageIndex: number;
+  text: string;
+  bounds: FsValueBounds;
+  continuation: boolean;
+  segments?: FsValueSegment[];
+}
+
+export interface FsNote {
+  id: string;
+  identifier: string;
+  description: string;
+  headers: FsNoteHeader[];
+}
+
+export interface FsNoteReference {
+  id: string;
+  noteId: string;
+  identifier: string;
+  description: string;
+  pageIndex: number;
+  text: string;
+  bounds: FsValueBounds;
+  descriptionPresent: boolean;
+  sourceDescription?: string;
 }
 
 export interface PageFsValues {
@@ -68,6 +98,8 @@ export interface FsValues {
   coordinateSpace: "normalized";
   detectorVersion: string;
   documentContext: FsValueContext;
+  notes: FsNote[];
+  noteReferences: FsNoteReference[];
   pages: PageFsValues[];
 }
 
@@ -76,7 +108,8 @@ const NOISE_REASONS = new Set<string>([
   "alphanumeric",
   "partial-token",
   "page-furniture",
-  "running-section-head",
+  "note-header",
+  "note-reference",
   "phone-context",
   "identifier-context",
   "superscript",
@@ -157,17 +190,82 @@ function parseValue(value: unknown): FinancialValue | null {
 function parseNoise(value: unknown): FsNoiseValue | null {
   if (!isRecord(value)) return null;
   if (typeof value.id !== "string" || value.id.length === 0) return null;
-  if (value.kind !== "number" && value.kind !== "percent" && value.kind !== "date") return null;
+  if (value.kind !== "number" && value.kind !== "percent" && value.kind !== "date" && value.kind !== "text") return null;
   if (typeof value.text !== "string" || value.text.length === 0) return null;
   if (typeof value.reason !== "string" || !NOISE_REASONS.has(value.reason)) return null;
   const bounds = parseBounds(value.bounds);
   if (!bounds) return null;
   return {
     id: value.id,
-    kind: value.kind,
+    kind: value.kind as FsNoiseKind,
     text: value.text,
     bounds,
     reason: value.reason as FsNoiseReason,
+  };
+}
+
+function parseNoteHeader(value: unknown): FsNoteHeader | null {
+  if (!isRecord(value)) return null;
+  if (typeof value.id !== "string" || value.id.length === 0) return null;
+  if (!Number.isInteger(value.pageIndex) || (value.pageIndex as number) < 0) return null;
+  if (typeof value.text !== "string" || value.text.length === 0) return null;
+  if (typeof value.continuation !== "boolean") return null;
+  const bounds = parseBounds(value.bounds);
+  if (!bounds) return null;
+  const parsed: FsNoteHeader = {
+    id: value.id,
+    pageIndex: value.pageIndex as number,
+    text: value.text,
+    bounds,
+    continuation: value.continuation,
+  };
+  if (Array.isArray(value.segments)) {
+    const segments = value.segments.map(parseSegment).filter((entry): entry is FsValueSegment => entry !== null);
+    if (segments.length >= 2) parsed.segments = segments;
+  }
+  return parsed;
+}
+
+function parseNote(value: unknown): FsNote | null {
+  if (!isRecord(value)) return null;
+  if (typeof value.id !== "string" || value.id.length === 0) return null;
+  if (typeof value.identifier !== "string" || value.identifier.length === 0) return null;
+  if (typeof value.description !== "string" || !Array.isArray(value.headers)) return null;
+  const headers = value.headers
+    .map(parseNoteHeader)
+    .filter((entry): entry is FsNoteHeader => entry !== null);
+  if (headers.length === 0) return null;
+  return {
+    id: value.id,
+    identifier: value.identifier,
+    description: value.description,
+    headers,
+  };
+}
+
+function parseNoteReference(value: unknown): FsNoteReference | null {
+  if (!isRecord(value)) return null;
+  if (typeof value.id !== "string" || value.id.length === 0) return null;
+  if (typeof value.noteId !== "string" || value.noteId.length === 0) return null;
+  if (typeof value.identifier !== "string" || value.identifier.length === 0) return null;
+  if (typeof value.description !== "string") return null;
+  if (!Number.isInteger(value.pageIndex) || (value.pageIndex as number) < 0) return null;
+  if (typeof value.text !== "string" || value.text.length === 0) return null;
+  if (typeof value.descriptionPresent !== "boolean") return null;
+  if (value.sourceDescription !== undefined && (typeof value.sourceDescription !== "string" || value.sourceDescription.length === 0)) return null;
+  if (value.descriptionPresent && typeof value.sourceDescription !== "string") return null;
+  const bounds = parseBounds(value.bounds);
+  if (!bounds) return null;
+  return {
+    id: value.id,
+    noteId: value.noteId,
+    identifier: value.identifier,
+    description: value.description,
+    pageIndex: value.pageIndex as number,
+    text: value.text,
+    bounds,
+    descriptionPresent: value.descriptionPresent,
+    ...(typeof value.sourceDescription === "string" ? { sourceDescription: value.sourceDescription } : {}),
   };
 }
 
@@ -175,9 +273,19 @@ export function parseFsValues(value: unknown): FsValues {
   if (!isRecord(value) || value.version !== 1 || value.coordinateSpace !== "normalized") {
     throw new Error("Unsupported fs-values payload");
   }
-  if (typeof value.detectorVersion !== "string" || !Array.isArray(value.pages)) {
+  if (
+    typeof value.detectorVersion !== "string"
+    || !Array.isArray(value.notes)
+    || !Array.isArray(value.noteReferences)
+    || !Array.isArray(value.pages)
+  ) {
     throw new Error("Malformed fs-values payload");
   }
+  const notes = value.notes.map(parseNote).filter((entry): entry is FsNote => entry !== null);
+  const noteIds = new Set(notes.map((note) => note.id));
+  const noteReferences = value.noteReferences
+    .map(parseNoteReference)
+    .filter((entry): entry is FsNoteReference => entry !== null && noteIds.has(entry.noteId));
   const pages: PageFsValues[] = [];
   for (const page of value.pages) {
     if (!isRecord(page) || !Number.isInteger(page.pageIndex) || (page.pageIndex as number) < 0 || !Array.isArray(page.values)) continue;
@@ -195,6 +303,8 @@ export function parseFsValues(value: unknown): FsValues {
     coordinateSpace: "normalized",
     detectorVersion: value.detectorVersion,
     documentContext: parseContext(value.documentContext),
+    notes,
+    noteReferences,
     pages,
   };
 }

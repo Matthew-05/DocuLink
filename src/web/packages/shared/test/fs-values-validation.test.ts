@@ -8,6 +8,8 @@ test("validates fs-values and drops malformed individual values", () => {
     coordinateSpace: "normalized",
     detectorVersion: "test",
     documentContext: { currency: "USD" },
+    notes: [],
+    noteReferences: [],
     pages: [{
       pageIndex: 0,
       context: { scale: 1000000 },
@@ -27,6 +29,8 @@ test("validates magnitude values with split click segments", () => {
     coordinateSpace: "normalized",
     detectorVersion: "test",
     documentContext: {},
+    notes: [],
+    noteReferences: [],
     pages: [{
       pageIndex: 0,
       context: {},
@@ -55,6 +59,8 @@ test("parses page noise and drops entries with an unknown reason", () => {
     coordinateSpace: "normalized",
     detectorVersion: "test",
     documentContext: {},
+    notes: [],
+    noteReferences: [],
     pages: [{
       pageIndex: 0,
       context: {},
@@ -76,7 +82,49 @@ test("defaults noise to empty when a page omits it", () => {
     coordinateSpace: "normalized",
     detectorVersion: "test",
     documentContext: {},
+    notes: [],
+    noteReferences: [],
     pages: [{ pageIndex: 0, context: {}, values: [] }],
   });
   assert.deepEqual(parsed.pages[0]?.noise, []);
+});
+
+test("parses canonical notes, continuation headers, and resolved references", () => {
+  const bounds = { x: 0.1, y: 0.1, width: 0.2, height: 0.02 };
+  const parsed = parseFsValues({
+    version: 1,
+    coordinateSpace: "normalized",
+    detectorVersion: "test",
+    documentContext: {},
+    notes: [{
+      id: "fs-note-0",
+      identifier: "IV",
+      description: "Income Taxes",
+      headers: [
+        { id: "h0", pageIndex: 2, text: "Note IV — Income Taxes", bounds, continuation: false },
+        { id: "h1", pageIndex: 3, text: "Note IV (continued)", bounds, continuation: true },
+      ],
+    }],
+    noteReferences: [{
+      id: "r0",
+      noteId: "fs-note-0",
+      identifier: "IV",
+      description: "Income Taxes",
+      pageIndex: 1,
+      text: "Note IV",
+      bounds,
+      descriptionPresent: false,
+    }],
+    pages: [{
+      pageIndex: 1,
+      context: {},
+      values: [],
+      noise: [{ id: "n0", kind: "text", text: "Note IV", bounds, reason: "note-reference" }],
+    }],
+  });
+
+  assert.equal(parsed.notes[0]?.headers[1]?.continuation, true);
+  assert.equal(parsed.noteReferences[0]?.description, "Income Taxes");
+  assert.equal(parsed.noteReferences[0]?.descriptionPresent, false);
+  assert.equal(parsed.pages[0]?.noise[0]?.kind, "text");
 });

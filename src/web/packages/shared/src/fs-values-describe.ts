@@ -5,7 +5,13 @@
  * in Python and are not restated here: a value is described by the fields it
  * carries, never by re-deriving why it carries them.
  */
-import type { FinancialValue, FsNoiseReason, FsNoiseValue } from "./fs-values-decoder.js";
+import type {
+  FinancialValue,
+  FsNoiseReason,
+  FsNoiseValue,
+  FsNote,
+  FsNoteHeader,
+} from "./fs-values-decoder.js";
 import type { HoverTipContent } from "./hover-tip.js";
 
 /** What each suppressor objected to, in the reader's words. */
@@ -13,7 +19,8 @@ const NOISE_EXPLANATIONS: Readonly<Record<FsNoiseReason, string>> = {
   "identifier": "Part of a joined identifier \u2014 a form, file or phone number",
   "alphanumeric": "Part of a token mixing letters and digits",
   "partial-token": "A token that held a figure but did not parse in full",
-  "running-section-head": "A heading repeated at the top of a run of pages",
+  "note-header": "A complete financial-statement note heading",
+  "note-reference": "A narrative citation linked to a financial-statement note",
   "page-furniture": "On a running header or footer, repeated across pages",
   "phone-context": "Inside a phone number",
   "identifier-context": "Follows a label that introduces a reference number",
@@ -45,6 +52,26 @@ export function describeFsNoise(entry: FsNoiseValue): HoverTipContent {
     fields: [
       { name: "recognized as", value: entry.kind },
       { name: "id", value: entry.id },
+    ],
+  };
+}
+
+/** Describe a note-heading noise span using its canonical note metadata. */
+export function describeFsNoteHeader(
+  entry: FsNoiseValue,
+  note: FsNote,
+  header: FsNoteHeader,
+): HoverTipContent {
+  return {
+    key: entry.id,
+    variant: entry.reason,
+    label: entry.reason,
+    detail: NOISE_EXPLANATIONS[entry.reason],
+    code: entry.text,
+    fields: [
+      { name: "note number", value: note.identifier },
+      { name: "note description", value: note.description || "Not provided" },
+      { name: "continuation", value: header.continuation ? "Yes" : "No" },
     ],
   };
 }

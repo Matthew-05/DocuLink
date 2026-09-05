@@ -10,7 +10,9 @@ from statistics import median
 
 from .context import context_for_text, document_context
 from .evidence import suppression_reason
+from .notes import NoteFragment, NoteLine, detect_notes
 from .profile import build_document_profile
+from .reasons import NOTE_HEADER, NOTE_REFERENCE
 from .spans import (
     RecognizedSpan,
     RejectedToken,
@@ -23,7 +25,7 @@ from .spans import (
 )
 
 
-DETECTOR_VERSION = "fs-values-detector-5"
+DETECTOR_VERSION = "fs-values-detector-6"
 
 
 def _line_characters(page: dict) -> list[list[dict]]:
@@ -125,6 +127,76 @@ def _span_height(start: int, end: int, source: list[dict | None]) -> float:
         if item is not None and str(item.get("char", "")).strip() and float(item.get("height", 0)) > 0
     ]
     return median(heights) if heights else 0.0
+
+
+def _line_left(source: list[dict | None]) -> float:
+    visible = [
+        item
+        for item in source
+        if item is not None and str(item.get("char", "")).strip()
+    ]
+    return min((float(item["x"]) for item in visible), default=0.0)
+
+
+def _line_right(source: list[dict | None]) -> float:
+    visible = [
+        item
+        for item in source
+        if item is not None and str(item.get("char", "")).strip()
+    ]
+    return max(
+        (float(item["x"]) + float(item.get("width", 0)) for item in visible),
+        default=0.0,
+    )
+
+
+def _line_median_width(source: list[dict | None]) -> float:
+    widths = [
+        float(item.get("width", 0))
+        for item in source
+        if item is not None
+        and str(item.get("char", "")).strip()
+        and float(item.get("width", 0)) > 0
+    ]
+    return median(widths) if widths else 0.005
+
+
+def _fragment_bounds(
+    fragment: NoteFragment,
+    flat_lines: list[tuple[int, str, list[dict | None], dict, float]],
+) -> dict | None:
+    _page_index, _text, source, _context, _top = flat_lines[fragment.line_index]
+    return _bounds(
+        TextFragment(fragment.start, fragment.end, ""),
+        source,
+    )
+
+
+def _fragments_text(
+    fragments: tuple[NoteFragment, ...],
+    flat_lines: list[tuple[int, str, list[dict | None], dict, float]],
+) -> str:
+    return " ".join(
+        flat_lines[fragment.line_index][1][fragment.start:fragment.end].strip()
+        for fragment in fragments
+    )
+
+
+def _enclosing_bounds(bounds: list[dict]) -> dict:
+    left = min(item["x"] for item in bounds)
+    top = min(item["y"] for item in bounds)
+    right = max(item["x"] + item["width"] for item in bounds)
+    bottom = max(item["y"] + item["height"] for item in bounds)
+    return {
+        "x": left,
+        "y": top,
+        "width": right - left,
+        "height": bottom - top,
+    }
+
+
+def _overlaps_ranges(start: int, end: int, ranges: list[tuple[int, int]]) -> bool:
+    return any(start < occupied_end and end > occupied_start for occupied_start, occupied_end in ranges)
 
 
 def _noise(kind: str, text: str, bounds: dict, identifier: str, reason: str) -> dict:
@@ -304,18 +376,128 @@ def detect_fs_values(geometry: dict, *, diagnostics: dict | None = None) -> dict
     values_by_page: dict[int, list[dict]] = {page_index: [] for page_index, _, _ in prepared}
     noise_by_page: dict[int, list[dict]] = {page_index: [] for page_index, _, _ in prepared}
     flat_lines: list[tuple[int, str, list[dict | None], dict, float]] = []
+    note_lines: list[NoteLine] = []
     profile_lines: list[tuple[int, str, float]] = []
     for (page_index, lines, _), page_context in zip(prepared, page_contexts):
         for text, source in lines:
             envelope = _line_envelope(source)
             top = envelope[0] if envelope is not None else 0.0
             flat_lines.append((page_index, text, source, page_context, top))
+            note_lines.append(
+                NoteLine(
+                    page_index,
+                    text,
+                    _line_left(source),
+                    _line_right(source),
+                    top,
+                    envelope[1] if envelope is not None else top,
+                    _line_median_width(source),
+                    envelope[2] if envelope is not None else 0.0,
+                )
+            )
             profile_lines.append((page_index, text, top))
     profile = build_document_profile(profile_lines, dict(glyph_heights))
+
+    note_detection = detect_notes(note_lines)
+    note_ids = {
+        note.identifier: f"fs-note-{index}"
+        for index, note in enumerate(note_detection.notes)
+    }
+    note_descriptions = {
+        note.identifier: note.description
+        for note in note_detection.notes
+    }
+    note_payloads: list[dict] = []
+    note_noise_by_line: dict[int, list[tuple[int, str, str, dict]]] = defaultdict(list)
+    note_occupied_by_line: dict[int, list[tuple[int, int]]] = defaultdict(list)
+
+    for note_index, note in enumerate(note_detection.notes):
+        headers: list[dict] = []
+        for header_index, header in enumerate(note.headers):
+            segment_bounds = [
+                bounds
+                for fragment in header.fragments
+                if (bounds := _fragment_bounds(fragment, flat_lines)) is not None
+            ]
+            if len(segment_bounds) != len(header.fragments):
+                continue
+            first_fragment = header.fragments[0]
+            page_index = flat_lines[first_fragment.line_index][0]
+            text = _fragments_text(header.fragments, flat_lines)
+            header_payload = {
+                "id": f"fsnh-n{note_index}-h{header_index}",
+                "pageIndex": page_index,
+                "text": text,
+                "bounds": _enclosing_bounds(segment_bounds),
+                "continuation": header.continuation,
+            }
+            if len(header.fragments) > 1:
+                header_payload["segments"] = [
+                    {
+                        "pageIndex": flat_lines[fragment.line_index][0],
+                        "text": flat_lines[fragment.line_index][1][fragment.start:fragment.end].strip(),
+                        "bounds": bounds,
+                    }
+                    for fragment, bounds in zip(header.fragments, segment_bounds)
+                ]
+            headers.append(header_payload)
+            note_noise_by_line[first_fragment.line_index].append(
+                (first_fragment.start, NOTE_HEADER, text, header_payload["bounds"])
+            )
+            for fragment in header.fragments:
+                note_occupied_by_line[fragment.line_index].append((fragment.start, fragment.end))
+        if headers:
+            note_payloads.append(
+                {
+                    "id": note_ids[note.identifier],
+                    "identifier": note.identifier,
+                    "description": note.description,
+                    "headers": headers,
+                }
+            )
+
+    note_reference_payloads: list[dict] = []
+    for occurrence_index, reference in enumerate(note_detection.references):
+        bounds = _fragment_bounds(reference.fragment, flat_lines)
+        if bounds is None:
+            continue
+        line_index = reference.fragment.line_index
+        page_index, line_text, _source, _context, _top = flat_lines[line_index]
+        text = line_text[reference.fragment.start:reference.fragment.end]
+        note_noise_by_line[line_index].append(
+            (reference.fragment.start, NOTE_REFERENCE, text, bounds)
+        )
+        note_occupied_by_line[line_index].append(
+            (reference.fragment.start, reference.fragment.end)
+        )
+        for identifier_index, identifier in enumerate(reference.identifiers):
+            payload = {
+                "id": f"fsnr-p{page_index}-r{occurrence_index}-n{identifier_index}",
+                "noteId": note_ids[identifier],
+                "identifier": identifier,
+                "description": note_descriptions[identifier],
+                "pageIndex": page_index,
+                "text": text,
+                "bounds": bounds,
+                "descriptionPresent": bool(reference.source_description),
+            }
+            if reference.source_description:
+                payload["sourceDescription"] = reference.source_description
+            note_reference_payloads.append(payload)
 
     wrapped_dates, wrapped_occupied = _wrapped_dates(flat_lines)
 
     for line_index, (page_index, text, source, page_context, top) in enumerate(flat_lines):
+        for _start, reason, note_text, bounds in sorted(
+            note_noise_by_line.get(line_index, []),
+            key=lambda item: item[0],
+        ):
+            page_noise = noise_by_page[page_index]
+            page_noise.append(
+                _noise("text", note_text, bounds, f"fsn-p{page_index}-n{len(page_noise)}", reason)
+            )
+            _count_rejection(diagnostics, reason)
+
         context = dict(page_context)
         inherited_currency = context.get("currency") or doc_context.get("currency", "")
         candidates: list[tuple[int, int, RecognizedSpan, dict, list[dict] | None]] = list(
@@ -323,13 +505,17 @@ def detect_fs_values(geometry: dict, *, diagnostics: dict | None = None) -> dict
         )
         unparsed: list[RejectedToken] = []
         for span in recognize_spans(text, rejected=unparsed):
-            if any(span.start < end and span.end > start for start, end in wrapped_occupied.get(line_index, [])):
+            if _overlaps_ranges(span.start, span.end, wrapped_occupied.get(line_index, [])):
+                continue
+            if _overlaps_ranges(span.start, span.end, note_occupied_by_line.get(line_index, [])):
                 continue
             bounds = _bounds(span, source)
             if bounds is None:
                 continue
             candidates.append((span.start, span.end, span, bounds, None))
         for token in unparsed:
+            if _overlaps_ranges(token.start, token.end, note_occupied_by_line.get(line_index, [])):
+                continue
             bounds = _bounds(token, source)
             if bounds is None:
                 continue
@@ -340,6 +526,8 @@ def detect_fs_values(geometry: dict, *, diagnostics: dict | None = None) -> dict
             _count_rejection(diagnostics, token.reason)
 
         for start, end, span, bounds, segments in sorted(candidates, key=lambda item: item[0]):
+            if _overlaps_ranges(start, end, note_occupied_by_line.get(line_index, [])):
+                continue
             reason = suppression_reason(
                 span,
                 line=text,
@@ -381,6 +569,8 @@ def detect_fs_values(geometry: dict, *, diagnostics: dict | None = None) -> dict
         "coordinateSpace": "normalized",
         "detectorVersion": DETECTOR_VERSION,
         "documentContext": doc_context,
+        "notes": note_payloads,
+        "noteReferences": note_reference_payloads,
         "pages": pages,
     }
 
