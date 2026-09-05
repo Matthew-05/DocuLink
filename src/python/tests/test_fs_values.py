@@ -730,3 +730,139 @@ class ItemDetectionTests(unittest.TestCase):
         item = next(item for item in model["items"] if item["identifier"] == "4")
         self.assertEqual(item["description"], "Mine Safety Disclosures")
         self.assertEqual(item["tocEntries"][0]["printedPage"], "18")
+
+
+def _marked_row(
+    marker: str,
+    body: str,
+    *,
+    y: float,
+    line_index: int,
+    marker_x: float = 0.03,
+    body_x: float = 0.15,
+) -> list[dict]:
+    """A list item as geometry delivers one: the ordinal alone in its own cell."""
+    return [
+        *_cell(marker, y=y, line_index=line_index, x=marker_x),
+        *_cell(body, y=y, line_index=line_index + 1, x=body_x),
+    ]
+
+
+def _marked_rows(rows: list[tuple[str, str]], *, start: float = 0.10) -> list[dict]:
+    characters: list[dict] = []
+    for index, (marker, body) in enumerate(rows):
+        characters.extend(
+            _marked_row(marker, body, y=start + index * 0.05, line_index=index * 2)
+        )
+    return characters
+
+
+class ListMarkerTests(unittest.TestCase):
+    """An ordinal that numbers a list item is not a quantity."""
+
+    def test_an_exhibit_column_is_refused_whole(self) -> None:
+        published, noise, _ = _detect([_marked_rows([
+            ("3.1", "Restated Articles of Incorporation"),
+            ("3.2", "Restated Bylaws of the Company"),
+            ("4.1", "Description of Registered Securities"),
+            ("10.1", "Incentive Compensation Plan"),
+        ])])
+        self.assertEqual(published, [])
+        self.assertEqual(
+            [(item["reason"], item["text"]) for item in noise],
+            [
+                ("list-marker", "3.1"),
+                ("list-marker", "3.2"),
+                ("list-marker", "4.1"),
+                ("list-marker", "10.1"),
+            ],
+        )
+
+    def test_a_column_that_only_ascends_stays_published(self) -> None:
+        """Ages beside job titles look identical until you ask how they step."""
+        published, _noise, _ = _detect([_marked_rows([
+            ("48", "Senior Vice President and Chief Financial Officer"),
+            ("50", "Chief Executive Officer of Web Services"),
+            ("54", "Senior Vice President of Business Development"),
+        ])])
+        self.assertEqual(published, ["48", "50", "54"])
+
+    def test_a_numbered_column_beside_figures_stays_published(self) -> None:
+        """A marker leads prose. A cell whose neighbour is a figure leads nothing."""
+        published, noise, _ = _detect([_marked_rows([
+            ("1", "2,400"),
+            ("2", "3,100"),
+            ("3", "4,800"),
+        ])])
+        self.assertEqual(
+            sorted(published), ["1", "2", "2,400", "3", "3,100", "4,800"]
+        )
+        self.assertEqual(noise, [])
+
+    def test_an_inline_enumeration_is_refused(self) -> None:
+        published, noise, _ = _detect([[
+            *_line("Our competitors include: (1) online retailers of", y=0.1, line_index=0),
+            *_line("physical goods; (2) publishers of digital media;", y=0.2, line_index=1),
+            *_line("and (3) providers of commerce services.", y=0.3, line_index=2),
+        ]])
+        self.assertEqual(published, [])
+        self.assertEqual(
+            [item["reason"] for item in noise], ["list-marker"] * 3
+        )
+
+
+class FootnoteTests(unittest.TestCase):
+    """A footnote's ordinal, and the indicator that points at it."""
+
+    @staticmethod
+    def _page() -> list[dict]:
+        return [
+            *_line("Number of Securities Underlying Options (1)", y=0.10, line_index=0),
+            *_line("Total compensation reported for the year (2)", y=0.16, line_index=1),
+            *_marked_row(
+                "(1)", "Amounts are stated before forfeitures", y=0.60, line_index=2
+            ),
+            *_marked_row(
+                "(2)", "Amounts include the retention bonus paid", y=0.66, line_index=4
+            ),
+            *_marked_row(
+                "(3)", "Amounts exclude the value of health cover", y=0.72, line_index=6
+            ),
+        ]
+
+    def test_a_footnote_block_and_its_indicators_are_refused(self) -> None:
+        published, noise, _ = _detect([self._page()])
+        self.assertEqual(published, [])
+        self.assertEqual(
+            sorted((item["reason"], item["text"]) for item in noise),
+            [
+                ("footnote-marker", "(1)"),
+                ("footnote-marker", "(2)"),
+                ("footnote-marker", "(3)"),
+                ("footnote-reference", "(1)"),
+                ("footnote-reference", "(2)"),
+            ],
+        )
+
+    def test_an_indicator_without_a_footnote_block_stays_published(self) -> None:
+        """Nothing may refuse a parenthesised figure on the strength of its shape."""
+        published, _noise, _ = _detect([[
+            *_line("Number of Securities Underlying Options (1)", y=0.10, line_index=0),
+        ]])
+        self.assertEqual(published, ["(1)"])
+
+    def test_a_bracketed_negative_in_a_column_survives_the_footnotes(self) -> None:
+        published, _noise, _ = _detect([[
+            *self._page(),
+            *_cell("Total state and local", y=0.30, line_index=8, x=0.03),
+            *_cell("(1)", y=0.30, line_index=9, x=0.70),
+            *_cell("(2)", y=0.36, line_index=10, x=0.70),
+        ]])
+        self.assertEqual(published, ["(1)", "(2)"])
+
+    def test_a_bracketed_percentage_is_never_a_marker(self) -> None:
+        published, _noise, _ = _detect([[
+            *self._page(),
+            *_line("Operating margin changed by (5)% over the year", y=0.24, line_index=8),
+        ]])
+        self.assertEqual(published, ["(5)%"])

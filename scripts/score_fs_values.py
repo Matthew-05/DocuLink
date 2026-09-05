@@ -39,6 +39,10 @@ _NON_VALUE_NOISE_REASONS = frozenset({
     "partial-token",
     "note-header",
     "note-reference",
+    # Whole printed spans, published as text rather than as a refused value: a
+    # heading or a list item carries whatever punctuation its sentence needs.
+    "list-marker",
+    "footnote-marker",
 })
 
 

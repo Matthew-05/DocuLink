@@ -12,6 +12,7 @@ from .context import context_for_text, document_context
 from .evidence import suppression_reason
 from .headings import Fragment, HeadingLine
 from .items import detect_items
+from .lists import detect_lists
 from .notes import detect_notes
 from .profile import build_document_profile
 from .reasons import (
@@ -33,7 +34,7 @@ from .spans import (
 )
 
 
-DETECTOR_VERSION = "fs-values-detector-7"
+DETECTOR_VERSION = "fs-values-detector-8"
 
 
 def _line_characters(page: dict) -> list[list[dict]]:
@@ -624,6 +625,26 @@ def detect_fs_values(
         if reference.source_description:
             payload["sourceDescription"] = reference.source_description
         item_reference_payloads.append(payload)
+
+    # Ordinal markers last, so a note or item heading that opens with a number
+    # keeps the classification its own detector gave it.
+    for marker in detect_lists(heading_lines).markers:
+        line_index = marker.fragment.line_index
+        if _overlaps_ranges(
+            marker.fragment.start,
+            marker.fragment.end,
+            heading_occupied_by_line.get(line_index, []),
+        ):
+            continue
+        bounds = _fragment_bounds(marker.fragment, flat_lines)
+        if bounds is None:
+            continue
+        heading_noise_by_line[line_index].append(
+            (marker.fragment.start, marker.reason, marker.text, bounds)
+        )
+        heading_occupied_by_line[line_index].append(
+            (marker.fragment.start, marker.fragment.end)
+        )
 
     wrapped_dates, wrapped_occupied = _wrapped_dates(flat_lines)
 

@@ -33,20 +33,35 @@ export interface FsValueContext {
   scale?: 1 | 1000 | 1000000 | 1000000000;
 }
 
-export type FsNoiseReason =
-  | "identifier"
-  | "alphanumeric"
-  | "partial-token"
-  | "page-furniture"
-  | "note-header"
-  | "note-reference"
-  | "item-header"
-  | "item-reference"
-  | "item-toc-entry"
-  | "phone-context"
-  | "identifier-context"
-  | "superscript"
-  | "citation-year";
+/**
+ * Every rule the detector may refuse a span with, mirroring the closed enum in
+ * `contracts/fs-values-v1.json`.
+ *
+ * The type is derived from this list rather than written out beside it. Held as
+ * two declarations they drift, and the drift is silent: a reason the compiler
+ * knows and the decoder does not is dropped by `parseNoise`, so the spans
+ * disappear from the overlay with nothing logged and no type error to catch it.
+ */
+export const FS_NOISE_REASONS = [
+  "identifier",
+  "alphanumeric",
+  "partial-token",
+  "page-furniture",
+  "note-header",
+  "note-reference",
+  "item-header",
+  "item-reference",
+  "item-toc-entry",
+  "list-marker",
+  "footnote-marker",
+  "footnote-reference",
+  "phone-context",
+  "identifier-context",
+  "superscript",
+  "citation-year",
+] as const;
+
+export type FsNoiseReason = (typeof FS_NOISE_REASONS)[number];
 
 /**
  * A span the detector recognized and then refused, with the rule that refused
@@ -143,21 +158,7 @@ export interface FsValues {
   pages: PageFsValues[];
 }
 
-const NOISE_REASONS = new Set<string>([
-  "identifier",
-  "alphanumeric",
-  "partial-token",
-  "page-furniture",
-  "note-header",
-  "note-reference",
-  "item-header",
-  "item-reference",
-  "item-toc-entry",
-  "phone-context",
-  "identifier-context",
-  "superscript",
-  "citation-year",
-]);
+const NOISE_REASONS = new Set<string>(FS_NOISE_REASONS);
 const CURRENCIES = new Set(["USD", "EUR", "GBP", "JPY", "CAD", "AUD", "CHF", "CNY", "INR", "KRW"]);
 const PRECISIONS = new Set(["day", "month", "quarter", "year"]);
 const DATE_ORDERS = new Set(["mdy", "dmy", "ymd", "ambiguous"]);

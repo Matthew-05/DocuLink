@@ -19,6 +19,9 @@ NOTE_REFERENCE = "note-reference"
 ITEM_HEADER = "item-header"
 ITEM_REFERENCE = "item-reference"
 ITEM_TOC_ENTRY = "item-toc-entry"
+LIST_MARKER = "list-marker"
+FOOTNOTE_MARKER = "footnote-marker"
+FOOTNOTE_REFERENCE = "footnote-reference"
 PHONE_CONTEXT = "phone-context"
 IDENTIFIER_CONTEXT = "identifier-context"
 SUPERSCRIPT = "superscript"
@@ -34,6 +37,9 @@ REASONS = (
     ITEM_HEADER,
     ITEM_REFERENCE,
     ITEM_TOC_ENTRY,
+    LIST_MARKER,
+    FOOTNOTE_MARKER,
+    FOOTNOTE_REFERENCE,
     PHONE_CONTEXT,
     IDENTIFIER_CONTEXT,
     SUPERSCRIPT,

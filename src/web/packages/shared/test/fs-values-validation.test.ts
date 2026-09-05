@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
-import { parseFsValues } from "../src/fs-values-decoder.ts";
+import { FS_NOISE_REASONS, parseFsValues } from "../src/fs-values-decoder.ts";
 
 test("validates fs-values and drops malformed individual values", () => {
   const parsed = parseFsValues({
@@ -218,4 +219,52 @@ test("parses filing items, contents rows, and resolved item references", () => {
   assert.equal(parsed.itemReferences.length, 1);
   assert.equal(parsed.itemReferences[0]?.itemId, "fs-item-0");
   assert.equal(parsed.pages[0]?.noise[0]?.reason, "item-toc-entry");
+});
+
+/**
+ * The decoder drops a noise span whose reason it does not recognize, and it
+ * does so silently -- which is how a reason added to the detector and the
+ * contract, but not here, made a whole overlay layer render nothing. The
+ * contract is the source of truth, so read it rather than restating it.
+ */
+test("the decoder accepts exactly the reasons the contract defines", async () => {
+  const contract = JSON.parse(
+    await readFile(
+      new URL("../../../../../contracts/fs-values-v1.json", import.meta.url),
+      "utf8",
+    ),
+  ) as { definitions: { NoiseValue: { properties: { reason: { enum: string[] } } } } };
+  assert.deepEqual(
+    [...FS_NOISE_REASONS].sort(),
+    [...contract.definitions.NoiseValue.properties.reason.enum].sort(),
+  );
+});
+
+test("every contract reason survives parsing", () => {
+  const parsed = parseFsValues({
+    version: 1,
+    coordinateSpace: "normalized",
+    detectorVersion: "test",
+    documentContext: {},
+    notes: [],
+    noteReferences: [],
+    items: [],
+    itemReferences: [],
+    pages: [{
+      pageIndex: 0,
+      context: {},
+      values: [],
+      noise: FS_NOISE_REASONS.map((reason, index) => ({
+        id: `noise-${index}`,
+        kind: "text",
+        text: reason,
+        bounds: { x: 0.1, y: 0.2, width: 0.1, height: 0.02 },
+        reason,
+      })),
+    }],
+  });
+  assert.deepEqual(
+    parsed.pages[0]?.noise.map((entry) => entry.reason),
+    [...FS_NOISE_REASONS],
+  );
 });
