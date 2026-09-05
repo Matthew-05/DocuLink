@@ -124,6 +124,12 @@
   pointer-events: none;
 }
 
+/* Required: the rule above sets `display`, which would otherwise beat the user
+   agent's `[hidden] { display: none }` and leave the tip on screen forever. */
+.fs-values-noise__tip[hidden] {
+  display: none;
+}
+
 .fs-values-noise__tip-reason {
   color: rgba(157, 23, 77, 0.95);
   font-weight: 600;

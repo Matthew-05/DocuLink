@@ -13,6 +13,9 @@ export class FsValuesOverlay {
   private _tipFor = "";
   private _tipWidth = 0;
   private _tipHeight = 0;
+  private _pointerX = 0;
+  private _pointerY = 0;
+  private _pointerKnown = false;
   private readonly _callbacks: Array<(pdfId: string, pageIndex: number, value: FinancialValue) => void> = [];
   private readonly _viewer: PdfViewer;
   private readonly _cache: FsValuesCache;
@@ -24,8 +27,23 @@ export class FsValuesOverlay {
     // The noise layer takes no pointer events, so a box cannot report its own
     // hover. One delegated listener hit-tests instead, which keeps the layer
     // inert: a rectangle drag begun over a noise box still reaches the page.
-    this._viewer.element.addEventListener("pointermove", this._onPointerMove);
-    this._viewer.element.addEventListener("pointerleave", this._hideTip);
+    //
+    // It listens on the document rather than on the viewer, so that moving onto
+    // the toolbar, a panel, or anything else layered over the page still runs a
+    // hit test and closes the tip. Everything below covers a way the pointer can
+    // stop producing moves while a tip is open. These are page-lifetime: the app
+    // mounts once, and the host tears down the whole document to reload it.
+    document.addEventListener("pointermove", this._onPointerMove);
+    // The pointer left the window: to Excel's grid, or another application.
+    document.documentElement.addEventListener("mouseleave", this._hideTip);
+    window.addEventListener("blur", this._hideTip);
+    // A press starts a click or a rectangle drag; the tip should get out of the way.
+    document.addEventListener("pointerdown", this._hideTip, true);
+    document.addEventListener("pointercancel", this._hideTip, true);
+    // The cursor can hold still while the content moves out from under it.
+    // Capture, so scrolling in any nested scroller counts.
+    document.addEventListener("scroll", this._revalidate, true);
+    window.addEventListener("resize", this._hideTip);
   }
 
   onValueClicked(callback: (pdfId: string, pageIndex: number, value: FinancialValue) => void): void {
@@ -54,6 +72,9 @@ export class FsValuesOverlay {
   refresh(): void { this._renderAll(); }
 
   private _renderAll(): void {
+    // Zoom, re-render and page changes all move boxes out from under a held
+    // cursor without a pointer event of any kind.
+    this._revalidate();
     const pdfId = this._viewer.getActivePdfId();
     if (!pdfId) return;
     for (const { pageNumber, wrapper } of this._viewer.getPageLayout()) {
@@ -143,15 +164,38 @@ export class FsValuesOverlay {
 
   private readonly _onPointerMove = (event: PointerEvent): void => {
     if (!this._noiseVisible) return;
+    this._pointerX = event.clientX;
+    this._pointerY = event.clientY;
+    this._pointerKnown = true;
+    const hit = this._hitTest(event.clientX, event.clientY);
+    if (hit) this._showTip(hit, event.clientX, event.clientY);
+    else this._hideTip();
+  };
+
+  /**
+   * Re-run the last hit test against current geometry. Used wherever the page
+   * can move without the pointer moving, so an open tip closes instead of
+   * hanging over content it no longer describes.
+   */
+  private readonly _revalidate = (): void => {
+    if (!this._tip || this._tip.hidden) return;
+    if (!this._noiseVisible || !this._pointerKnown) { this._hideTip(); return; }
+    const hit = this._hitTest(this._pointerX, this._pointerY);
+    if (hit) this._showTip(hit, this._pointerX, this._pointerY);
+    else this._hideTip();
+  };
+
+  /** The smallest noise box under a client point, if any. */
+  private _hitTest(clientX: number, clientY: number): FsNoiseValue | undefined {
     const pdfId = this._viewer.getActivePdfId();
-    if (!pdfId) { this._hideTip(); return; }
+    if (!pdfId) return undefined;
     for (const { pageNumber, wrapper } of this._viewer.getPageLayout()) {
       const rect = wrapper.getBoundingClientRect();
       if (rect.width <= 0 || rect.height <= 0) continue;
-      if (event.clientX < rect.left || event.clientX > rect.right) continue;
-      if (event.clientY < rect.top || event.clientY > rect.bottom) continue;
-      const x = (event.clientX - rect.left) / rect.width;
-      const y = (event.clientY - rect.top) / rect.height;
+      if (clientX < rect.left || clientX > rect.right) continue;
+      if (clientY < rect.top || clientY > rect.bottom) continue;
+      const x = (clientX - rect.left) / rect.width;
+      const y = (clientY - rect.top) / rect.height;
       // Smallest box wins, so a marker inside a wider one stays reachable.
       let hit: FsNoiseValue | undefined;
       let hitArea = Infinity;
@@ -161,12 +205,10 @@ export class FsValuesOverlay {
         const area = width * height;
         if (area < hitArea) { hit = entry; hitArea = area; }
       }
-      if (hit) this._showTip(hit, event.clientX, event.clientY);
-      else this._hideTip();
-      return;
+      return hit;
     }
-    this._hideTip();
-  };
+    return undefined;
+  }
 
   private _showTip(entry: FsNoiseValue, clientX: number, clientY: number): void {
     const tip = this._tip ?? this._createTip();
@@ -213,6 +255,7 @@ export class FsValuesOverlay {
     if (this._tip) this._tip.hidden = true;
     this._tipFor = "";
   };
+
 
   private _clearAll(): void {
     for (const { wrapper } of this._viewer.getPageLayout()) this._clearPage(wrapper);
