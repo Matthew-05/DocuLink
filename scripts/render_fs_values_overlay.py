@@ -44,20 +44,26 @@ def render(source: Path, output: Path, pages: set[int] | None = None, report: Pa
     document = pymupdf.open(stream=pdf_bytes, filetype="pdf")
     try:
         for page_values in model["pages"]:
-            page_number = page_values["pageIndex"] + 1
-            if pages is not None and page_number not in pages:
-                continue
-            page = document[page_values["pageIndex"]]
-            width, height = page.rect.width, page.rect.height
             for value in page_values["values"]:
-                bounds = value["bounds"]
-                rect = pymupdf.Rect(
-                    bounds["x"] * width,
-                    bounds["y"] * height,
-                    (bounds["x"] + bounds["width"]) * width,
-                    (bounds["y"] + bounds["height"]) * height,
-                )
-                page.draw_rect(rect, color=COLORS[value["kind"]], width=0.8, overlay=True)
+                regions = value.get("segments") or [{
+                    "pageIndex": page_values["pageIndex"],
+                    "bounds": value["bounds"],
+                }]
+                for region in regions:
+                    page_index = region["pageIndex"]
+                    page_number = page_index + 1
+                    if pages is not None and page_number not in pages:
+                        continue
+                    page = document[page_index]
+                    width, height = page.rect.width, page.rect.height
+                    bounds = region["bounds"]
+                    rect = pymupdf.Rect(
+                        bounds["x"] * width,
+                        bounds["y"] * height,
+                        (bounds["x"] + bounds["width"]) * width,
+                        (bounds["y"] + bounds["height"]) * height,
+                    )
+                    page.draw_rect(rect, color=COLORS[value["kind"]], width=0.8, overlay=True)
         output.parent.mkdir(parents=True, exist_ok=True)
         document.save(output)
     finally:

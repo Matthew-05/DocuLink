@@ -23,6 +23,7 @@ import { TextContentCache } from "../../services/text-content-cache.js";
 import { TableStructureCache } from "../../services/table-structure-cache.js";
 import { FsValuesCache } from "../../services/fs-values-cache.js";
 import { FsValuesOverlay } from "./fs-values-overlay.js";
+import { getFsValueLinkBounds } from "./fs-value-link-bounds.js";
 import { extractText } from "@doculink/shared";
 import {
   detectCopiedTable,
@@ -644,10 +645,11 @@ export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLEleme
   fsValuesOverlay.onValueClicked((pdfId, page, value) => {
     const selectedType = linkTypeSelector.getLinkType();
     const linkType = selectedType === "table" ? "auto" : selectedType;
+    const rect = getFsValueLinkBounds(value, page);
     sendLinkRectangleCreated({
       pdfId,
       page,
-      rect: value.bounds,
+      rect,
       text: value.text,
       linkType,
     });
@@ -655,7 +657,7 @@ export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLEleme
       id: `temp-fs-${Date.now()}`,
       pdfId,
       page,
-      rect: value.bounds,
+      rect,
       linkType,
     });
   });

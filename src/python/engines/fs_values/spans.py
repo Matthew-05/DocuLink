@@ -21,6 +21,13 @@ class RecognizedSpan:
     magnitude: int = 0
 
 
+@dataclass(frozen=True)
+class TextFragment:
+    start: int
+    end: int
+    text: str
+
+
 MONTHS = {
     name.lower(): index
     for index in range(1, 13)
@@ -75,6 +82,13 @@ _DATE_PATTERNS = (
     (re.compile(r"\b(?:FY\s*)?(?P<year>(?:19|20)\d{2})\s*(?:Q(?P<q1>[1-4]))\b|\bQ(?P<q2>[1-4])\s*(?:FY\s*)?(?P<year2>(?:19|20)\d{2})\b", re.I), "quarter"),
     (re.compile(r"\b(?:FY\s*)?(?P<year>(?:19|20)\d{2})\b", re.I), "year"),
 )
+
+_WRAPPED_MONTH_DAY_RE = re.compile(
+    rf"\b(?:{MONTH_PATTERN})\.?\s+\d{{1,2}}(?:st|nd|rd|th)?"
+    rf"(?!\s*,?\s*(?:19|20)\d{{2}}\b)\s*,?",
+    re.I,
+)
+_WRAPPED_YEAR_RE = re.compile(r"\b(?:19|20)\d{2}\b")
 
 _NUMBER_RE = re.compile(
     r"(?<![\w\d])"
@@ -178,6 +192,28 @@ def recognize_magnitude_prefix(text: str) -> tuple[int, str, int] | None:
         return None
     modifier = match.group("magnitude")
     return match.end(), modifier, MAGNITUDES[modifier.lower()]
+
+
+def wrapped_date_heads(text: str) -> list[TextFragment]:
+    """Month/day fragments that still need a year from the line below."""
+    return [
+        TextFragment(match.start(), match.end(), match.group(0).strip())
+        for match in _WRAPPED_MONTH_DAY_RE.finditer(text)
+    ]
+
+
+def wrapped_date_years(text: str) -> list[TextFragment]:
+    """Four-digit year fragments that can finish a wrapped month/day."""
+    return [TextFragment(match.start(), match.end(), match.group(0)) for match in _WRAPPED_YEAR_RE.finditer(text)]
+
+
+def recognize_wrapped_date(head: str, year: str) -> RecognizedSpan | None:
+    """Build the ordinary date span produced when two visual fragments are joined."""
+    combined = f"{head.rstrip()} {year.strip()}"
+    return next(
+        (span for span in recognize_spans(combined) if span.kind == "date" and span.date_precision == "day"),
+        None,
+    )
 
 
 def recognize_spans(text: str) -> list[RecognizedSpan]:
