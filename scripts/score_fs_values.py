@@ -27,9 +27,13 @@ from engines.fs_values.spans import recognize_spans  # noqa: E402
 
 ORACLE = ROOT / "src" / "python" / "tests" / "fixtures" / "fs_values" / "span-oracle.json"
 
-# A suppressor must never discard a value carrying an unambiguous financial mark.
-# Anything caught here is a recall bug, not a tuning question.
+# A suppressor must never discard a *well-formed value* carrying an unambiguous
+# financial mark. Anything caught here is a recall bug, not a tuning question.
+#
+# The recognizer's own refusals are exempt: it rejects whole tokens, and a token
+# like "5,200-acre" or "10-K," carries a comma without ever having been a value.
 _STRONG_MARKS = "$€£¥₹₩,%"
+_RECOGNIZER_REASONS = frozenset({"identifier", "alphanumeric", "partial-token"})
 
 
 def _span_dict(span) -> dict:
@@ -73,7 +77,8 @@ def score_document(pdf: Path) -> dict:
     suspicious = [
         candidate
         for candidate in rejected
-        if any(mark in candidate["text"] for mark in _STRONG_MARKS)
+        if candidate["reason"] not in _RECOGNIZER_REASONS
+        and any(mark in candidate["text"] for mark in _STRONG_MARKS)
     ]
     return {
         "document": pdf.name,

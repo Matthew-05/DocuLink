@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 
 from engines.fs_values.detector import detect_fs_values
-from engines.fs_values.spans import is_joined_fragment, recognize_spans
+from engines.fs_values.spans import cut_token, recognize_spans, token_spans
 
 
 FIXTURE = Path(__file__).parent / "fixtures" / "fs_values" / "span-oracle.json"
@@ -156,35 +156,58 @@ def _detect(pages: list[list[dict]]) -> tuple[list[str], list[dict], dict]:
     return published, noise, diagnostics
 
 
-class JoinedTokenTests(unittest.TestCase):
-    def test_a_number_bound_into_an_identifier_is_a_fragment(self) -> None:
-        for text, fragment in (
-            ("FORM 10-K", "10"),
-            ("Commission File Number: 001-36743", "001"),
-            ("94-2404110", "2404110"),
-            ("3:13 PM", "3"),
-            ("ASU 2024-03", "2024"),
+class TokenAlignmentTests(unittest.TestCase):
+    """A value has to claim whole tokens, not cut one in half."""
+
+    def test_a_joined_identifier_yields_no_value(self) -> None:
+        for text, reason in (
+            ("123-456-7890", "identifier"),
+            ("FORM 10-K", "identifier"),
+            ("94-2404110", "identifier"),
+            ("3:13 PM", "identifier"),
+            ("ASU 2024-03", "identifier"),
+            ("(1)Includes $4", "alphanumeric"),
         ):
-            start = text.index(fragment)
             with self.subTest(text=text):
-                self.assertTrue(is_joined_fragment(text, start, start + len(fragment)))
+                refused: list = []
+                spans = recognize_spans(text, rejected=refused)
+                self.assertNotIn(reason, [span.text for span in spans])
+                self.assertIn(reason, [token.reason for token in refused])
 
-    def test_punctuation_followed_by_a_space_does_not_join(self) -> None:
+    def test_a_value_may_still_span_several_tokens(self) -> None:
+        for text, expected in (
+            ("$ 50.14", "$ 50.14"),
+            ("December 31, 2025", "December 31, 2025"),
+            ("1.0 million", "1.0 million"),
+            ("0.2 percent", "0.2 percent"),
+        ):
+            with self.subTest(text=text):
+                self.assertEqual([span.text for span in recognize_spans(text)], [expected])
+
+    def test_sentence_punctuation_is_not_part_of_the_token(self) -> None:
+        self.assertEqual([span.text for span in recognize_spans("was $1,234.")], ["$1,234"])
+
+    def test_a_cut_token_is_reported_whole_and_once(self) -> None:
+        refused: list = []
+        recognize_spans("call 123-456-7890 today", rejected=refused)
+        self.assertEqual([(token.text, token.reason) for token in refused], [("123-456-7890", "identifier")])
+
+    def test_a_fragmented_figure_is_reported_rather_than_guessed(self) -> None:
+        refused: list = []
+        spans = recognize_spans("1,2 34", rejected=refused)
+        self.assertEqual([span.text for span in spans], ["34"])
+        self.assertEqual([(token.text, token.reason) for token in refused], [("1,2", "partial-token")])
+
+    def test_alignment_allows_only_trimmable_leftovers(self) -> None:
         text = "par value: 50,400,000 shares"
+        tokens = token_spans(text)
         start = text.index("50,400,000")
-        self.assertFalse(is_joined_fragment(text, start, start + len("50,400,000")))
-
-    def test_a_span_opening_on_whitespace_measures_from_its_first_glyph(self) -> None:
-        # The number pattern can match leading space, which would otherwise put
-        # the colon of "value:" directly against the span.
-        text = "par value: 50,400,000"
-        start = text.index(" 50,400,000")
-        self.assertFalse(is_joined_fragment(text, start, len(text)))
+        self.assertIsNone(cut_token(text, tokens, start, start + len("50,400,000")))
 
     def test_the_detector_publishes_nothing_from_a_form_number(self) -> None:
-        published, rejected, _ = _detect([_line("FORM 10-K", y=0.1, line_index=0)])
+        published, refused, _ = _detect([_line("FORM 10-K", y=0.1, line_index=0)])
         self.assertEqual(published, [])
-        self.assertEqual([item["reason"] for item in rejected], ["joined-token"])
+        self.assertEqual([item["reason"] for item in refused], ["identifier"])
 
 
 class SuppressionTests(unittest.TestCase):
@@ -214,7 +237,7 @@ class SuppressionTests(unittest.TestCase):
 
     def test_rejections_are_counted_by_reason(self) -> None:
         _, _, diagnostics = _detect([_line("FORM 10-K", y=0.1, line_index=0)])
-        self.assertEqual(diagnostics["fs_value_rejected_joined_token"], 1)
+        self.assertEqual(diagnostics["fs_value_rejected_identifier"], 1)
         self.assertEqual(diagnostics["fs_values_rejected"], 1)
 
     def test_noise_is_carried_beside_the_values_it_was_kept_from(self) -> None:
@@ -226,9 +249,9 @@ class SuppressionTests(unittest.TestCase):
             [{
                 "id": "fsn-p0-n0",
                 "kind": "number",
-                "text": "10",
+                "text": "10-K",
                 "bounds": page["noise"][0]["bounds"],
-                "reason": "joined-token",
+                "reason": "identifier",
             }],
         )
 
@@ -257,7 +280,7 @@ class PageFurnitureTests(unittest.TestCase):
     def test_a_running_footer_is_not_content(self) -> None:
         published, rejected, _ = _detect(self._pages("Apple Inc. | 2025 Form 10-K | 7"))
         self.assertNotIn("2025", published)
-        self.assertEqual({item["reason"] for item in rejected}, {"page-furniture", "joined-token"})
+        self.assertEqual({item["reason"] for item in rejected}, {"page-furniture", "identifier"})
 
     def test_a_period_caption_survives_repeating_on_every_page(self) -> None:
         published, _, _ = _detect(self._pages("As of December 31, 2025"))
@@ -273,6 +296,53 @@ class PageFurnitureTests(unittest.TestCase):
         pages = [_line("4,058.00", y=0.95, line_index=0) for _ in range(4)]
         published, _, _ = _detect(pages)
         self.assertEqual(published, ["4,058.00"] * 4)
+
+
+class SectionHeadTests(unittest.TestCase):
+    """A head that carries over the turn of a page, once the labels are aside."""
+
+    @staticmethod
+    def _document(heads: dict[int, str], pages: int = 16) -> list[list[dict]]:
+        """A label on every page, body on every page, heads where asked.
+
+        The label sits above the head, so "top" cannot mean the first line on
+        the page -- it has to mean the first line that is not already furniture.
+        """
+        document = []
+        for index in range(pages):
+            characters = _line("Acme Corp Annual Report", y=0.04, line_index=0)
+            if index in heads:
+                characters += _line(heads[index], y=0.12, line_index=1)
+            characters += _line(f"Revenue of 1,{index}00 in the period", y=0.40, line_index=2)
+            document.append(characters)
+        return document
+
+    def test_a_head_repeated_over_a_run_is_refused(self) -> None:
+        heads = {4: "Note 12 Income Taxes", 5: "Note 12 Income Taxes", 6: "Note 12 Income Taxes"}
+        published, refused, _ = _detect(self._document(heads))
+        self.assertNotIn("12", published)
+        self.assertIn("running-section-head", {item["reason"] for item in refused})
+
+    def test_a_head_that_changes_every_page_is_content(self) -> None:
+        heads = {4: "Note 12 Income Taxes", 5: "Note 13 Leases", 6: "Note 14 Debt"}
+        published, refused, _ = _detect(self._document(heads))
+        self.assertNotIn("running-section-head", {item["reason"] for item in refused})
+        self.assertEqual([t for t in published if t in {"12", "13", "14"}], ["12", "13", "14"])
+
+    def test_a_continuation_marker_carries_a_head_on_its_own(self) -> None:
+        heads = {4: "Note 12 Income Taxes", 5: "Note 12 Income Taxes (continued)"}
+        _, refused, _ = _detect(self._document(heads))
+        self.assertIn("running-section-head", {item["reason"] for item in refused})
+
+    def test_a_head_below_the_body_is_not_a_head(self) -> None:
+        document = []
+        for index in range(16):
+            characters = _line(f"Revenue of 1,{index}00 in the period", y=0.10, line_index=0)
+            if index in (4, 5, 6):
+                characters += _line("Note 12 Income Taxes", y=0.60, line_index=1)
+            document.append(characters)
+        _, refused, _ = _detect(document)
+        self.assertNotIn("running-section-head", {item["reason"] for item in refused})
 
 
 if __name__ == "__main__":

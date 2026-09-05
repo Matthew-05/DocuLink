@@ -60,14 +60,14 @@ test("parses page noise and drops entries with an unknown reason", () => {
       context: {},
       values: [],
       noise: [
-        { id: "n0", kind: "number", text: "10", bounds: { x: 0.1, y: 0.1, width: 0.02, height: 0.02 }, reason: "joined-token" },
+        { id: "n0", kind: "number", text: "10", bounds: { x: 0.1, y: 0.1, width: 0.02, height: 0.02 }, reason: "identifier" },
         { id: "n1", kind: "date", text: "1934", bounds: { x: 0.2, y: 0.1, width: 0.04, height: 0.02 }, reason: "not-a-rule" },
         { id: "n2", kind: "number", text: "7", bounds: { x: 2, y: 0, width: 1, height: 1 }, reason: "page-furniture" },
       ],
     }],
   });
   assert.deepEqual(parsed.pages[0]?.noise.map((entry) => entry.id), ["n0"]);
-  assert.equal(parsed.pages[0]?.noise[0]?.reason, "joined-token");
+  assert.equal(parsed.pages[0]?.noise[0]?.reason, "identifier");
 });
 
 test("defaults noise to empty when a page omits it", () => {

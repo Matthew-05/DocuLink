@@ -15,24 +15,15 @@ from __future__ import annotations
 import re
 
 from .profile import DocumentProfile
-from .spans import RecognizedSpan, is_joined_fragment
-
-
-JOINED_TOKEN = "joined-token"
-PAGE_FURNITURE = "page-furniture"
-PHONE_CONTEXT = "phone-context"
-IDENTIFIER_CONTEXT = "identifier-context"
-SUPERSCRIPT = "superscript"
-CITATION_YEAR = "citation-year"
-
-REASONS = (
-    JOINED_TOKEN,
-    PAGE_FURNITURE,
-    PHONE_CONTEXT,
-    IDENTIFIER_CONTEXT,
-    SUPERSCRIPT,
+from .reasons import (
     CITATION_YEAR,
+    IDENTIFIER_CONTEXT,
+    PHONE_CONTEXT,
+    SUPERSCRIPT,
 )
+from .spans import RecognizedSpan
+
+
 
 # Only the two phone shapes that cannot be mistaken for data: an explicit country
 # code, or a parenthesised area code followed by a subscriber number.
@@ -76,11 +67,13 @@ def suppression_reason(
     `start` and `end` locate the span within `line`. They are passed separately
     because a value wrapped across two lines carries the offsets of the fragment
     that appears on this one, not those of the logical span it belongs to.
+
+    A token that could never be a value at all -- a phone number, a form number --
+    is refused earlier, by `recognize_spans`, and never reaches this stage.
     """
-    if is_joined_fragment(line, start, end):
-        return JOINED_TOKEN
-    if profile.is_page_furniture(line, top):
-        return PAGE_FURNITURE
+    furniture = profile.furniture_reason(line, page_index, top)
+    if furniture:
+        return furniture
     if any(
         start < match.end() and end > match.start()
         for match in _PHONE.finditer(line)

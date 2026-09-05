@@ -47,7 +47,7 @@ test("keeps refused spans separate from the values they were kept from", async (
       pageIndex: 0,
       context: {},
       values: [{ id: "v", kind: "number", text: "1,234", bounds: { x: 0.1, y: 0.1, width: 0.1, height: 0.02 }, confidence: 0.94 }],
-      noise: [{ id: "n", kind: "number", text: "10", bounds: { x: 0.5, y: 0.1, width: 0.02, height: 0.02 }, reason: "joined-token" }],
+      noise: [{ id: "n", kind: "number", text: "10", bounds: { x: 0.5, y: 0.1, width: 0.02, height: 0.02 }, reason: "identifier" }],
     }],
   };
   const cache = new FsValuesCache(async () => model as never);

@@ -10,7 +10,10 @@ import type { HoverTipContent } from "./hover-tip.js";
 
 /** What each suppressor objected to, in the reader's words. */
 const NOISE_EXPLANATIONS: Readonly<Record<FsNoiseReason, string>> = {
-  "joined-token": "Part of a hyphen, slash or colon joined identifier",
+  "identifier": "Part of a joined identifier \u2014 a form, file or phone number",
+  "alphanumeric": "Part of a token mixing letters and digits",
+  "partial-token": "A token that held a figure but did not parse in full",
+  "running-section-head": "A heading repeated at the top of a run of pages",
   "page-furniture": "On a running header or footer, repeated across pages",
   "phone-context": "Inside a phone number",
   "identifier-context": "Follows a label that introduces a reference number",

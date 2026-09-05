@@ -73,9 +73,24 @@
 }
 
 /* One colour per suppressor, so a page reads at a glance. */
-.fs-values-noise__value[data-fs-noise-reason="joined-token"] {
+.fs-values-noise__value[data-fs-noise-reason="identifier"] {
   border-color: rgba(190, 24, 93, 0.85);
   background: rgba(219, 39, 119, 0.1);
+}
+
+.fs-values-noise__value[data-fs-noise-reason="alphanumeric"] {
+  border-color: rgba(219, 39, 119, 0.85);
+  background: rgba(244, 114, 182, 0.1);
+}
+
+.fs-values-noise__value[data-fs-noise-reason="partial-token"] {
+  border-color: rgba(107, 114, 128, 0.85);
+  background: rgba(156, 163, 175, 0.12);
+}
+
+.fs-values-noise__value[data-fs-noise-reason="running-section-head"] {
+  border-color: rgba(67, 56, 202, 0.85);
+  background: rgba(99, 102, 241, 0.1);
 }
 
 .fs-values-noise__value[data-fs-noise-reason="page-furniture"] {
@@ -115,8 +130,14 @@
 .fs-values__tip[data-variant="date"] { border-left-color: rgba(21, 128, 61, 0.9); }
 .fs-values__tip[data-variant="date"] .doculink-hover-tip__label { color: rgba(22, 101, 52, 0.95); }
 
-.fs-values__tip[data-variant="joined-token"] { border-left-color: rgba(190, 24, 93, 0.9); }
-.fs-values__tip[data-variant="joined-token"] .doculink-hover-tip__label { color: rgba(157, 23, 77, 0.95); }
+.fs-values__tip[data-variant="identifier"] { border-left-color: rgba(190, 24, 93, 0.9); }
+.fs-values__tip[data-variant="identifier"] .doculink-hover-tip__label { color: rgba(157, 23, 77, 0.95); }
+.fs-values__tip[data-variant="alphanumeric"] { border-left-color: rgba(219, 39, 119, 0.9); }
+.fs-values__tip[data-variant="alphanumeric"] .doculink-hover-tip__label { color: rgba(157, 23, 77, 0.95); }
+.fs-values__tip[data-variant="partial-token"] { border-left-color: rgba(107, 114, 128, 0.9); }
+.fs-values__tip[data-variant="partial-token"] .doculink-hover-tip__label { color: rgba(55, 65, 81, 0.95); }
+.fs-values__tip[data-variant="running-section-head"] { border-left-color: rgba(67, 56, 202, 0.9); }
+.fs-values__tip[data-variant="running-section-head"] .doculink-hover-tip__label { color: rgba(55, 48, 163, 0.95); }
 .fs-values__tip[data-variant="page-furniture"] { border-left-color: rgba(109, 40, 217, 0.9); }
 .fs-values__tip[data-variant="page-furniture"] .doculink-hover-tip__label { color: rgba(76, 29, 149, 0.95); }
 .fs-values__tip[data-variant="phone-context"] { border-left-color: rgba(194, 65, 12, 0.9); }

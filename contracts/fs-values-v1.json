@@ -78,10 +78,13 @@
         "bounds": { "$ref": "#/definitions/Bounds" },
         "reason": {
           "type": "string",
-          "description": "Which rule refused the span. A new suppressor is added here before it is implemented.",
+          "description": "Which rule refused the span. The first three are refused by the recognizer, because the token could never have been a value; the rest are well-formed values that a rule objected to. A new reason is added here before it is implemented.",
           "enum": [
-            "joined-token",
+            "identifier",
+            "alphanumeric",
+            "partial-token",
             "page-furniture",
+            "running-section-head",
             "phone-context",
             "identifier-context",
             "superscript",

@@ -6,6 +6,8 @@ import re
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 
+from .reasons import ALPHANUMERIC, IDENTIFIER, PARTIAL_TOKEN
+
 
 @dataclass(frozen=True)
 class RecognizedSpan:
@@ -111,30 +113,71 @@ _MAGNITUDE_PREFIX_RE = re.compile(rf"^\s*(?P<magnitude>{MAGNITUDE_PATTERN})\b", 
 
 # A hyphen, slash or colon binding two alphanumeric runs together makes an
 # identifier, not an arithmetic expression: "10-K", "001-36743", "3:13 PM",
-# "ASU 2024-03". The number pattern's own boundaries do not see these because
-# none of the three is a word character.
+# "ASU 2024-03", "123-456-7890".
 _JOIN_CHARACTERS = "-/:"
 
+# Punctuation that may sit between a value and the edge of its token without
+# being part of it: sentence punctuation, quotes and footnote marks. Anything
+# else left over means the match cut a token in half.
+_TRIMMABLE = frozenset(".,;:!?\"'\u2018\u2019\u201c\u201d()[]*\u2020\u2021")
 
-def is_joined_fragment(text: str, start: int, end: int) -> bool:
-    """Whether `text[start:end]` is one piece of a larger joined-up token.
+_TOKEN_RE = re.compile(r"\S+")
 
-    The join has to be immediately adjacent on both sides of the punctuation:
-    "par value: 50,400,000" keeps its number because of the space after the colon.
-    A matched span can open or close on whitespace, so adjacency is measured from
-    the span's first and last printing characters rather than from its offsets.
+
+@dataclass(frozen=True)
+class RejectedToken:
+    """A token that held something value-shaped but did not parse in full."""
+
+    start: int
+    end: int
+    text: str
+    reason: str
+
+
+def token_spans(text: str) -> list[tuple[int, int]]:
+    """Maximal runs of non-whitespace, the units a value must align to."""
+    return [(match.start(), match.end()) for match in _TOKEN_RE.finditer(text)]
+
+
+# "#7" and "No.7" name a thing rather than count one.
+_REFERENCE_MARKS = "#\u2116"
+
+
+def token_shape(token: str) -> str:
+    """Why a token could never be a value, from its shape alone."""
+    if any(character in _REFERENCE_MARKS for character in token):
+        return IDENTIFIER
+    for index, character in enumerate(token):
+        if (
+            character in _JOIN_CHARACTERS
+            and index > 0
+            and token[index - 1].isalnum()
+            and index + 1 < len(token)
+            and token[index + 1].isalnum()
+        ):
+            return IDENTIFIER
+    if any(c.isalpha() for c in token) and any(c.isdigit() for c in token):
+        return ALPHANUMERIC
+    return PARTIAL_TOKEN
+
+
+def cut_token(
+    text: str, tokens: list[tuple[int, int]], start: int, end: int
+) -> tuple[int, int] | None:
+    """The first token this match cuts through, or None when it aligns.
+
+    A value has to claim whole tokens. "$1,234." aligns because only a full stop
+    is left over; "123" inside "123-456-7890" does not, and that is what keeps a
+    phone number, a form number and an accounting standard from being read as
+    arithmetic.
     """
-    while start < end and text[start].isspace():
-        start += 1
-    while end > start and text[end - 1].isspace():
-        end -= 1
-    if start >= end:
-        return False
-    if start >= 2 and text[start - 1] in _JOIN_CHARACTERS and text[start - 2].isalnum():
-        return True
-    if end + 1 < len(text) and text[end] in _JOIN_CHARACTERS and text[end + 1].isalnum():
-        return True
-    return False
+    for token_start, token_end in tokens:
+        if token_end <= start or token_start >= end:
+            continue
+        outside = text[token_start:max(token_start, start)] + text[min(token_end, end):token_end]
+        if any(character not in _TRIMMABLE for character in outside):
+            return (token_start, token_end)
+    return None
 
 
 def _month_number(value: str) -> int:
@@ -247,18 +290,45 @@ def recognize_wrapped_date(head: str, year: str) -> RecognizedSpan | None:
     )
 
 
-def recognize_spans(text: str) -> list[RecognizedSpan]:
-    """Return non-overlapping date/percent/number spans in source order."""
+def recognize_spans(
+    text: str,
+    *,
+    rejected: list[RejectedToken] | None = None,
+) -> list[RecognizedSpan]:
+    """Return non-overlapping date/percent/number spans in source order.
+
+    A span must align to token boundaries. Pass `rejected` to collect the tokens
+    that held something value-shaped and were refused for cutting across one --
+    a phone number, a form number, an OCR-fragmented figure. Each offending
+    token is reported once, whole, rather than once per sub-match.
+    """
     results: list[RecognizedSpan] = []
     occupied: list[tuple[int, int]] = []
+    tokens = token_spans(text)
+    reported: set[tuple[int, int]] = set()
+
+    def cuts_a_token(start: int, end: int) -> bool:
+        token = cut_token(text, tokens, start, end)
+        if token is None:
+            return False
+        if rejected is not None and token not in reported:
+            reported.add(token)
+            body = text[token[0]:token[1]]
+            rejected.append(RejectedToken(token[0], token[1], body, token_shape(body)))
+        occupied.append((start, end))
+        return True
+
     for pattern, mode in _DATE_PATTERNS:
         for match in pattern.finditer(text):
             if _overlaps(match.start(), match.end(), occupied):
                 continue
             span = _date_span(match, mode)
-            if span is not None:
-                results.append(span)
-                occupied.append((span.start, span.end))
+            if span is None:
+                continue
+            if cuts_a_token(span.start, span.end):
+                continue
+            results.append(span)
+            occupied.append((span.start, span.end))
 
     for match in _NUMBER_RE.finditer(text):
         start, end = match.span()
@@ -288,6 +358,8 @@ def recognize_spans(text: str) -> list[RecognizedSpan]:
             magnitude = 0
             normalized = _canonical_decimal(number_text, negative)
             end = match.end("percent")
+        if cuts_a_token(start, end):
+            continue
         confidence = 0.99 if percent or currency else 0.94 if "," in number_text else 0.82 if "." in number_text else 0.62
         results.append(RecognizedSpan(
             start, end, "percent" if percent else "number", text[start:end].strip(), confidence,

@@ -33,8 +33,11 @@ export interface FsValueContext {
 }
 
 export type FsNoiseReason =
-  | "joined-token"
+  | "identifier"
+  | "alphanumeric"
+  | "partial-token"
   | "page-furniture"
+  | "running-section-head"
   | "phone-context"
   | "identifier-context"
   | "superscript"
@@ -69,8 +72,11 @@ export interface FsValues {
 }
 
 const NOISE_REASONS = new Set<string>([
-  "joined-token",
+  "identifier",
+  "alphanumeric",
+  "partial-token",
   "page-furniture",
+  "running-section-head",
   "phone-context",
   "identifier-context",
   "superscript",

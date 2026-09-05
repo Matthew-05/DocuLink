@@ -13,6 +13,7 @@ from .evidence import suppression_reason
 from .profile import build_document_profile
 from .spans import (
     RecognizedSpan,
+    RejectedToken,
     TextFragment,
     recognize_magnitude_prefix,
     recognize_spans,
@@ -22,7 +23,7 @@ from .spans import (
 )
 
 
-DETECTOR_VERSION = "fs-values-detector-4"
+DETECTOR_VERSION = "fs-values-detector-5"
 
 
 def _line_characters(page: dict) -> list[list[dict]]:
@@ -126,12 +127,12 @@ def _span_height(start: int, end: int, source: list[dict | None]) -> float:
     return median(heights) if heights else 0.0
 
 
-def _noise(span: RecognizedSpan, bounds: dict, identifier: str, reason: str) -> dict:
-    """A recognized span the detector refused, and the rule that refused it."""
+def _noise(kind: str, text: str, bounds: dict, identifier: str, reason: str) -> dict:
+    """Something the detector refused, and the rule that refused it."""
     return {
         "id": identifier,
-        "kind": span.kind,
-        "text": span.text,
+        "kind": kind,
+        "text": text,
         "bounds": bounds,
         "reason": reason,
     }
@@ -320,13 +321,23 @@ def detect_fs_values(geometry: dict, *, diagnostics: dict | None = None) -> dict
         candidates: list[tuple[int, int, RecognizedSpan, dict, list[dict] | None]] = list(
             wrapped_dates.get(line_index, [])
         )
-        for span in recognize_spans(text):
+        unparsed: list[RejectedToken] = []
+        for span in recognize_spans(text, rejected=unparsed):
             if any(span.start < end and span.end > start for start, end in wrapped_occupied.get(line_index, [])):
                 continue
             bounds = _bounds(span, source)
             if bounds is None:
                 continue
             candidates.append((span.start, span.end, span, bounds, None))
+        for token in unparsed:
+            bounds = _bounds(token, source)
+            if bounds is None:
+                continue
+            page_noise = noise_by_page[page_index]
+            page_noise.append(
+                _noise("number", token.text, bounds, f"fsn-p{page_index}-n{len(page_noise)}", token.reason)
+            )
+            _count_rejection(diagnostics, token.reason)
 
         for start, end, span, bounds, segments in sorted(candidates, key=lambda item: item[0]):
             reason = suppression_reason(
@@ -342,7 +353,7 @@ def detect_fs_values(geometry: dict, *, diagnostics: dict | None = None) -> dict
             if reason:
                 page_noise = noise_by_page[page_index]
                 page_noise.append(
-                    _noise(span, bounds, f"fsn-p{page_index}-n{len(page_noise)}", reason)
+                    _noise(span.kind, span.text, bounds, f"fsn-p{page_index}-n{len(page_noise)}", reason)
                 )
                 _count_rejection(diagnostics, reason)
                 continue
