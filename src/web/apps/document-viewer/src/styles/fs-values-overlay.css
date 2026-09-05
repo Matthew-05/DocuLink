@@ -103,59 +103,27 @@
   background: rgba(100, 116, 139, 0.12);
 }
 
-/* The tip is fixed to the window and lives on <body>, so it is never clipped
-   by a page wrapper and never scrolls out of step with the cursor. */
-.fs-values-noise__tip {
-  position: fixed;
-  z-index: 9000;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  max-width: 280px;
-  padding: 6px 8px;
-  border: 1px solid rgba(15, 23, 42, 0.12);
-  border-left: 3px solid rgba(190, 24, 93, 0.9);
-  border-radius: 4px;
-  background: rgba(255, 255, 255, 0.98);
-  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.18);
-  color: rgba(15, 23, 42, 0.9);
-  font-size: 11px;
-  line-height: 1.35;
-  pointer-events: none;
-}
+/* ── Hover tip accents ────────────────────────────────────────────────────
+   The tip itself is the shared `doculink-hover-tip`; only the per-subject
+   accent belongs here. `data-variant` carries the value's kind when a value is
+   under the cursor, and the suppressor's name when noise is. */
 
-/* Required: the rule above sets `display`, which would otherwise beat the user
-   agent's `[hidden] { display: none }` and leave the tip on screen forever. */
-.fs-values-noise__tip[hidden] {
-  display: none;
-}
+.fs-values__tip[data-variant="number"] { border-left-color: rgba(14, 116, 144, 0.9); }
+.fs-values__tip[data-variant="number"] .doculink-hover-tip__label { color: rgba(12, 74, 110, 0.95); }
+.fs-values__tip[data-variant="percent"] { border-left-color: rgba(180, 83, 9, 0.9); }
+.fs-values__tip[data-variant="percent"] .doculink-hover-tip__label { color: rgba(146, 64, 14, 0.95); }
+.fs-values__tip[data-variant="date"] { border-left-color: rgba(21, 128, 61, 0.9); }
+.fs-values__tip[data-variant="date"] .doculink-hover-tip__label { color: rgba(22, 101, 52, 0.95); }
 
-.fs-values-noise__tip-reason {
-  color: rgba(157, 23, 77, 0.95);
-  font-weight: 600;
-  letter-spacing: 0.01em;
-}
-
-.fs-values-noise__tip-why {
-  color: rgba(51, 65, 85, 0.9);
-}
-
-.fs-values-noise__tip-text {
-  margin-top: 2px;
-  padding-top: 3px;
-  border-top: 1px solid rgba(15, 23, 42, 0.08);
-  color: rgba(71, 85, 105, 0.95);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  overflow-wrap: anywhere;
-}
-
-.fs-values-noise__tip[data-fs-noise-reason="page-furniture"] { border-left-color: rgba(109, 40, 217, 0.9); }
-.fs-values-noise__tip[data-fs-noise-reason="page-furniture"] .fs-values-noise__tip-reason { color: rgba(76, 29, 149, 0.95); }
-.fs-values-noise__tip[data-fs-noise-reason="phone-context"] { border-left-color: rgba(194, 65, 12, 0.9); }
-.fs-values-noise__tip[data-fs-noise-reason="phone-context"] .fs-values-noise__tip-reason { color: rgba(154, 52, 18, 0.95); }
-.fs-values-noise__tip[data-fs-noise-reason="identifier-context"] { border-left-color: rgba(133, 77, 14, 0.9); }
-.fs-values-noise__tip[data-fs-noise-reason="identifier-context"] .fs-values-noise__tip-reason { color: rgba(113, 63, 18, 0.95); }
-.fs-values-noise__tip[data-fs-noise-reason="superscript"] { border-left-color: rgba(15, 118, 110, 0.9); }
-.fs-values-noise__tip[data-fs-noise-reason="superscript"] .fs-values-noise__tip-reason { color: rgba(17, 94, 89, 0.95); }
-.fs-values-noise__tip[data-fs-noise-reason="citation-year"] { border-left-color: rgba(51, 65, 85, 0.9); }
-.fs-values-noise__tip[data-fs-noise-reason="citation-year"] .fs-values-noise__tip-reason { color: rgba(30, 41, 59, 0.95); }
+.fs-values__tip[data-variant="joined-token"] { border-left-color: rgba(190, 24, 93, 0.9); }
+.fs-values__tip[data-variant="joined-token"] .doculink-hover-tip__label { color: rgba(157, 23, 77, 0.95); }
+.fs-values__tip[data-variant="page-furniture"] { border-left-color: rgba(109, 40, 217, 0.9); }
+.fs-values__tip[data-variant="page-furniture"] .doculink-hover-tip__label { color: rgba(76, 29, 149, 0.95); }
+.fs-values__tip[data-variant="phone-context"] { border-left-color: rgba(194, 65, 12, 0.9); }
+.fs-values__tip[data-variant="phone-context"] .doculink-hover-tip__label { color: rgba(154, 52, 18, 0.95); }
+.fs-values__tip[data-variant="identifier-context"] { border-left-color: rgba(133, 77, 14, 0.9); }
+.fs-values__tip[data-variant="identifier-context"] .doculink-hover-tip__label { color: rgba(113, 63, 18, 0.95); }
+.fs-values__tip[data-variant="superscript"] { border-left-color: rgba(15, 118, 110, 0.9); }
+.fs-values__tip[data-variant="superscript"] .doculink-hover-tip__label { color: rgba(17, 94, 89, 0.95); }
+.fs-values__tip[data-variant="citation-year"] { border-left-color: rgba(51, 65, 85, 0.9); }
+.fs-values__tip[data-variant="citation-year"] .doculink-hover-tip__label { color: rgba(30, 41, 59, 0.95); }

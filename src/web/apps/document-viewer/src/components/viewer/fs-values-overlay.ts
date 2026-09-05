@@ -1,4 +1,5 @@
-import type { FinancialValue, FsNoiseValue } from "@doculink/shared";
+import type { FinancialValue, FsNoiseValue, HoverTipContent } from "@doculink/shared";
+import { HoverTip, describeFsNoise, describeFsValue } from "@doculink/shared";
 import type { FsValuesCache } from "../../services/fs-values-cache.js";
 import type { PdfViewer } from "./pdf-viewer.js";
 import { ensureOverlayLayer } from "./page-renderer.js";
@@ -9,13 +10,7 @@ const NOISE_CLASS = "fs-values-noise";
 export class FsValuesOverlay {
   private _debugVisible = false;
   private _noiseVisible = false;
-  private _tip: HTMLDivElement | undefined;
-  private _tipFor = "";
-  private _tipWidth = 0;
-  private _tipHeight = 0;
-  private _pointerX = 0;
-  private _pointerY = 0;
-  private _pointerKnown = false;
+  private readonly _tip: HoverTip;
   private readonly _callbacks: Array<(pdfId: string, pageIndex: number, value: FinancialValue) => void> = [];
   private readonly _viewer: PdfViewer;
   private readonly _cache: FsValuesCache;
@@ -24,26 +19,14 @@ export class FsValuesOverlay {
     this._viewer = viewer;
     this._cache = cache;
     this._viewer.onDocumentChanged(() => this.refresh());
-    // The noise layer takes no pointer events, so a box cannot report its own
-    // hover. One delegated listener hit-tests instead, which keeps the layer
-    // inert: a rectangle drag begun over a noise box still reaches the page.
-    //
-    // It listens on the document rather than on the viewer, so that moving onto
-    // the toolbar, a panel, or anything else layered over the page still runs a
-    // hit test and closes the tip. Everything below covers a way the pointer can
-    // stop producing moves while a tip is open. These are page-lifetime: the app
-    // mounts once, and the host tears down the whole document to reload it.
-    document.addEventListener("pointermove", this._onPointerMove);
-    // The pointer left the window: to Excel's grid, or another application.
-    document.documentElement.addEventListener("mouseleave", this._hideTip);
-    window.addEventListener("blur", this._hideTip);
-    // A press starts a click or a rectangle drag; the tip should get out of the way.
-    document.addEventListener("pointerdown", this._hideTip, true);
-    document.addEventListener("pointercancel", this._hideTip, true);
-    // The cursor can hold still while the content moves out from under it.
-    // Capture, so scrolling in any nested scroller counts.
-    document.addEventListener("scroll", this._revalidate, true);
-    window.addEventListener("resize", this._hideTip);
+    // Neither layer can report its own hover: noise takes no pointer events at
+    // all, and a value box is a click target whose own tooltip would fight this
+    // one. The tip hit-tests the cursor instead, and only while a debug view
+    // asks for it.
+    this._tip = new HoverTip({
+      className: "fs-values__tip",
+      resolve: (clientX, clientY) => this._describeAt(clientX, clientY),
+    });
   }
 
   onValueClicked(callback: (pdfId: string, pageIndex: number, value: FinancialValue) => void): void {
@@ -53,10 +36,10 @@ export class FsValuesOverlay {
   toggle(): boolean { this._debugVisible ? this.hide() : this.show(); return this._debugVisible; }
 
   /** Show every hit box. Click targets themselves are always active. */
-  show(): void { this._debugVisible = true; this._renderAll(); }
+  show(): void { this._debugVisible = true; this._syncTip(); this._renderAll(); }
 
   /** Hide diagnostic boxes while retaining transparent clickable targets. */
-  hide(): void { this._debugVisible = false; this._renderAll(); }
+  hide(): void { this._debugVisible = false; this._syncTip(); this._renderAll(); }
 
   toggleNoise(): boolean { this._noiseVisible ? this.hideNoise() : this.showNoise(); return this._noiseVisible; }
 
@@ -65,16 +48,16 @@ export class FsValuesOverlay {
    * the rule that refused it. Diagnostics only: noise draws nothing clickable,
    * so it can be left on while linking values.
    */
-  showNoise(): void { this._noiseVisible = true; this._renderAll(); }
+  showNoise(): void { this._noiseVisible = true; this._syncTip(); this._renderAll(); }
 
-  hideNoise(): void { this._noiseVisible = false; this._hideTip(); this._renderAll(); }
+  hideNoise(): void { this._noiseVisible = false; this._syncTip(); this._renderAll(); }
 
   refresh(): void { this._renderAll(); }
 
   private _renderAll(): void {
     // Zoom, re-render and page changes all move boxes out from under a held
     // cursor without a pointer event of any kind.
-    this._revalidate();
+    this._tip.refresh();
     const pdfId = this._viewer.getActivePdfId();
     if (!pdfId) return;
     for (const { pageNumber, wrapper } of this._viewer.getPageLayout()) {
@@ -123,7 +106,9 @@ export class FsValuesOverlay {
     button.style.top = `${value.bounds.y * 100}%`;
     button.style.width = `${value.bounds.width * 100}%`;
     button.style.height = `${value.bounds.height * 100}%`;
-    button.title = `Create link for ${value.kind}: ${value.text}`;
+    // The debug view explains this box in the hover tip; two tooltips would
+    // race each other, so the native one only stands in when it is off.
+    if (!this._debugVisible) button.title = `Create link for ${value.kind}: ${value.text}`;
     button.dataset["fsValueId"] = value.id;
     button.setAttribute("aria-label", `Create link for detected ${value.kind} ${value.text}`);
     button.addEventListener("pointerdown", (event) => event.stopPropagation());
@@ -152,43 +137,18 @@ export class FsValuesOverlay {
     return button;
   }
 
-  /** Why each suppressor refused a span, in the reader's words. */
-  private static readonly _EXPLANATIONS: Record<FsNoiseValue["reason"], string> = {
-    "joined-token": "Part of a hyphen, slash or colon joined identifier",
-    "page-furniture": "On a running header or footer, repeated across pages",
-    "phone-context": "Inside a phone number",
-    "identifier-context": "Follows a label that introduces a reference number",
-    "superscript": "Set smaller than the page's text, so a footnote marker",
-    "citation-year": "A year reached through a citation, so not a period",
-  };
-
-  private readonly _onPointerMove = (event: PointerEvent): void => {
-    if (!this._noiseVisible) return;
-    this._pointerX = event.clientX;
-    this._pointerY = event.clientY;
-    this._pointerKnown = true;
-    const hit = this._hitTest(event.clientX, event.clientY);
-    if (hit) this._showTip(hit, event.clientX, event.clientY);
-    else this._hideTip();
-  };
+  /** The tip is a debug aid, so it opens only while a debug view is on. */
+  private _syncTip(): void {
+    this._tip.setEnabled(this._debugVisible || this._noiseVisible);
+  }
 
   /**
-   * Re-run the last hit test against current geometry. Used wherever the page
-   * can move without the pointer moving, so an open tip closes instead of
-   * hanging over content it no longer describes.
+   * What sits under a client point: the smallest box across whichever layers
+   * are showing, so a footnote marker inside a wider span stays reachable.
    */
-  private readonly _revalidate = (): void => {
-    if (!this._tip || this._tip.hidden) return;
-    if (!this._noiseVisible || !this._pointerKnown) { this._hideTip(); return; }
-    const hit = this._hitTest(this._pointerX, this._pointerY);
-    if (hit) this._showTip(hit, this._pointerX, this._pointerY);
-    else this._hideTip();
-  };
-
-  /** The smallest noise box under a client point, if any. */
-  private _hitTest(clientX: number, clientY: number): FsNoiseValue | undefined {
+  private _describeAt(clientX: number, clientY: number): HoverTipContent | null {
     const pdfId = this._viewer.getActivePdfId();
-    if (!pdfId) return undefined;
+    if (!pdfId) return null;
     for (const { pageNumber, wrapper } of this._viewer.getPageLayout()) {
       const rect = wrapper.getBoundingClientRect();
       if (rect.width <= 0 || rect.height <= 0) continue;
@@ -196,66 +156,34 @@ export class FsValuesOverlay {
       if (clientY < rect.top || clientY > rect.bottom) continue;
       const x = (clientX - rect.left) / rect.width;
       const y = (clientY - rect.top) / rect.height;
-      // Smallest box wins, so a marker inside a wider one stays reachable.
-      let hit: FsNoiseValue | undefined;
-      let hitArea = Infinity;
-      for (const entry of this._cache.noiseOnPage(pdfId, pageNumber - 1)) {
-        const { x: left, y: top, width, height } = entry.bounds;
-        if (x < left || x > left + width || y < top || y > top + height) continue;
-        const area = width * height;
-        if (area < hitArea) { hit = entry; hitArea = area; }
+      const pageIndex = pageNumber - 1;
+      let best: HoverTipContent | null = null;
+      let bestArea = Infinity;
+      const consider = (
+        bounds: FinancialValue["bounds"],
+        describe: () => HoverTipContent,
+      ): void => {
+        if (x < bounds.x || x > bounds.x + bounds.width) return;
+        if (y < bounds.y || y > bounds.y + bounds.height) return;
+        const area = bounds.width * bounds.height;
+        if (area >= bestArea) return;
+        bestArea = area;
+        best = describe();
+      };
+      if (this._debugVisible) {
+        for (const value of this._cache.valuesOnPage(pdfId, pageIndex)) {
+          consider(value.bounds, () => describeFsValue(value));
+        }
       }
-      return hit;
+      if (this._noiseVisible) {
+        for (const entry of this._cache.noiseOnPage(pdfId, pageIndex)) {
+          consider(entry.bounds, () => describeFsNoise(entry));
+        }
+      }
+      return best;
     }
-    return undefined;
+    return null;
   }
-
-  private _showTip(entry: FsNoiseValue, clientX: number, clientY: number): void {
-    const tip = this._tip ?? this._createTip();
-    if (this._tipFor !== entry.id) {
-      this._tipFor = entry.id;
-      tip.replaceChildren();
-      const reason = document.createElement("span");
-      reason.className = `${NOISE_CLASS}__tip-reason`;
-      reason.textContent = entry.reason;
-      const why = document.createElement("span");
-      why.className = `${NOISE_CLASS}__tip-why`;
-      why.textContent = FsValuesOverlay._EXPLANATIONS[entry.reason];
-      const text = document.createElement("span");
-      text.className = `${NOISE_CLASS}__tip-text`;
-      text.textContent = entry.text;
-      tip.append(reason, why, text);
-      tip.dataset["fsNoiseReason"] = entry.reason;
-      tip.hidden = false;
-      // Measured once per entry. Reading it on every move would force a layout
-      // between the style writes below, on an event that fires continuously.
-      this._tipWidth = tip.offsetWidth;
-      this._tipHeight = tip.offsetHeight;
-    }
-    tip.hidden = false;
-    // Flipped near the right or bottom edge so the tip stays on screen.
-    const width = this._tipWidth;
-    const height = this._tipHeight;
-    const left = clientX + 14 + width > window.innerWidth ? clientX - 14 - width : clientX + 14;
-    const top = clientY + 14 + height > window.innerHeight ? clientY - 14 - height : clientY + 14;
-    tip.style.left = `${Math.max(4, left)}px`;
-    tip.style.top = `${Math.max(4, top)}px`;
-  }
-
-  private _createTip(): HTMLDivElement {
-    const tip = document.createElement("div");
-    tip.className = `${NOISE_CLASS}__tip`;
-    tip.hidden = true;
-    document.body.appendChild(tip);
-    this._tip = tip;
-    return tip;
-  }
-
-  private readonly _hideTip = (): void => {
-    if (this._tip) this._tip.hidden = true;
-    this._tipFor = "";
-  };
-
 
   private _clearAll(): void {
     for (const { wrapper } of this._viewer.getPageLayout()) this._clearPage(wrapper);

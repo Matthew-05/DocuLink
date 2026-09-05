@@ -166,3 +166,78 @@ input {
   border-radius: 3px;
 }
 ::-webkit-scrollbar-thumb:hover { background: var(--color-text-muted); }
+
+/* ── Hover tip ─────────────────────────────────────────────────── */
+/* Explains whatever sits under the cursor. Fixed to the window and parented to
+   <body>, so it is never clipped by an overflow ancestor. Never takes a pointer
+   event: it must not interrupt what the cursor is over. */
+.doculink-hover-tip {
+  position: fixed;
+  z-index: 9000;
+  display: flex;
+  max-width: 280px;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 8px;
+  border: 1px solid var(--color-border);
+  border-left: 3px solid var(--color-accent);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.18);
+  color: var(--color-text);
+  font-size: var(--font-size-sm);
+  line-height: 1.35;
+  pointer-events: none;
+}
+
+/* Required: the rule above sets `display`, which would otherwise beat the user
+   agent's `[hidden] { display: none }` and leave the tip on screen. */
+.doculink-hover-tip[hidden] {
+  display: none;
+}
+
+.doculink-hover-tip__label {
+  color: var(--color-accent);
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.doculink-hover-tip__detail {
+  color: var(--color-text-muted);
+}
+
+.doculink-hover-tip__code {
+  margin-top: 2px;
+  padding-top: 3px;
+  border-top: 1px solid var(--color-border);
+  color: var(--color-text);
+  font-family: var(--font-mono);
+  overflow-wrap: anywhere;
+}
+
+.doculink-hover-tip__code[hidden] {
+  display: none;
+}
+
+.doculink-hover-tip__fields {
+  display: grid;
+  margin-top: 2px;
+  padding-top: 3px;
+  border-top: 1px solid var(--color-border);
+  grid-template-columns: auto 1fr;
+  gap: 0 10px;
+}
+
+.doculink-hover-tip__fields[hidden] {
+  display: none;
+}
+
+.doculink-hover-tip__field-name {
+  color: var(--color-text-muted);
+}
+
+.doculink-hover-tip__field-value {
+  color: var(--color-text);
+  font-family: var(--font-mono);
+  overflow-wrap: anywhere;
+}

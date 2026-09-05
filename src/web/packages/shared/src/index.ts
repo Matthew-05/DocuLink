@@ -25,6 +25,9 @@ export type {
   PageFsValues,
 } from "./fs-values-decoder.js";
 export { decodeFsValues, parseFsValues } from "./fs-values-decoder.js";
+export { describeFsNoise, describeFsValue } from "./fs-values-describe.js";
+export type { HoverTipContent, HoverTipOptions } from "./hover-tip.js";
+export { HoverTip } from "./hover-tip.js";
 export type { CharacterEntry } from "./char-entries.js";
 export type { SearchPageIndex, SearchPageOptions } from "./text-searcher.js";
 export { buildCharEntriesFromGeometry } from "./char-entries.js";
