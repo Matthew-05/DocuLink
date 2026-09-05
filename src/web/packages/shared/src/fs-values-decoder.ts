@@ -40,6 +40,9 @@ export type FsNoiseReason =
   | "page-furniture"
   | "note-header"
   | "note-reference"
+  | "item-header"
+  | "item-reference"
+  | "item-toc-entry"
   | "phone-context"
   | "identifier-context"
   | "superscript"
@@ -58,7 +61,8 @@ export interface FsNoiseValue {
   reason: FsNoiseReason;
 }
 
-export interface FsNoteHeader {
+/** One physical occurrence of a complete heading -- a note's or an item's. */
+export interface FsHeading {
   id: string;
   pageIndex: number;
   text: string;
@@ -71,7 +75,7 @@ export interface FsNote {
   id: string;
   identifier: string;
   description: string;
-  headers: FsNoteHeader[];
+  headers: FsHeading[];
 }
 
 export interface FsNoteReference {
@@ -83,6 +87,40 @@ export interface FsNoteReference {
   text: string;
   bounds: FsValueBounds;
   descriptionPresent: boolean;
+  sourceDescription?: string;
+}
+
+/** One contents row naming a filing item, with the page number it prints. */
+export interface FsItemTocEntry {
+  id: string;
+  pageIndex: number;
+  text: string;
+  bounds: FsValueBounds;
+  corroborated: boolean;
+  printedPage?: string;
+  segments?: FsValueSegment[];
+}
+
+export interface FsItem {
+  id: string;
+  identifier: string;
+  description: string;
+  descriptionSource: "toc" | "heading" | "none";
+  headers: FsHeading[];
+  tocEntries: FsItemTocEntry[];
+  part?: string;
+}
+
+export interface FsItemReference {
+  id: string;
+  itemId: string;
+  identifier: string;
+  description: string;
+  pageIndex: number;
+  text: string;
+  bounds: FsValueBounds;
+  descriptionPresent: boolean;
+  part?: string;
   sourceDescription?: string;
 }
 
@@ -100,6 +138,8 @@ export interface FsValues {
   documentContext: FsValueContext;
   notes: FsNote[];
   noteReferences: FsNoteReference[];
+  items: FsItem[];
+  itemReferences: FsItemReference[];
   pages: PageFsValues[];
 }
 
@@ -110,6 +150,9 @@ const NOISE_REASONS = new Set<string>([
   "page-furniture",
   "note-header",
   "note-reference",
+  "item-header",
+  "item-reference",
+  "item-toc-entry",
   "phone-context",
   "identifier-context",
   "superscript",
@@ -204,7 +247,7 @@ function parseNoise(value: unknown): FsNoiseValue | null {
   };
 }
 
-function parseNoteHeader(value: unknown): FsNoteHeader | null {
+function parseHeading(value: unknown): FsHeading | null {
   if (!isRecord(value)) return null;
   if (typeof value.id !== "string" || value.id.length === 0) return null;
   if (!Number.isInteger(value.pageIndex) || (value.pageIndex as number) < 0) return null;
@@ -212,7 +255,7 @@ function parseNoteHeader(value: unknown): FsNoteHeader | null {
   if (typeof value.continuation !== "boolean") return null;
   const bounds = parseBounds(value.bounds);
   if (!bounds) return null;
-  const parsed: FsNoteHeader = {
+  const parsed: FsHeading = {
     id: value.id,
     pageIndex: value.pageIndex as number,
     text: value.text,
@@ -232,8 +275,8 @@ function parseNote(value: unknown): FsNote | null {
   if (typeof value.identifier !== "string" || value.identifier.length === 0) return null;
   if (typeof value.description !== "string" || !Array.isArray(value.headers)) return null;
   const headers = value.headers
-    .map(parseNoteHeader)
-    .filter((entry): entry is FsNoteHeader => entry !== null);
+    .map(parseHeading)
+    .filter((entry): entry is FsHeading => entry !== null);
   if (headers.length === 0) return null;
   return {
     id: value.id,
@@ -269,6 +312,83 @@ function parseNoteReference(value: unknown): FsNoteReference | null {
   };
 }
 
+function parseItemTocEntry(value: unknown): FsItemTocEntry | null {
+  if (!isRecord(value)) return null;
+  if (typeof value.id !== "string" || value.id.length === 0) return null;
+  if (!Number.isInteger(value.pageIndex) || (value.pageIndex as number) < 0) return null;
+  if (typeof value.text !== "string" || value.text.length === 0) return null;
+  if (typeof value.corroborated !== "boolean") return null;
+  const bounds = parseBounds(value.bounds);
+  if (!bounds) return null;
+  const parsed: FsItemTocEntry = {
+    id: value.id,
+    pageIndex: value.pageIndex as number,
+    text: value.text,
+    bounds,
+    corroborated: value.corroborated,
+  };
+  if (typeof value.printedPage === "string" && value.printedPage.length > 0) {
+    parsed.printedPage = value.printedPage;
+  }
+  if (Array.isArray(value.segments)) {
+    const segments = value.segments.map(parseSegment).filter((entry): entry is FsValueSegment => entry !== null);
+    if (segments.length >= 2) parsed.segments = segments;
+  }
+  return parsed;
+}
+
+function parseItem(value: unknown): FsItem | null {
+  if (!isRecord(value)) return null;
+  if (typeof value.id !== "string" || value.id.length === 0) return null;
+  if (typeof value.identifier !== "string" || value.identifier.length === 0) return null;
+  if (typeof value.description !== "string") return null;
+  if (value.descriptionSource !== "toc" && value.descriptionSource !== "heading" && value.descriptionSource !== "none") return null;
+  if (!Array.isArray(value.headers) || !Array.isArray(value.tocEntries)) return null;
+  const headers = value.headers.map(parseHeading).filter((entry): entry is FsHeading => entry !== null);
+  const tocEntries = value.tocEntries
+    .map(parseItemTocEntry)
+    .filter((entry): entry is FsItemTocEntry => entry !== null);
+  // An item is where the document says it is. One with neither a heading nor a
+  // contents row has no place on any page and cannot be drawn.
+  if (headers.length === 0 && tocEntries.length === 0) return null;
+  return {
+    id: value.id,
+    identifier: value.identifier,
+    description: value.description,
+    descriptionSource: value.descriptionSource,
+    headers,
+    tocEntries,
+    ...(typeof value.part === "string" && value.part.length > 0 ? { part: value.part } : {}),
+  };
+}
+
+function parseItemReference(value: unknown): FsItemReference | null {
+  if (!isRecord(value)) return null;
+  if (typeof value.id !== "string" || value.id.length === 0) return null;
+  if (typeof value.itemId !== "string" || value.itemId.length === 0) return null;
+  if (typeof value.identifier !== "string" || value.identifier.length === 0) return null;
+  if (typeof value.description !== "string") return null;
+  if (!Number.isInteger(value.pageIndex) || (value.pageIndex as number) < 0) return null;
+  if (typeof value.text !== "string" || value.text.length === 0) return null;
+  if (typeof value.descriptionPresent !== "boolean") return null;
+  if (value.sourceDescription !== undefined && (typeof value.sourceDescription !== "string" || value.sourceDescription.length === 0)) return null;
+  if (value.descriptionPresent && typeof value.sourceDescription !== "string") return null;
+  const bounds = parseBounds(value.bounds);
+  if (!bounds) return null;
+  return {
+    id: value.id,
+    itemId: value.itemId,
+    identifier: value.identifier,
+    description: value.description,
+    pageIndex: value.pageIndex as number,
+    text: value.text,
+    bounds,
+    descriptionPresent: value.descriptionPresent,
+    ...(typeof value.part === "string" && value.part.length > 0 ? { part: value.part } : {}),
+    ...(typeof value.sourceDescription === "string" ? { sourceDescription: value.sourceDescription } : {}),
+  };
+}
+
 export function parseFsValues(value: unknown): FsValues {
   if (!isRecord(value) || value.version !== 1 || value.coordinateSpace !== "normalized") {
     throw new Error("Unsupported fs-values payload");
@@ -277,6 +397,8 @@ export function parseFsValues(value: unknown): FsValues {
     typeof value.detectorVersion !== "string"
     || !Array.isArray(value.notes)
     || !Array.isArray(value.noteReferences)
+    || !Array.isArray(value.items)
+    || !Array.isArray(value.itemReferences)
     || !Array.isArray(value.pages)
   ) {
     throw new Error("Malformed fs-values payload");
@@ -286,6 +408,11 @@ export function parseFsValues(value: unknown): FsValues {
   const noteReferences = value.noteReferences
     .map(parseNoteReference)
     .filter((entry): entry is FsNoteReference => entry !== null && noteIds.has(entry.noteId));
+  const items = value.items.map(parseItem).filter((entry): entry is FsItem => entry !== null);
+  const itemIds = new Set(items.map((item) => item.id));
+  const itemReferences = value.itemReferences
+    .map(parseItemReference)
+    .filter((entry): entry is FsItemReference => entry !== null && itemIds.has(entry.itemId));
   const pages: PageFsValues[] = [];
   for (const page of value.pages) {
     if (!isRecord(page) || !Number.isInteger(page.pageIndex) || (page.pageIndex as number) < 0 || !Array.isArray(page.values)) continue;
@@ -305,6 +432,8 @@ export function parseFsValues(value: unknown): FsValues {
     documentContext: parseContext(value.documentContext),
     notes,
     noteReferences,
+    items,
+    itemReferences,
     pages,
   };
 }

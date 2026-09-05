@@ -10,6 +10,8 @@ test("validates fs-values and drops malformed individual values", () => {
     documentContext: { currency: "USD" },
     notes: [],
     noteReferences: [],
+    items: [],
+    itemReferences: [],
     pages: [{
       pageIndex: 0,
       context: { scale: 1000000 },
@@ -31,6 +33,8 @@ test("validates magnitude values with split click segments", () => {
     documentContext: {},
     notes: [],
     noteReferences: [],
+    items: [],
+    itemReferences: [],
     pages: [{
       pageIndex: 0,
       context: {},
@@ -61,6 +65,8 @@ test("parses page noise and drops entries with an unknown reason", () => {
     documentContext: {},
     notes: [],
     noteReferences: [],
+    items: [],
+    itemReferences: [],
     pages: [{
       pageIndex: 0,
       context: {},
@@ -84,6 +90,8 @@ test("defaults noise to empty when a page omits it", () => {
     documentContext: {},
     notes: [],
     noteReferences: [],
+    items: [],
+    itemReferences: [],
     pages: [{ pageIndex: 0, context: {}, values: [] }],
   });
   assert.deepEqual(parsed.pages[0]?.noise, []);
@@ -105,6 +113,8 @@ test("parses canonical notes, continuation headers, and resolved references", ()
         { id: "h1", pageIndex: 3, text: "Note IV (continued)", bounds, continuation: true },
       ],
     }],
+    items: [],
+    itemReferences: [],
     noteReferences: [{
       id: "r0",
       noteId: "fs-note-0",
@@ -127,4 +137,85 @@ test("parses canonical notes, continuation headers, and resolved references", ()
   assert.equal(parsed.noteReferences[0]?.description, "Income Taxes");
   assert.equal(parsed.noteReferences[0]?.descriptionPresent, false);
   assert.equal(parsed.pages[0]?.noise[0]?.kind, "text");
+});
+
+test("parses filing items, contents rows, and resolved item references", () => {
+  const bounds = { x: 0.1, y: 0.1, width: 0.2, height: 0.02 };
+  const parsed = parseFsValues({
+    version: 1,
+    coordinateSpace: "normalized",
+    detectorVersion: "test",
+    documentContext: {},
+    notes: [],
+    noteReferences: [],
+    items: [
+      {
+        id: "fs-item-0",
+        identifier: "1A",
+        part: "I",
+        description: "Risk Factors",
+        descriptionSource: "toc",
+        headers: [{ id: "ih0", pageIndex: 7, text: "Item 1A. Risk Factors", bounds, continuation: false }],
+        tocEntries: [{
+          id: "it0",
+          pageIndex: 2,
+          text: "Item 1A. Risk Factors 5",
+          bounds,
+          corroborated: true,
+          printedPage: "5",
+          segments: [
+            { pageIndex: 2, text: "Item 1A.", bounds },
+            { pageIndex: 2, text: "Risk Factors", bounds },
+          ],
+        }],
+      },
+      {
+        id: "fs-item-placeless",
+        identifier: "9",
+        description: "Nowhere",
+        descriptionSource: "none",
+        headers: [],
+        tocEntries: [],
+      },
+    ],
+    itemReferences: [
+      {
+        id: "ir0",
+        itemId: "fs-item-0",
+        identifier: "1A",
+        part: "I",
+        description: "Risk Factors",
+        pageIndex: 19,
+        text: "Item 1A",
+        bounds,
+        descriptionPresent: false,
+      },
+      {
+        id: "ir1",
+        itemId: "fs-item-placeless",
+        identifier: "9",
+        description: "Nowhere",
+        pageIndex: 19,
+        text: "Item 9",
+        bounds,
+        descriptionPresent: false,
+      },
+    ],
+    pages: [{
+      pageIndex: 2,
+      context: {},
+      values: [],
+      noise: [{ id: "n0", kind: "text", text: "Item 1A. Risk Factors 5", bounds, reason: "item-toc-entry" }],
+    }],
+  });
+
+  assert.equal(parsed.items.length, 1);
+  assert.equal(parsed.items[0]?.tocEntries[0]?.printedPage, "5");
+  assert.equal(parsed.items[0]?.tocEntries[0]?.corroborated, true);
+  assert.equal(parsed.items[0]?.part, "I");
+  // An item with no heading and no contents row is dropped, and so is the
+  // reference that pointed at it.
+  assert.equal(parsed.itemReferences.length, 1);
+  assert.equal(parsed.itemReferences[0]?.itemId, "fs-item-0");
+  assert.equal(parsed.pages[0]?.noise[0]?.reason, "item-toc-entry");
 });

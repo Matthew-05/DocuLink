@@ -467,3 +467,266 @@ class NoteDetectionTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def _cell(text: str, *, y: float, line_index: int, x: float, height: float = 0.012) -> list[dict]:
+    return _line(text, y=y, line_index=line_index, height=height, x=x)
+
+
+def _contents_row(
+    identifier: str,
+    description: str,
+    page: str,
+    *,
+    y: float,
+    line_index: int,
+) -> list[dict]:
+    """One contents row printed as three cells sharing a band, as filings do."""
+    return [
+        *_cell(identifier, y=y, line_index=line_index, x=0.03),
+        *_cell(description, y=y, line_index=line_index + 1, x=0.15),
+        *_cell(page, y=y, line_index=line_index + 2, x=0.90),
+    ]
+
+
+def _contents_page(rows: list[tuple[str, str, str]], *, title: str = "TABLE OF CONTENTS") -> list[dict]:
+    characters = _cell(title, y=0.04, line_index=0, x=0.40)
+    for index, (identifier, description, page) in enumerate(rows):
+        characters.extend(
+            _contents_row(
+                identifier,
+                description,
+                page,
+                y=0.10 + index * 0.03,
+                line_index=1 + index * 3,
+            )
+        )
+    return characters
+
+
+class ItemDetectionTests(unittest.TestCase):
+    def test_contents_rows_build_the_catalog_and_are_noise(self) -> None:
+        model = detect_fs_values(_geometry([_contents_page([
+            ("Item 1.", "Business", "1"),
+            ("Item 1A.", "Risk Factors", "5"),
+            ("Item 7.", "Management’s Discussion and Analysis", "21"),
+        ])]))
+
+        self.assertEqual(
+            [(item["identifier"], item["description"]) for item in model["items"]],
+            [
+                ("1", "Business"),
+                ("1A", "Risk Factors"),
+                ("7", "Management’s Discussion and Analysis"),
+            ],
+        )
+        self.assertEqual(
+            [item["tocEntries"][0]["printedPage"] for item in model["items"]],
+            ["1", "5", "21"],
+        )
+        self.assertTrue(all(item["descriptionSource"] == "toc" for item in model["items"]))
+        self.assertEqual(
+            {entry["reason"] for entry in model["pages"][0]["noise"]},
+            {"item-toc-entry"},
+        )
+
+    def test_a_contents_page_number_is_never_a_financial_value(self) -> None:
+        # Every cell of the row is occupied, not only the identifier: the page
+        # number is a bare integer sitting in its own column.
+        published, _noise, _diagnostics = _detect([_contents_page([
+            ("Item 1.", "Business", "1"),
+            ("Item 2.", "Properties", "17"),
+            ("Item 3.", "Legal Proceedings", "18"),
+        ])])
+        self.assertEqual(published, [])
+
+    def test_a_letter_suffixed_identifier_survives_intact(self) -> None:
+        model = detect_fs_values(_geometry([_contents_page([
+            ("Item 1A.", "Risk Factors", "5"),
+            ("Item 1B.", "Unresolved Staff Comments", "17"),
+            ("Item 9C", "Disclosure Regarding Foreign Jurisdictions", "53"),
+        ])]))
+        self.assertEqual(
+            [(item["identifier"], item["description"]) for item in model["items"]],
+            [
+                ("1A", "Risk Factors"),
+                ("1B", "Unresolved Staff Comments"),
+                ("9C", "Disclosure Regarding Foreign Jurisdictions"),
+            ],
+        )
+
+    def test_a_body_heading_catalogs_an_item_the_contents_omits(self) -> None:
+        model = detect_fs_values(_geometry([
+            _contents_page([
+                ("Item 5.", "Market for Registrant’s Common Equity", "19"),
+                ("Item 7.", "Management’s Discussion and Analysis", "21"),
+                ("Item 8.", "Financial Statements and Supplementary Data", "28"),
+            ]),
+            _line("Item 6. [Reserved]", y=0.10, line_index=0),
+        ]))
+        reserved = next(item for item in model["items"] if item["identifier"] == "6")
+        self.assertEqual(reserved["description"], "[Reserved]")
+        self.assertEqual(reserved["descriptionSource"], "heading")
+        self.assertEqual(reserved["tocEntries"], [])
+        self.assertEqual(reserved["headers"][0]["text"], "Item 6. [Reserved]")
+
+    def test_the_contents_outranks_a_body_heading_that_disagrees(self) -> None:
+        model = detect_fs_values(_geometry([
+            _contents_page([
+                ("Item 14.", "Principal Accountant Fees and Services", "53"),
+                ("Item 15.", "Exhibit and Financial Statement Schedules", "54"),
+                ("Item 16.", "Form 10-K Summary", "57"),
+            ]),
+            _line("Item 14. Principal Accounting Fees and Services", y=0.10, line_index=0),
+        ]))
+        item = next(item for item in model["items"] if item["identifier"] == "14")
+        self.assertEqual(item["description"], "Principal Accountant Fees and Services")
+        self.assertEqual(item["descriptionSource"], "toc")
+        self.assertEqual(len(item["headers"]), 1)
+        self.assertEqual(len(item["tocEntries"]), 1)
+
+    def test_body_headings_without_a_page_column_are_not_a_contents_page(self) -> None:
+        model = detect_fs_values(_geometry([[
+            *_line("Item 10. Directors, Executive Officers and Corporate Governance", y=0.10, line_index=0),
+            *_line("Item 11. Executive Compensation", y=0.20, line_index=1),
+            *_line("Item 12. Security Ownership of Certain Beneficial Owners", y=0.30, line_index=2),
+            *_line("Item 13. Certain Relationships and Related Transactions", y=0.40, line_index=3),
+        ]]))
+        self.assertTrue(model["items"])
+        self.assertTrue(all(item["tocEntries"] == [] for item in model["items"]))
+        self.assertTrue(all(item["descriptionSource"] == "heading" for item in model["items"]))
+
+    def test_a_wrapped_contents_row_keeps_its_description_and_page(self) -> None:
+        characters = _contents_page([
+            ("Item 1.", "Business", "1"),
+            ("Item 3.", "Legal Proceedings", "18"),
+            ("Item 4.", "Mine Safety Disclosures", "18"),
+        ])
+        # A description too long for its column wraps, and the page number is
+        # then printed beside the remainder rather than beside the identifier.
+        characters.extend(_cell("Item 5.", y=0.20, line_index=40, x=0.03))
+        characters.extend(_cell("Market for Registrant’s Common Equity, Related", y=0.20, line_index=41, x=0.15))
+        characters.extend(_cell("Stockholder Matters", y=0.212, line_index=42, x=0.15))
+        characters.extend(_cell("19", y=0.212, line_index=43, x=0.90))
+
+        model = detect_fs_values(_geometry([characters]))
+        item = next(item for item in model["items"] if item["identifier"] == "5")
+        self.assertEqual(
+            item["description"],
+            "Market for Registrant’s Common Equity, Related Stockholder Matters",
+        )
+        self.assertEqual(item["tocEntries"][0]["printedPage"], "19")
+
+    def test_a_rule_citation_is_not_an_item_reference(self) -> None:
+        model = detect_fs_values(_geometry([
+            _contents_page([
+                ("Item 1.", "Business", "1"),
+                ("Item 1A.", "Risk Factors", "5"),
+                ("Item 15.", "Exhibit and Financial Statement Schedules", "54"),
+            ]),
+            [
+                *_line("Exhibits required by Item 601 of Regulation S-K", y=0.10, line_index=0),
+                *_line("omitted pursuant to Item 601(b)(2) of Regulation S-K", y=0.20, line_index=1),
+                *_line("those discussed in Part I, Item 1A of this Form 10-K", y=0.30, line_index=2),
+            ],
+        ]))
+        self.assertEqual(
+            [(reference["identifier"], reference["text"]) for reference in model["itemReferences"]],
+            [("1A", "Item 1A")],
+        )
+        self.assertEqual(model["itemReferences"][0]["part"], "I")
+        self.assertEqual(model["itemReferences"][0]["description"], "Risk Factors")
+        self.assertFalse(model["itemReferences"][0]["descriptionPresent"])
+
+    def test_an_identifier_reused_across_parts_is_keyed_by_part(self) -> None:
+        # A 10-Q prints Item 1 twice. They are different items, and collapsing
+        # them would attach financial statements to legal proceedings.
+        characters = _cell("TABLE OF CONTENTS", y=0.04, line_index=0, x=0.40)
+        characters.extend(_cell("PART I", y=0.08, line_index=1, x=0.45))
+        characters.extend(_contents_row("Item 1.", "Financial Statements", "3", y=0.12, line_index=2))
+        characters.extend(_contents_row("Item 2.", "Management’s Discussion", "20", y=0.16, line_index=5))
+        characters.extend(_cell("PART II", y=0.20, line_index=8, x=0.45))
+        characters.extend(_contents_row("Item 1.", "Legal Proceedings", "30", y=0.24, line_index=9))
+        characters.extend(_contents_row("Item 2.", "Unregistered Sales of Equity Securities", "31", y=0.28, line_index=12))
+
+        model = detect_fs_values(_geometry([characters]))
+        self.assertEqual(
+            [(item["identifier"], item["part"], item["description"]) for item in model["items"]],
+            [
+                ("1", "I", "Financial Statements"),
+                ("2", "I", "Management’s Discussion"),
+                ("1", "II", "Legal Proceedings"),
+                ("2", "II", "Unregistered Sales of Equity Securities"),
+            ],
+        )
+
+    def test_a_reference_naming_no_part_is_left_unresolved_when_it_is_ambiguous(self) -> None:
+        characters = _cell("TABLE OF CONTENTS", y=0.04, line_index=0, x=0.40)
+        characters.extend(_cell("PART I", y=0.08, line_index=1, x=0.45))
+        characters.extend(_contents_row("Item 1.", "Financial Statements", "3", y=0.12, line_index=2))
+        characters.extend(_contents_row("Item 2.", "Management’s Discussion", "20", y=0.16, line_index=5))
+        characters.extend(_cell("PART II", y=0.20, line_index=8, x=0.45))
+        characters.extend(_contents_row("Item 1.", "Legal Proceedings", "30", y=0.24, line_index=9))
+        characters.extend(_contents_row("Item 2.", "Unregistered Sales", "31", y=0.28, line_index=12))
+
+        model = detect_fs_values(_geometry([
+            characters,
+            [
+                *_line("as described in Item 1 of this report", y=0.10, line_index=0),
+                *_line("see Part II, Item 1 for the matters", y=0.20, line_index=1),
+            ],
+        ]))
+        self.assertEqual(
+            [(reference["identifier"], reference["part"], reference["description"])
+             for reference in model["itemReferences"]],
+            [("1", "II", "Legal Proceedings")],
+        )
+
+    def test_a_contents_row_records_whether_a_table_corroborated_it(self) -> None:
+        geometry = _geometry([_contents_page([
+            ("Item 1.", "Business", "1"),
+            ("Item 2.", "Properties", "17"),
+            ("Item 3.", "Legal Proceedings", "18"),
+        ])])
+        tables = {
+            "version": 1,
+            "coordinateSpace": "normalized",
+            "pages": [{
+                "pageIndex": 0,
+                "tables": [{
+                    "id": "t0",
+                    "bounds": {"x": 0.02, "y": 0.08, "width": 0.94, "height": 0.14},
+                    "columns": [
+                        {"x0": 0.02, "x1": 0.14},
+                        {"x0": 0.14, "x1": 0.80},
+                        {"x0": 0.80, "x1": 0.96},
+                    ],
+                }],
+            }],
+        }
+        plain = detect_fs_values(geometry)
+        corroborated = detect_fs_values(geometry, tables=tables)
+
+        self.assertTrue(all(not item["tocEntries"][0]["corroborated"] for item in plain["items"]))
+        self.assertTrue(all(item["tocEntries"][0]["corroborated"] for item in corroborated["items"]))
+        self.assertEqual(
+            [item["description"] for item in plain["items"]],
+            [item["description"] for item in corroborated["items"]],
+        )
+
+    def test_a_contents_row_naming_no_item_is_not_folded_into_the_one_above(self) -> None:
+        # A filing lists more than its items: signature pages and executive
+        # officer sections sit in the same contents, at the identifier margin.
+        # A wrapped description is indented past it, and that is the difference.
+        characters = _contents_page([
+            ("Item 2.", "Properties", "17"),
+            ("Item 3.", "Legal Proceedings", "18"),
+            ("Item 4.", "Mine Safety Disclosures", "18"),
+        ])
+        characters.extend(_cell("Information About our Executive Officers", y=0.19, line_index=40, x=0.03))
+        characters.extend(_cell("29", y=0.19, line_index=41, x=0.90))
+
+        model = detect_fs_values(_geometry([characters]))
+        item = next(item for item in model["items"] if item["identifier"] == "4")
+        self.assertEqual(item["description"], "Mine Safety Disclosures")
+        self.assertEqual(item["tocEntries"][0]["printedPage"], "18")

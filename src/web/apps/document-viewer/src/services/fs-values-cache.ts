@@ -1,5 +1,7 @@
 import type {
   FinancialValue,
+  FsItem,
+  FsItemReference,
   FsNoiseValue,
   FsNote,
   FsNoteReference,
@@ -12,6 +14,8 @@ export class FsValuesCache {
   private readonly _noise = new Map<string, Map<number, FsNoiseValue[]>>();
   private readonly _notes = new Map<string, FsNote[]>();
   private readonly _noteReferences = new Map<string, FsNoteReference[]>();
+  private readonly _items = new Map<string, FsItem[]>();
+  private readonly _itemReferences = new Map<string, FsItemReference[]>();
   private readonly _decoder: ((base64: string) => Promise<FsValues>) | undefined;
 
   constructor(decoder?: (base64: string) => Promise<FsValues>) {
@@ -28,6 +32,8 @@ export class FsValuesCache {
       this._noise.set(pdfId, new Map());
       this._notes.set(pdfId, []);
       this._noteReferences.set(pdfId, []);
+      this._items.set(pdfId, []);
+      this._itemReferences.set(pdfId, []);
       return;
     }
     try {
@@ -58,6 +64,8 @@ export class FsValuesCache {
       this._noise.set(pdfId, noise);
       this._notes.set(pdfId, model.notes ?? []);
       this._noteReferences.set(pdfId, model.noteReferences ?? []);
+      this._items.set(pdfId, model.items ?? []);
+      this._itemReferences.set(pdfId, model.itemReferences ?? []);
     } catch {
       // A malformed optional artifact must not prevent the PDF itself loading.
       this._cache.set(pdfId, new Map());
@@ -65,6 +73,8 @@ export class FsValuesCache {
       this._noise.set(pdfId, new Map());
       this._notes.set(pdfId, []);
       this._noteReferences.set(pdfId, []);
+      this._items.set(pdfId, []);
+      this._itemReferences.set(pdfId, []);
     }
   }
 
@@ -105,12 +115,24 @@ export class FsValuesCache {
     return this._noteReferences.get(pdfId) ?? [];
   }
 
+  /** Canonical filing items detected across the document. */
+  items(pdfId: string): FsItem[] {
+    return this._items.get(pdfId) ?? [];
+  }
+
+  /** Narrative citations resolved to entries in the canonical item catalogue. */
+  itemReferences(pdfId: string): FsItemReference[] {
+    return this._itemReferences.get(pdfId) ?? [];
+  }
+
   clearPdf(pdfId: string): void {
     this._cache.delete(pdfId);
     this._logicalValues.delete(pdfId);
     this._noise.delete(pdfId);
     this._notes.delete(pdfId);
     this._noteReferences.delete(pdfId);
+    this._items.delete(pdfId);
+    this._itemReferences.delete(pdfId);
   }
 
   clear(): void {
@@ -119,5 +141,7 @@ export class FsValuesCache {
     this._noise.clear();
     this._notes.clear();
     this._noteReferences.clear();
+    this._items.clear();
+    this._itemReferences.clear();
   }
 }

@@ -10,9 +10,17 @@ from statistics import median
 
 from .context import context_for_text, document_context
 from .evidence import suppression_reason
-from .notes import NoteFragment, NoteLine, detect_notes
+from .headings import Fragment, HeadingLine
+from .items import detect_items
+from .notes import detect_notes
 from .profile import build_document_profile
-from .reasons import NOTE_HEADER, NOTE_REFERENCE
+from .reasons import (
+    ITEM_HEADER,
+    ITEM_REFERENCE,
+    ITEM_TOC_ENTRY,
+    NOTE_HEADER,
+    NOTE_REFERENCE,
+)
 from .spans import (
     RecognizedSpan,
     RejectedToken,
@@ -25,7 +33,7 @@ from .spans import (
 )
 
 
-DETECTOR_VERSION = "fs-values-detector-6"
+DETECTOR_VERSION = "fs-values-detector-7"
 
 
 def _line_characters(page: dict) -> list[list[dict]]:
@@ -162,7 +170,7 @@ def _line_median_width(source: list[dict | None]) -> float:
 
 
 def _fragment_bounds(
-    fragment: NoteFragment,
+    fragment: Fragment,
     flat_lines: list[tuple[int, str, list[dict | None], dict, float]],
 ) -> dict | None:
     _page_index, _text, source, _context, _top = flat_lines[fragment.line_index]
@@ -172,13 +180,42 @@ def _fragment_bounds(
     )
 
 
-def _fragments_text(
-    fragments: tuple[NoteFragment, ...],
+def _fragment_geometry(
+    fragments: tuple[Fragment, ...],
     flat_lines: list[tuple[int, str, list[dict | None], dict, float]],
-) -> str:
-    return " ".join(
-        flat_lines[fragment.line_index][1][fragment.start:fragment.end].strip()
+    *,
+    strict: bool,
+) -> tuple[int, str, dict, list[dict]] | None:
+    """Page, printed text, enclosing bounds and per-fragment segments.
+
+    `strict` is how a heading and a contents row differ. A heading is one
+    printed thing: if any line of it cannot be placed, the whole occurrence is
+    dropped rather than published with a hole. A contents row is a set of
+    independent cells, and a cell that cannot be placed costs only that cell.
+    """
+    placed = [
+        (fragment, bounds, text)
         for fragment in fragments
+        if (bounds := _fragment_bounds(fragment, flat_lines)) is not None
+        and (text := flat_lines[fragment.line_index][1][fragment.start:fragment.end].strip())
+    ]
+    if strict and len(placed) != len(fragments):
+        return None
+    if not placed:
+        return None
+    segments = [
+        {
+            "pageIndex": flat_lines[fragment.line_index][0],
+            "text": text,
+            "bounds": bounds,
+        }
+        for fragment, bounds, text in placed
+    ]
+    return (
+        segments[0]["pageIndex"],
+        " ".join(segment["text"] for segment in segments),
+        _enclosing_bounds([bounds for _fragment, bounds, _text in placed]),
+        segments,
     )
 
 
@@ -348,13 +385,22 @@ def _attach_wrapped_magnitude(
     return True
 
 
-def detect_fs_values(geometry: dict, *, diagnostics: dict | None = None) -> dict:
+def detect_fs_values(
+    geometry: dict,
+    *,
+    tables: dict | None = None,
+    diagnostics: dict | None = None,
+) -> dict:
     """Build the fs-values-v1 model from text geometry.
 
     Each page carries the values it publishes and, separately, the `noise` it
     refused -- recognized spans with the rule that ruled them out. Noise is a
     diagnostic: it is never a click target, and no consumer may treat it as a
     value. `diagnostics` receives a count per reason.
+
+    `tables` is an optional table-structure-v1 model for the same document. It
+    corroborates contents rows when it resolved the contents page, and item
+    detection reads the same rows from text geometry when it did not.
     """
     pages: list[dict] = []
     page_contexts: list[dict] = []
@@ -376,15 +422,15 @@ def detect_fs_values(geometry: dict, *, diagnostics: dict | None = None) -> dict
     values_by_page: dict[int, list[dict]] = {page_index: [] for page_index, _, _ in prepared}
     noise_by_page: dict[int, list[dict]] = {page_index: [] for page_index, _, _ in prepared}
     flat_lines: list[tuple[int, str, list[dict | None], dict, float]] = []
-    note_lines: list[NoteLine] = []
+    heading_lines: list[HeadingLine] = []
     profile_lines: list[tuple[int, str, float]] = []
     for (page_index, lines, _), page_context in zip(prepared, page_contexts):
         for text, source in lines:
             envelope = _line_envelope(source)
             top = envelope[0] if envelope is not None else 0.0
             flat_lines.append((page_index, text, source, page_context, top))
-            note_lines.append(
-                NoteLine(
+            heading_lines.append(
+                HeadingLine(
                     page_index,
                     text,
                     _line_left(source),
@@ -398,7 +444,7 @@ def detect_fs_values(geometry: dict, *, diagnostics: dict | None = None) -> dict
             profile_lines.append((page_index, text, top))
     profile = build_document_profile(profile_lines, dict(glyph_heights))
 
-    note_detection = detect_notes(note_lines)
+    note_detection = detect_notes(heading_lines)
     note_ids = {
         note.identifier: f"fs-note-{index}"
         for index, note in enumerate(note_detection.notes)
@@ -408,44 +454,32 @@ def detect_fs_values(geometry: dict, *, diagnostics: dict | None = None) -> dict
         for note in note_detection.notes
     }
     note_payloads: list[dict] = []
-    note_noise_by_line: dict[int, list[tuple[int, str, str, dict]]] = defaultdict(list)
-    note_occupied_by_line: dict[int, list[tuple[int, int]]] = defaultdict(list)
+    heading_noise_by_line: dict[int, list[tuple[int, str, str, dict]]] = defaultdict(list)
+    heading_occupied_by_line: dict[int, list[tuple[int, int]]] = defaultdict(list)
 
     for note_index, note in enumerate(note_detection.notes):
         headers: list[dict] = []
         for header_index, header in enumerate(note.headers):
-            segment_bounds = [
-                bounds
-                for fragment in header.fragments
-                if (bounds := _fragment_bounds(fragment, flat_lines)) is not None
-            ]
-            if len(segment_bounds) != len(header.fragments):
+            geometry_for_header = _fragment_geometry(header.fragments, flat_lines, strict=True)
+            if geometry_for_header is None:
                 continue
-            first_fragment = header.fragments[0]
-            page_index = flat_lines[first_fragment.line_index][0]
-            text = _fragments_text(header.fragments, flat_lines)
+            page_index, text, bounds, segments = geometry_for_header
             header_payload = {
                 "id": f"fsnh-n{note_index}-h{header_index}",
                 "pageIndex": page_index,
                 "text": text,
-                "bounds": _enclosing_bounds(segment_bounds),
+                "bounds": bounds,
                 "continuation": header.continuation,
             }
-            if len(header.fragments) > 1:
-                header_payload["segments"] = [
-                    {
-                        "pageIndex": flat_lines[fragment.line_index][0],
-                        "text": flat_lines[fragment.line_index][1][fragment.start:fragment.end].strip(),
-                        "bounds": bounds,
-                    }
-                    for fragment, bounds in zip(header.fragments, segment_bounds)
-                ]
+            if len(segments) > 1:
+                header_payload["segments"] = segments
             headers.append(header_payload)
-            note_noise_by_line[first_fragment.line_index].append(
-                (first_fragment.start, NOTE_HEADER, text, header_payload["bounds"])
+            first_fragment = header.fragments[0]
+            heading_noise_by_line[first_fragment.line_index].append(
+                (first_fragment.start, NOTE_HEADER, text, bounds)
             )
             for fragment in header.fragments:
-                note_occupied_by_line[fragment.line_index].append((fragment.start, fragment.end))
+                heading_occupied_by_line[fragment.line_index].append((fragment.start, fragment.end))
         if headers:
             note_payloads.append(
                 {
@@ -464,10 +498,10 @@ def detect_fs_values(geometry: dict, *, diagnostics: dict | None = None) -> dict
         line_index = reference.fragment.line_index
         page_index, line_text, _source, _context, _top = flat_lines[line_index]
         text = line_text[reference.fragment.start:reference.fragment.end]
-        note_noise_by_line[line_index].append(
+        heading_noise_by_line[line_index].append(
             (reference.fragment.start, NOTE_REFERENCE, text, bounds)
         )
-        note_occupied_by_line[line_index].append(
+        heading_occupied_by_line[line_index].append(
             (reference.fragment.start, reference.fragment.end)
         )
         for identifier_index, identifier in enumerate(reference.identifiers):
@@ -485,11 +519,117 @@ def detect_fs_values(geometry: dict, *, diagnostics: dict | None = None) -> dict
                 payload["sourceDescription"] = reference.source_description
             note_reference_payloads.append(payload)
 
+    tables_by_page: dict[int, list[dict]] = {}
+    for page in (tables or {}).get("pages", []):
+        tables_by_page[int(page.get("pageIndex", 0))] = page.get("tables", [])
+    item_detection = detect_items(heading_lines, tables_by_page)
+
+    item_payloads: list[dict] = []
+    item_ids: dict[int, str] = {}
+    for item_index, item in enumerate(item_detection.items):
+        headers: list[dict] = []
+        for header_index, header in enumerate(item.headers):
+            placed = _fragment_geometry(header.fragments, flat_lines, strict=True)
+            if placed is None:
+                continue
+            page_index, text, bounds, segments = placed
+            header_payload = {
+                "id": f"fsih-i{item_index}-h{header_index}",
+                "pageIndex": page_index,
+                "text": text,
+                "bounds": bounds,
+                "continuation": header.continuation,
+            }
+            if len(segments) > 1:
+                header_payload["segments"] = segments
+            headers.append(header_payload)
+            first_fragment = header.fragments[0]
+            heading_noise_by_line[first_fragment.line_index].append(
+                (first_fragment.start, ITEM_HEADER, text, bounds)
+            )
+            for fragment in header.fragments:
+                heading_occupied_by_line[fragment.line_index].append((fragment.start, fragment.end))
+
+        toc_entries: list[dict] = []
+        for entry_index, row in enumerate(item.toc_entries):
+            placed = _fragment_geometry(row.fragments, flat_lines, strict=False)
+            if placed is None:
+                continue
+            page_index, text, bounds, segments = placed
+            entry_payload = {
+                "id": f"fsit-i{item_index}-t{entry_index}",
+                "pageIndex": page_index,
+                "text": text,
+                "bounds": bounds,
+                "corroborated": row.corroborated,
+            }
+            if row.printed_page:
+                entry_payload["printedPage"] = row.printed_page
+            if len(segments) > 1:
+                entry_payload["segments"] = segments
+            toc_entries.append(entry_payload)
+            first_fragment = row.fragments[0]
+            heading_noise_by_line[first_fragment.line_index].append(
+                (first_fragment.start, ITEM_TOC_ENTRY, text, bounds)
+            )
+            # Every cell is occupied, not just the identifier: the page number a
+            # contents row prints is a value-shaped integer that is not a value.
+            for fragment in row.fragments:
+                heading_occupied_by_line[fragment.line_index].append((fragment.start, fragment.end))
+
+        if not headers and not toc_entries:
+            continue
+        payload = {
+            "id": f"fs-item-{item_index}",
+            "identifier": item.identifier,
+            "description": item.description,
+            "descriptionSource": item.description_source,
+            "headers": headers,
+            "tocEntries": toc_entries,
+        }
+        if item.part:
+            payload["part"] = item.part
+        item_ids[item_index] = payload["id"]
+        item_payloads.append(payload)
+
+    item_reference_payloads: list[dict] = []
+    for occurrence_index, reference in enumerate(item_detection.references):
+        item_id = item_ids.get(reference.catalog_index)
+        if item_id is None:
+            continue
+        bounds = _fragment_bounds(reference.fragment, flat_lines)
+        if bounds is None:
+            continue
+        line_index = reference.fragment.line_index
+        page_index, line_text, _source, _context, _top = flat_lines[line_index]
+        text = line_text[reference.fragment.start:reference.fragment.end]
+        heading_noise_by_line[line_index].append(
+            (reference.fragment.start, ITEM_REFERENCE, text, bounds)
+        )
+        heading_occupied_by_line[line_index].append(
+            (reference.fragment.start, reference.fragment.end)
+        )
+        payload = {
+            "id": f"fsir-p{page_index}-r{occurrence_index}",
+            "itemId": item_id,
+            "identifier": reference.identifier,
+            "description": item_detection.items[reference.catalog_index].description,
+            "pageIndex": page_index,
+            "text": text,
+            "bounds": bounds,
+            "descriptionPresent": bool(reference.source_description),
+        }
+        if reference.part:
+            payload["part"] = reference.part
+        if reference.source_description:
+            payload["sourceDescription"] = reference.source_description
+        item_reference_payloads.append(payload)
+
     wrapped_dates, wrapped_occupied = _wrapped_dates(flat_lines)
 
     for line_index, (page_index, text, source, page_context, top) in enumerate(flat_lines):
         for _start, reason, note_text, bounds in sorted(
-            note_noise_by_line.get(line_index, []),
+            heading_noise_by_line.get(line_index, []),
             key=lambda item: item[0],
         ):
             page_noise = noise_by_page[page_index]
@@ -507,14 +647,14 @@ def detect_fs_values(geometry: dict, *, diagnostics: dict | None = None) -> dict
         for span in recognize_spans(text, rejected=unparsed):
             if _overlaps_ranges(span.start, span.end, wrapped_occupied.get(line_index, [])):
                 continue
-            if _overlaps_ranges(span.start, span.end, note_occupied_by_line.get(line_index, [])):
+            if _overlaps_ranges(span.start, span.end, heading_occupied_by_line.get(line_index, [])):
                 continue
             bounds = _bounds(span, source)
             if bounds is None:
                 continue
             candidates.append((span.start, span.end, span, bounds, None))
         for token in unparsed:
-            if _overlaps_ranges(token.start, token.end, note_occupied_by_line.get(line_index, [])):
+            if _overlaps_ranges(token.start, token.end, heading_occupied_by_line.get(line_index, [])):
                 continue
             bounds = _bounds(token, source)
             if bounds is None:
@@ -526,7 +666,7 @@ def detect_fs_values(geometry: dict, *, diagnostics: dict | None = None) -> dict
             _count_rejection(diagnostics, token.reason)
 
         for start, end, span, bounds, segments in sorted(candidates, key=lambda item: item[0]):
-            if _overlaps_ranges(start, end, note_occupied_by_line.get(line_index, [])):
+            if _overlaps_ranges(start, end, heading_occupied_by_line.get(line_index, [])):
                 continue
             reason = suppression_reason(
                 span,
@@ -571,6 +711,8 @@ def detect_fs_values(geometry: dict, *, diagnostics: dict | None = None) -> dict
         "documentContext": doc_context,
         "notes": note_payloads,
         "noteReferences": note_reference_payloads,
+        "items": item_payloads,
+        "itemReferences": item_reference_payloads,
         "pages": pages,
     }
 

@@ -2,9 +2,9 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "http://doculink.dev/schemas/fs-values/1",
   "title": "DocuLink Financial Statement Values v1",
-  "description": "Financial numbers, percentages, dates, and structured financial-statement notes detected from text geometry. Coordinates use normalized displayed-page, top-left-origin 0–1 space.",
+  "description": "Financial numbers, percentages, dates, and structured financial-statement notes and filing items detected from text geometry. Coordinates use normalized displayed-page, top-left-origin 0–1 space.",
   "type": "object",
-  "required": ["version", "coordinateSpace", "detectorVersion", "documentContext", "notes", "noteReferences", "pages"],
+  "required": ["version", "coordinateSpace", "detectorVersion", "documentContext", "notes", "noteReferences", "items", "itemReferences", "pages"],
   "additionalProperties": false,
   "properties": {
     "version": { "const": 1 },
@@ -20,6 +20,16 @@
       "type": "array",
       "description": "Narrative citations linked to the canonical note catalogue. A citation naming several notes produces one reference per identifier, sharing the source text and bounds.",
       "items": { "$ref": "#/definitions/NoteReference" }
+    },
+    "items": {
+      "type": "array",
+      "description": "Canonical document-level catalogue of filing items (\"Item 1A. Risk Factors\"). One entry per item, built from the table of contents and from the headings in the body, whichever the document supplies.",
+      "items": { "$ref": "#/definitions/Item" }
+    },
+    "itemReferences": {
+      "type": "array",
+      "description": "Narrative citations linked to the canonical item catalogue. An identifier absent from the catalogue is never published, which is what keeps \"Item 601 of Regulation S-K\" out of this array.",
+      "items": { "$ref": "#/definitions/ItemReference" }
     },
     "pages": { "type": "array", "items": { "$ref": "#/definitions/PageValues" } }
   },
@@ -76,9 +86,9 @@
         "bounds": { "$ref": "#/definitions/Bounds" }
       }
     },
-    "NoteHeader": {
+    "Heading": {
       "type": "object",
-      "description": "One physical occurrence of a complete note heading. A continuation occurrence remains attached to the canonical note rather than creating a second catalogue item.",
+      "description": "One physical occurrence of a complete heading, for a note or for a filing item. A continuation occurrence remains attached to its canonical catalogue entry rather than creating a second one.",
       "required": ["id", "pageIndex", "text", "bounds", "continuation"],
       "additionalProperties": false,
       "properties": {
@@ -107,7 +117,7 @@
         "headers": {
           "type": "array",
           "minItems": 1,
-          "items": { "$ref": "#/definitions/NoteHeader" }
+          "items": { "$ref": "#/definitions/Heading" }
         }
       }
     },
@@ -128,9 +138,70 @@
         "sourceDescription": { "type": "string", "minLength": 1, "description": "Description printed in the citation. Present only when descriptionPresent is true." }
       }
     },
+    "ItemTocEntry": {
+      "type": "object",
+      "description": "One row of a table of contents naming a filing item. The row is assembled from the lines sharing its band, so its cells are the segments: the identifier, the description, and the page number the document prints for it.",
+      "required": ["id", "pageIndex", "text", "bounds", "corroborated"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "pageIndex": { "type": "integer", "minimum": 0, "description": "The page the contents row is printed on, not the page it points at." },
+        "text": { "type": "string", "minLength": 1, "description": "The row as printed, cells joined in reading order." },
+        "bounds": { "$ref": "#/definitions/Bounds" },
+        "printedPage": { "type": "string", "minLength": 1, "description": "The page number printed in the row, exactly as printed. Absent when the row carries none." },
+        "corroborated": { "type": "boolean", "description": "True when a detected table covered this row and supplied the column bands that classified its cells. False when the row was assembled from text geometry alone, which is how a contents page that table detection did not resolve still yields items." },
+        "segments": {
+          "type": "array",
+          "minItems": 2,
+          "description": "The row's cells, in reading order. bounds encloses all of them.",
+          "items": { "$ref": "#/definitions/ValueSegment" }
+        }
+      }
+    },
+    "Item": {
+      "type": "object",
+      "description": "One canonical filing item, keyed by its normalized identifier -- \"7\", \"1A\", \"2.02\". The key includes the part only when the same identifier appears under more than one part, which is what keeps a 10-Q's Part I Item 1 distinct from its Part II Item 1. At least one of headers or tocEntries is non-empty.",
+      "required": ["id", "identifier", "description", "descriptionSource", "headers", "tocEntries"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "identifier": { "type": "string", "minLength": 1 },
+        "part": { "type": "string", "minLength": 1, "description": "The Roman numeral of the part this item falls under, when the document groups items into parts. Absent when it does not." },
+        "description": { "type": "string", "description": "Canonical item description without the Item identifier. Empty only when neither the contents nor a heading supplies one." },
+        "descriptionSource": { "type": "string", "enum": ["toc", "heading", "none"], "description": "Where description came from. The table of contents is the document's own index and wins over a body heading when the two disagree." },
+        "headers": {
+          "type": "array",
+          "description": "Occurrences of this item's heading in the body. Empty when the item is listed in the contents but its heading was never found.",
+          "items": { "$ref": "#/definitions/Heading" }
+        },
+        "tocEntries": {
+          "type": "array",
+          "description": "Contents rows naming this item. Empty when the document has no contents, or when the item is missing from it -- a body-only \"Item 6. [Reserved]\" is still catalogued.",
+          "items": { "$ref": "#/definitions/ItemTocEntry" }
+        }
+      }
+    },
+    "ItemReference": {
+      "type": "object",
+      "description": "One item identifier cited by narrative text and linked to its canonical catalogue entry.",
+      "required": ["id", "itemId", "identifier", "description", "pageIndex", "text", "bounds", "descriptionPresent"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "itemId": { "type": "string", "minLength": 1 },
+        "identifier": { "type": "string", "minLength": 1 },
+        "part": { "type": "string", "minLength": 1, "description": "The part named by the citation itself, as in \"Part II, Item 7\". Absent when the citation names no part." },
+        "description": { "type": "string", "description": "Canonical description resolved from the item catalogue." },
+        "pageIndex": { "type": "integer", "minimum": 0 },
+        "text": { "type": "string", "minLength": 1, "description": "The complete citation as printed, including an explicit description when present." },
+        "bounds": { "$ref": "#/definitions/Bounds" },
+        "descriptionPresent": { "type": "boolean", "description": "True when the printed citation supplied a description; false when description was resolved only from the catalogue. A citation may name a subsection rather than the item's own title, so sourceDescription is not expected to match description." },
+        "sourceDescription": { "type": "string", "minLength": 1, "description": "Description printed in the citation. Present only when descriptionPresent is true." }
+      }
+    },
     "NoiseValue": {
       "type": "object",
-      "description": "A text span classified as non-linkable diagnostic noise. Most entries are recognized values later refused by evidence, while structured note headings and references are captured as complete text spans. Noise is never a click target.",
+      "description": "A text span classified as non-linkable diagnostic noise. Most entries are recognized values later refused by evidence, while structured headings, contents rows and references are captured as complete text spans. Noise is never a click target.",
       "required": ["id", "kind", "text", "bounds", "reason"],
       "additionalProperties": false,
       "properties": {
@@ -148,6 +219,9 @@
             "page-furniture",
             "note-header",
             "note-reference",
+            "item-header",
+            "item-reference",
+            "item-toc-entry",
             "phone-context",
             "identifier-context",
             "superscript",

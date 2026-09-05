@@ -7,10 +7,12 @@
  */
 import type {
   FinancialValue,
+  FsHeading,
+  FsItem,
+  FsItemTocEntry,
   FsNoiseReason,
   FsNoiseValue,
   FsNote,
-  FsNoteHeader,
 } from "./fs-values-decoder.js";
 import type { HoverTipContent } from "./hover-tip.js";
 
@@ -21,11 +23,20 @@ const NOISE_EXPLANATIONS: Readonly<Record<FsNoiseReason, string>> = {
   "partial-token": "A token that held a figure but did not parse in full",
   "note-header": "A complete financial-statement note heading",
   "note-reference": "A narrative citation linked to a financial-statement note",
+  "item-header": "A complete filing item heading",
+  "item-reference": "A narrative citation linked to a filing item",
+  "item-toc-entry": "A table-of-contents row naming a filing item",
   "page-furniture": "On a running header or footer, repeated across pages",
   "phone-context": "Inside a phone number",
   "identifier-context": "Follows a label that introduces a reference number",
   "superscript": "Set smaller than the page's text, so a footnote marker",
   "citation-year": "A year reached through a citation, so not a period",
+};
+
+const DESCRIPTION_SOURCES: Readonly<Record<FsItem["descriptionSource"], string>> = {
+  toc: "The table of contents",
+  heading: "A heading in the body",
+  none: "Neither \u2014 none was found",
 };
 
 const MAGNITUDE_WORDS: Readonly<Record<number, string>> = {
@@ -60,7 +71,7 @@ export function describeFsNoise(entry: FsNoiseValue): HoverTipContent {
 export function describeFsNoteHeader(
   entry: FsNoiseValue,
   note: FsNote,
-  header: FsNoteHeader,
+  header: FsHeading,
 ): HoverTipContent {
   return {
     key: entry.id,
@@ -72,6 +83,53 @@ export function describeFsNoteHeader(
       { name: "note number", value: note.identifier },
       { name: "note description", value: note.description || "Not provided" },
       { name: "continuation", value: header.continuation ? "Yes" : "No" },
+    ],
+  };
+}
+
+/** Describe an item-heading noise span using its canonical item metadata. */
+export function describeFsItemHeader(
+  entry: FsNoiseValue,
+  item: FsItem,
+  header: FsHeading,
+): HoverTipContent {
+  return {
+    key: entry.id,
+    variant: entry.reason,
+    label: entry.reason,
+    detail: NOISE_EXPLANATIONS[entry.reason],
+    code: entry.text,
+    fields: [
+      { name: "item number", value: item.identifier },
+      { name: "item description", value: item.description || "Not provided" },
+      ...(item.part ? [{ name: "part", value: item.part }] : []),
+      { name: "description from", value: DESCRIPTION_SOURCES[item.descriptionSource] },
+      { name: "continuation", value: header.continuation ? "Yes" : "No" },
+    ],
+  };
+}
+
+/**
+ * Describe a contents row. `corroborated` is worth surfacing because it says
+ * which detector read the row: table structure, or text geometry alone.
+ */
+export function describeFsItemTocEntry(
+  entry: FsNoiseValue,
+  item: FsItem,
+  tocEntry: FsItemTocEntry,
+): HoverTipContent {
+  return {
+    key: entry.id,
+    variant: entry.reason,
+    label: entry.reason,
+    detail: NOISE_EXPLANATIONS[entry.reason],
+    code: entry.text,
+    fields: [
+      { name: "item number", value: item.identifier },
+      { name: "item description", value: item.description || "Not provided" },
+      ...(item.part ? [{ name: "part", value: item.part }] : []),
+      { name: "points at page", value: tocEntry.printedPage ?? "Not printed" },
+      { name: "read from", value: tocEntry.corroborated ? "A detected table" : "Text geometry" },
     ],
   };
 }

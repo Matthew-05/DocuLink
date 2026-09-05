@@ -438,6 +438,7 @@ def _handle_job(job: OcrJob) -> None:
         )
 
         table_structure_base64 = ""
+        table_structure: dict | None = None
         table_started = time.perf_counter()
         try:
             on_progress("Detecting table structure…")
@@ -459,7 +460,12 @@ def _handle_job(job: OcrJob) -> None:
         values_started = time.perf_counter()
         try:
             on_progress("Detecting financial values…")
-            fs_values = detect_fs_values(geometry, diagnostics=diagnostics)
+            # Table structure is optional input, not a prerequisite: it
+            # corroborates the contents rows item detection reads, and item
+            # detection falls back to text geometry when it is absent.
+            fs_values = detect_fs_values(
+                geometry, tables=table_structure, diagnostics=diagnostics
+            )
             fs_values_base64 = fs_values_to_base64(fs_values)
             counts = {"number": 0, "percent": 0, "date": 0}
             for page in fs_values["pages"]:
@@ -469,6 +475,13 @@ def _handle_job(job: OcrJob) -> None:
             diagnostics["fs_value_numbers"] = counts["number"]
             diagnostics["fs_value_percents"] = counts["percent"]
             diagnostics["fs_value_dates"] = counts["date"]
+            diagnostics["fs_notes_detected"] = len(fs_values["notes"])
+            diagnostics["fs_note_references"] = len(fs_values["noteReferences"])
+            diagnostics["fs_items_detected"] = len(fs_values["items"])
+            diagnostics["fs_item_references"] = len(fs_values["itemReferences"])
+            diagnostics["fs_items_from_contents"] = sum(
+                1 for item in fs_values["items"] if item["tocEntries"]
+            )
         except Exception as exc:  # noqa: BLE001 — optional stage must preserve OCR
             diagnostics["fs_values_error"] = str(exc)
             on_progress("Financial value detection unavailable; keeping OCR geometry…")

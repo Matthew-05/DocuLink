@@ -18,8 +18,11 @@ export type {
   FsNoiseKind,
   FsNoiseReason,
   FsNoiseValue,
+  FsHeading,
+  FsItem,
+  FsItemReference,
+  FsItemTocEntry,
   FsNote,
-  FsNoteHeader,
   FsNoteReference,
   FsValueSegment,
   FsValueBounds,
@@ -29,7 +32,13 @@ export type {
   PageFsValues,
 } from "./fs-values-decoder.js";
 export { decodeFsValues, parseFsValues } from "./fs-values-decoder.js";
-export { describeFsNoise, describeFsNoteHeader, describeFsValue } from "./fs-values-describe.js";
+export {
+  describeFsItemHeader,
+  describeFsItemTocEntry,
+  describeFsNoise,
+  describeFsNoteHeader,
+  describeFsValue,
+} from "./fs-values-describe.js";
 export type { HoverTipContent, HoverTipOptions } from "./hover-tip.js";
 export { HoverTip } from "./hover-tip.js";
 export type { CharacterEntry } from "./char-entries.js";

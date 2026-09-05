@@ -16,6 +16,9 @@ PARTIAL_TOKEN = "partial-token"
 PAGE_FURNITURE = "page-furniture"
 NOTE_HEADER = "note-header"
 NOTE_REFERENCE = "note-reference"
+ITEM_HEADER = "item-header"
+ITEM_REFERENCE = "item-reference"
+ITEM_TOC_ENTRY = "item-toc-entry"
 PHONE_CONTEXT = "phone-context"
 IDENTIFIER_CONTEXT = "identifier-context"
 SUPERSCRIPT = "superscript"
@@ -28,6 +31,9 @@ REASONS = (
     PAGE_FURNITURE,
     NOTE_HEADER,
     NOTE_REFERENCE,
+    ITEM_HEADER,
+    ITEM_REFERENCE,
+    ITEM_TOC_ENTRY,
     PHONE_CONTEXT,
     IDENTIFIER_CONTEXT,
     SUPERSCRIPT,

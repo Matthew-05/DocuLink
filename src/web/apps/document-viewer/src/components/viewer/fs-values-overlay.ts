@@ -1,12 +1,15 @@
 import type {
   FinancialValue,
+  FsHeading,
+  FsItemTocEntry,
   FsNoiseValue,
-  FsNoteHeader,
   FsValueBounds,
   HoverTipContent,
 } from "@doculink/shared";
 import {
   HoverTip,
+  describeFsItemHeader,
+  describeFsItemTocEntry,
   describeFsNoise,
   describeFsNoteHeader,
   describeFsValue,
@@ -203,19 +206,39 @@ export class FsValuesOverlay {
     return null;
   }
 
+  /**
+   * A heading or contents row is published twice: once in the catalogue that
+   * gives it meaning, once as the noise span that keeps it out of the values.
+   * Only the span carries geometry, so the catalogue entry behind a hovered
+   * span is found by matching the two back up on page, text and bounds.
+   */
   private _describeNoise(
     pdfId: string,
     pageIndex: number,
     entry: FsNoiseValue,
   ): HoverTipContent {
-    if (entry.reason !== "note-header") return describeFsNoise(entry);
-    for (const note of this._cache.notes(pdfId)) {
-      const header = note.headers.find((candidate: FsNoteHeader) => (
-        candidate.pageIndex === pageIndex
-        && candidate.text === entry.text
-        && sameBounds(candidate.bounds, entry.bounds)
-      ));
-      if (header) return describeFsNoteHeader(entry, note, header);
+    const occupies = (candidate: { pageIndex: number; text: string; bounds: FsValueBounds }): boolean => (
+      candidate.pageIndex === pageIndex
+      && candidate.text === entry.text
+      && sameBounds(candidate.bounds, entry.bounds)
+    );
+    if (entry.reason === "note-header") {
+      for (const note of this._cache.notes(pdfId)) {
+        const header = note.headers.find((candidate: FsHeading) => occupies(candidate));
+        if (header) return describeFsNoteHeader(entry, note, header);
+      }
+    }
+    if (entry.reason === "item-header") {
+      for (const item of this._cache.items(pdfId)) {
+        const header = item.headers.find((candidate: FsHeading) => occupies(candidate));
+        if (header) return describeFsItemHeader(entry, item, header);
+      }
+    }
+    if (entry.reason === "item-toc-entry") {
+      for (const item of this._cache.items(pdfId)) {
+        const tocEntry = item.tocEntries.find((candidate: FsItemTocEntry) => occupies(candidate));
+        if (tocEntry) return describeFsItemTocEntry(entry, item, tocEntry);
+      }
     }
     return describeFsNoise(entry);
   }

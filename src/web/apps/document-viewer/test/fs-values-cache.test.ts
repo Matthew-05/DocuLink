@@ -85,3 +85,35 @@ test("retains the canonical note catalogue and its resolved references", async (
   assert.equal(cache.notes("pdf")[0]?.description, "Revenue Recognition");
   assert.equal(cache.noteReferences("pdf")[0]?.noteId, "fs-note-0");
 });
+
+test("retains the canonical item catalogue and its resolved references", async () => {
+  const bounds = { x: 0.1, y: 0.1, width: 0.2, height: 0.02 };
+  const model = {
+    version: 1, coordinateSpace: "normalized", detectorVersion: "test", documentContext: {},
+    items: [{
+      id: "fs-item-0", identifier: "7A", part: "II",
+      description: "Quantitative and Qualitative Disclosures About Market Risk",
+      descriptionSource: "toc",
+      headers: [{ id: "ih0", pageIndex: 29, text: "Item 7A. Quantitative and Qualitative Disclosures About Market Risk", bounds, continuation: false }],
+      tocEntries: [{ id: "it0", pageIndex: 2, text: "Item 7A. Quantitative and Qualitative Disclosures About Market Risk 27", bounds, corroborated: true, printedPage: "27" }],
+    }],
+    itemReferences: [{
+      id: "ir0", itemId: "fs-item-0", identifier: "7A", description: "Quantitative and Qualitative Disclosures About Market Risk",
+      pageIndex: 26, text: "Item 7A", bounds, descriptionPresent: false,
+    }],
+    pages: [{ pageIndex: 2, context: {}, values: [] }],
+  };
+  const cache = new FsValuesCache(async () => model as never);
+  await cache.build("pdf", "encoded");
+
+  assert.equal(cache.items("pdf")[0]?.part, "II");
+  assert.equal(cache.items("pdf")[0]?.tocEntries[0]?.printedPage, "27");
+  assert.equal(cache.itemReferences("pdf")[0]?.itemId, "fs-item-0");
+});
+
+test("reports no items for a document with no analyzed artifact", async () => {
+  const cache = new FsValuesCache();
+  await cache.build("native-pdf", undefined);
+  assert.deepEqual(cache.items("native-pdf"), []);
+  assert.deepEqual(cache.itemReferences("native-pdf"), []);
+});
