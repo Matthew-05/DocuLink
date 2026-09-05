@@ -1,5 +1,4 @@
 import type { FinancialValue, FsValues } from "@doculink/shared";
-import type { TextContentCache } from "./text-content-cache.js";
 
 export class FsValuesCache {
   private readonly _cache = new Map<string, Map<number, FinancialValue[]>>();
@@ -9,25 +8,22 @@ export class FsValuesCache {
     this._decoder = decoder;
   }
 
-  async build(pdfId: string, fsValuesBase64: string | undefined, textCache: TextContentCache): Promise<void> {
+  async build(pdfId: string, fsValuesBase64?: string): Promise<void> {
     this.clearPdf(pdfId);
-    if (fsValuesBase64) {
-      try {
-        const decode = this._decoder ?? (await import("@doculink/shared")).decodeFsValues;
-        const model = await decode(fsValuesBase64);
-        this._cache.set(pdfId, new Map(model.pages.map((page) => [page.pageIndex, page.values])));
-        return;
-      } catch {
-        // A stale/corrupt optional artifact falls through to deterministic browser detection.
-      }
+    if (!fsValuesBase64) {
+      // Only analyzed/OCR documents publish this artifact. Native-PDF fallback
+      // detection is deliberately a separate follow-up feature.
+      this._cache.set(pdfId, new Map());
+      return;
     }
-
-    const pages = new Map<number, FinancialValue[]>();
-    const { detectFsValuesFromEntries } = await import("@doculink/shared");
-    for (const pageIndex of textCache.getPageIndices(pdfId)) {
-      pages.set(pageIndex, detectFsValuesFromEntries(pageIndex, textCache.get(pdfId, pageIndex) ?? []).values);
+    try {
+      const decode = this._decoder ?? (await import("@doculink/shared")).decodeFsValues;
+      const model = await decode(fsValuesBase64);
+      this._cache.set(pdfId, new Map(model.pages.map((page) => [page.pageIndex, page.values])));
+    } catch {
+      // A malformed optional artifact must not prevent the PDF itself loading.
+      this._cache.set(pdfId, new Map());
     }
-    this._cache.set(pdfId, pages);
   }
 
   valuesOnPage(pdfId: string, pageIndex: number): FinancialValue[] {

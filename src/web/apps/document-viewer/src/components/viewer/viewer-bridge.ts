@@ -28,10 +28,10 @@ async function indexAllPdfs(
   fsValuesCache.clear();
   await Promise.all(
     entries.map(async (entry) => {
-      await cache.buildForUrl(entry.id, entry.url, entry.geometryBase64);
       await Promise.all([
+        cache.buildForUrl(entry.id, entry.url, entry.geometryBase64),
         tableCache.build(entry.id, entry.tableStructureBase64),
-        fsValuesCache.build(entry.id, entry.fsValuesBase64, cache),
+        fsValuesCache.build(entry.id, entry.fsValuesBase64),
       ]);
     }),
   );
@@ -129,10 +129,10 @@ export function connectViewerToHostBridge(
         cache.clearPdf(entry.id);
         tableCache.clearPdf(entry.id);
         fsValuesCache.clearPdf(entry.id);
-        await cache.buildForUrl(entry.id, entry.url, entry.geometryBase64);
         await Promise.all([
+          cache.buildForUrl(entry.id, entry.url, entry.geometryBase64),
           tableCache.build(entry.id, entry.tableStructureBase64),
-          fsValuesCache.build(entry.id, entry.fsValuesBase64, cache),
+          fsValuesCache.build(entry.id, entry.fsValuesBase64),
         ]);
         onTableStructureChanged();
       })().finally(endIndexing);

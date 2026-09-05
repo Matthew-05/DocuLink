@@ -120,7 +120,7 @@ namespace DocuLink.Addin.Modules.UI
 
             var valuesToggle = new CheckBox
             {
-                Text = "Show detected financial values",
+                Text = "Show financial-value debug boxes",
                 AutoSize = true,
                 Location = new Point(CardPadding, 126),
                 Font = DialogTheme.BodyFont,
@@ -133,7 +133,7 @@ namespace DocuLink.Addin.Modules.UI
             card.Controls.Add(valuesToggle);
 
             card.Controls.Add(DialogTheme.CreateCaption(
-                "Highlights detected numbers, percentages and dates; click one to link it.",
+                "Click targets are always active; this draws every detected target box.",
                 new Point(CardPadding + 18, 148)));
 
             var openLogsBtn = new Button

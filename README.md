@@ -29,7 +29,7 @@ DocuLink is currently in active development.
 * **File Manager:** Manage embedded PDFs and folders from a dedicated task-pane UI.
 * **Document Matcher:** Select source and output ranges, then match document values into worksheet output columns.
 * **OCR Capabilities:** Tesseract and PyMuPDF power local, geometry-first OCR through the Python worker. Recognized text is stored as sidecar geometry instead of being written into the PDF.
-* **Financial Value Cache:** OCR cache building detects financial numbers, percentages, and dates with normalized bounds and conservative currency/scale context. Development and beta builds can enable the clickable overlay under Settings → Development; clicking a value creates the ordinary linked rectangle for the active Excel cell.
+* **Financial Value Cache:** OCR cache building detects financial numbers, percentages, and dates with normalized bounds and conservative currency/scale context. Detected values in analyzed documents are clickable and create an ordinary linked rectangle for the active Excel cell. Development and beta builds can show every target box under Settings → Development.
 
 ## Technical & Developer Documentation
 

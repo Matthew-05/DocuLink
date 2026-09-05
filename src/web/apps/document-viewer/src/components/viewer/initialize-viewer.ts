@@ -746,7 +746,7 @@ export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLEleme
       : cache.buildFromDoc(pdfId, doc);
 
     void buildPromise
-      .then(() => fsValuesCache.build(pdfId, entry?.fsValuesBase64, cache))
+      .then(() => fsValuesCache.build(pdfId, entry?.fsValuesBase64))
       .then(() => {
         if (gen !== cacheGeneration) return;
         finish();
