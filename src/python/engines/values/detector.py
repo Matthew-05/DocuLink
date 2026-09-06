@@ -56,7 +56,7 @@ from .spans import (
 )
 
 
-DETECTOR_VERSION = "document-values-detector-1"
+DETECTOR_VERSION = "document-values-detector-2"
 
 
 def _value_payload(span: RecognizedSpan, bounds: dict, identifier: str, inherited_currency: str = "") -> dict:

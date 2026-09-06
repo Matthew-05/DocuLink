@@ -34,8 +34,12 @@ ORACLE = ROOT / "src" / "python" / "tests" / "fixtures" / "values" / "span-oracl
 # like "5,200-acre" carries a comma without ever having been a value. So do the
 # spans a tier above claimed whole, which carry whatever punctuation their
 # sentence needs.
+#
+# The exemption is by shape, not by reason. A letter is what spoils "5,200-acre";
+# a refusal made of digits and punctuation alone was a figure the recognizer
+# could not read, and "$(1,234)" -- the commonest negative in a statement --
+# hid behind a blanket partial-token exemption until this gate was narrowed.
 _STRONG_MARKS = "$€£¥₹₩,%"
-_NON_VALUE_NOISE_REASONS = frozenset({"partial-token"})
 
 # Structure spans are printed apparatus, not refused values, so they carry
 # whatever punctuation their heading or contents row carries. The gate that
@@ -53,6 +57,13 @@ _REFERENCE_MARKS = "$€£¥₹₩%"
 # A citation is a claimed span rather than a refused value, so it quotes whatever
 # the sentence it sits in quotes.
 _CLAIMED_REFERENCE_KINDS = frozenset({"note", "item"})
+
+
+def _spoiled_by_a_letter(candidate: dict) -> bool:
+    """Whether a refused token was refused by a letter rather than by damage."""
+    return candidate["reason"] == "partial-token" and any(
+        character.isalpha() for character in candidate["text"]
+    )
 
 
 def _span_dict(span) -> dict:
@@ -103,7 +114,7 @@ def score_document(pdf: Path) -> dict:
     suspicious = [
         {"category": "noise", "label": candidate["reason"], "text": candidate["text"]}
         for candidate in rejected
-        if candidate["reason"] not in _NON_VALUE_NOISE_REASONS
+        if not _spoiled_by_a_letter(candidate)
         and any(mark in candidate["text"] for mark in _STRONG_MARKS)
     ] + [
         {"category": "reference", "label": reference["kind"], "text": reference["text"]}

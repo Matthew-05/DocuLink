@@ -17,5 +17,15 @@
   {"text":"(4)%", "spans":[{"kind":"percent","text":"(4)%","normalizedValue":"-4"}]},
   {"text":"(4) %", "spans":[{"kind":"percent","text":"(4) %","normalizedValue":"-4"}]},
   {"text":"(4)percent", "spans":[{"kind":"percent","text":"(4)percent","normalizedValue":"-4"}]},
-  {"text":"(12.5)% and 3%", "spans":[{"kind":"percent","text":"(12.5)%","normalizedValue":"-12.5"},{"kind":"percent","text":"3%","normalizedValue":"3"}]}
+  {"text":"(12.5)% and 3%", "spans":[{"kind":"percent","text":"(12.5)%","normalizedValue":"-12.5"},{"kind":"percent","text":"3%","normalizedValue":"3"}]},
+  {"text":"$(1,234)", "spans":[{"kind":"number","text":"$(1,234)","normalizedValue":"-1234","currency":"USD"}]},
+  {"text":"$ (1,234)", "spans":[{"kind":"number","text":"$ (1,234)","normalizedValue":"-1234","currency":"USD"}]},
+  {"text":"(1,234 USD)", "spans":[{"kind":"number","text":"(1,234 USD)","normalizedValue":"-1234","currency":"USD"}]},
+  {"text":"50.14 USD", "spans":[{"kind":"number","text":"50.14 USD","normalizedValue":"50.14","currency":"USD"}]},
+  {"text":"1,234 USD-denominated notes", "spans":[{"kind":"number","text":"1,234","normalizedValue":"1234"}]},
+  {"text":"\u22129.0%", "spans":[{"kind":"percent","text":"\u22129.0%","normalizedValue":"-9"}]},
+  {"text":"8.5% - 9.0%", "spans":[{"kind":"percent","text":"8.5%","normalizedValue":"8.5"},{"kind":"percent","text":"9.0%","normalizedValue":"9"}]},
+  {"text":"7%\u20139%", "spans":[{"kind":"percent","text":"7%","normalizedValue":"7"},{"kind":"percent","text":"9%","normalizedValue":"9"}]},
+  {"text":"2024\u20132025", "spans":[{"kind":"date","text":"2024","normalizedValue":"2024","datePrecision":"year"},{"kind":"date","text":"2025","normalizedValue":"2025","datePrecision":"year"}]},
+  {"text":"$819 million ($748 million after tax)", "spans":[{"kind":"number","text":"$819 million","normalizedValue":"819000000","currency":"USD","magnitude":1000000},{"kind":"number","text":"$748 million","normalizedValue":"748000000","currency":"USD","magnitude":1000000}]}
 ]

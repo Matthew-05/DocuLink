@@ -22,7 +22,7 @@ references have their own explicit, structured detector.
 from __future__ import annotations
 
 import re
-from collections import defaultdict
+from collections import Counter, defaultdict
 from dataclasses import dataclass
 from statistics import median
 
@@ -179,16 +179,36 @@ def _page_numbers(
     return found
 
 
-def _repeating_skeletons(page_lines: dict[int, list[str]]) -> set[str]:
+@dataclass(frozen=True)
+class _Line:
+    """One page line reduced to what the profile compares across pages.
+
+    The skeleton and the slot values are derived once, here, because every
+    comparison below wants them and re-deriving a skeleton per candidate is
+    quadratic in a document's line count.
+    """
+
+    skeleton: str
+    slots: tuple[int, ...]
+
+
+def _reduce(page_lines: dict[int, list[str]]) -> dict[int, list[_Line]]:
+    return {
+        page: [_Line(skeleton(text), tuple(_slots(text))) for text in texts]
+        for page, texts in page_lines.items()
+    }
+
+
+def _repeating_skeletons(page_lines: dict[int, list[_Line]]) -> set[str]:
     """Skeletons whose every numeric slot is constant or tracks the page.
 
     Printed once per page, because a body row that recurs -- a payment term used
     six times on the same page -- is content however often it appears.
     """
-    occurrences: dict[str, list[tuple[int, list[int]]]] = defaultdict(list)
-    for page_index, texts in page_lines.items():
-        for text in texts:
-            occurrences[skeleton(text)].append((page_index, _slots(text)))
+    occurrences: dict[str, list[tuple[int, tuple[int, ...]]]] = defaultdict(list)
+    for page_index, page in page_lines.items():
+        for line in page:
+            occurrences[line.skeleton].append((page_index, line.slots))
 
     candidates: set[str] = set()
     for key, rows in occurrences.items():
@@ -212,21 +232,21 @@ def _repeating_skeletons(page_lines: dict[int, list[str]]) -> set[str]:
     return candidates
 
 
-def _edge_matter(texts: list[str], candidates: set[str]) -> set[int]:
-    """Indices of candidate lines lying outside the page's body.
+def _edge_matter(page: list[_Line], candidates: set[str]) -> set[str]:
+    """The skeletons of candidate lines lying outside the page's body.
 
     Above every ordinary line, or below every ordinary line. Stated as a bound
     rather than an unbroken walk from the edge, so one unrelated line failing in
     the middle of a header block does not hide the rest of it.
     """
-    ordinary = [index for index, text in enumerate(texts) if skeleton(text) not in candidates]
+    ordinary = [index for index, line in enumerate(page) if line.skeleton not in candidates]
     if not ordinary:
-        return set(range(len(texts)))
+        return {line.skeleton for line in page}
     first, last = ordinary[0], ordinary[-1]
     return {
-        index
-        for index in range(len(texts))
-        if (index < first or index > last) and skeleton(texts[index]) in candidates
+        page[index].skeleton
+        for index in range(len(page))
+        if (index < first or index > last) and page[index].skeleton in candidates
     }
 
 
@@ -252,18 +272,20 @@ def build_document_profile(
         ordered[page] = [text for _, text in entries]
 
     numbers = _page_numbers(by_page, len(pages))
-    candidates = _repeating_skeletons(ordered)
+    reduced = _reduce(ordered)
+    candidates = _repeating_skeletons(reduced)
     threshold = max(_REPEAT_MINIMUM, len(pages) * _REPEAT_SHARE)
-    document_wide = {
-        key
-        for key in candidates
-        if sum(1 for texts in ordered.values() if key in {skeleton(t) for t in texts}) >= threshold
-    }
+    # How many pages each skeleton appears on, counted once over the document
+    # rather than once per candidate: a skeleton is on a page or it is not, and
+    # asking that question per candidate is what made this pass quadratic.
+    page_counts: Counter[str] = Counter()
+    for page in reduced.values():
+        page_counts.update({line.skeleton for line in page})
+    document_wide = {key for key in candidates if page_counts[key] >= threshold}
 
     labels: dict[int, frozenset[str]] = {}
-    for page, texts in ordered.items():
-        edge = _edge_matter(texts, document_wide)
-        keys = {skeleton(texts[index]) for index in edge}
+    for page, page_lines in reduced.items():
+        keys = _edge_matter(page_lines, document_wide)
         if keys:
             labels[page] = frozenset(keys)
 

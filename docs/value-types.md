@@ -166,6 +166,11 @@ reference to what the cue names. The cue is matched against the text *before*
 the span, within a sentence, so a label cannot condemn a whole line: in
 `Total 1,234 CUSIP 037833100`, the total stays a value.
 
+The number mark is a cue as well as a shape. `#7` is one token and is refused on
+shape; `No. 7`, `Nos. 3` and `# 7` are two, so the mark has to be read as the cue
+it is -- and it answers only for the number standing immediately after it, which
+is what leaves the `4` in `Nos. 3 and 4` a value.
+
 A citation is one printed span resolved possibly twice — `Notes 3.1 and IV`
 produces one reference and two catalogue entries, both pointing at it by
 `spanId`.

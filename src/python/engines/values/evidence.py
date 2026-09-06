@@ -77,6 +77,14 @@ _IDENTIFIER_CUES: tuple[tuple[str, re.Pattern[str]], ...] = (
             re.I,
         ),
     ),
+    # The number mark itself, standing apart from the number it names. "#7" is
+    # one token and the recognizer refuses it on shape; "No. 7" and "# 7" are
+    # two, so the mark has to be read as the cue it is. It must sit immediately
+    # before the span -- a mark answers for the next number, not the sentence.
+    (
+        IDENTIFIER,
+        re.compile(r"(?:\bnos?\.|[#\u2116])\s*$", re.I),
+    ),
 )
 
 # A year reached through a citation is naming a law, not a period.

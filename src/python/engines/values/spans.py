@@ -42,6 +42,10 @@ MONTH_PATTERN = (
 )
 CURRENCY_CODES = {code: code for code in ("USD", "EUR", "GBP", "JPY", "CAD", "AUD", "CHF", "CNY", "INR", "KRW")}
 CURRENCY_SYMBOLS = {"$": "USD", "€": "EUR", "£": "GBP", "¥": "JPY", "₹": "INR", "₩": "KRW"}
+# Built from the two tables above so the pattern cannot list a currency the
+# reader does not know, or miss one it does.
+CURRENCY_CODE_PATTERN = "|".join(sorted(CURRENCY_CODES))
+CURRENCY_SYMBOL_PATTERN = "[" + "".join(CURRENCY_SYMBOLS) + "]"
 
 MAGNITUDES = {
     "k": 1_000,
@@ -94,9 +98,15 @@ _WRAPPED_YEAR_RE = re.compile(r"\b(?:19|20)\d{2}\b")
 
 _NUMBER_RE = re.compile(
     r"(?<![\w\d])"
+    # A currency mark is printed outside the bracket as often as inside it:
+    # "$(1,234)" and "$ (1,234)" are the same amount as "($1,234)".
+    rf"(?:(?P<lead_code>{CURRENCY_CODE_PATTERN})\s*|(?P<lead_symbol>{CURRENCY_SYMBOL_PATTERN})\s*)?"
     r"(?P<open>\()?\s*"
-    r"(?:(?P<code>USD|EUR|GBP|JPY|CAD|AUD|CHF|CNY|INR|KRW)\s*|(?P<symbol>[$€£¥₹₩])\s*)?"
-    r"(?P<sign>[+-])?\s*"
+    rf"(?:(?P<code>{CURRENCY_CODE_PATTERN})\s*|(?P<symbol>{CURRENCY_SYMBOL_PATTERN})\s*)?"
+    # A sign binds to the figure it signs. Nothing may stand between them: a
+    # dash set off by a space is separating two figures, and "8.5% - 9.0%" is a
+    # range whose second half is positive nine.
+    r"(?P<sign>[+\-\u2212])?"
     r"(?P<number>(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?|\.\d+)"
     # A bracketed negative percentage closes before its sign: "(4)%". The
     # lookahead keeps this alternative from claiming the ordinary "(1,234)"
@@ -104,6 +114,11 @@ _NUMBER_RE = re.compile(
     r"\s*(?P<close_percent>\)(?=\s*(?:%|percent\b)))?"
     r"\s*(?P<percent>%|percent\b)?\s*"
     rf"(?P<magnitude>{MAGNITUDE_PATTERN})?\s*"
+    # A code printed after the figure. Case-sensitive here, unlike the leading
+    # position, because "12 CAD" is Canadian dollars and "12 cad" is a word the
+    # sentence needed; and never when a hyphen makes it a compound adjective,
+    # which would otherwise cut "USD-denominated" in half and lose the figure.
+    rf"(?:(?P<trail_code>(?-i:{CURRENCY_CODE_PATTERN}))\b(?!-)\s*)?"
     r"(?P<close>\))?"
     r"(?![\w\d])",
     re.I,
@@ -123,6 +138,16 @@ _TRIMMABLE = frozenset(".,;:!?\"'\u2018\u2019\u201c\u201d()[]*\u2020\u2021")
 
 _TOKEN_RE = re.compile(r"\S+")
 
+# An en or em dash standing between two figures separates them, and a hyphen
+# never does: no identifier is written with an en dash, so "2024–2025" and "7%–9%"
+# are two figures each while "10-K" and "001-36743" stay one token and stay
+# refused. Between a figure and a word the same dash is punctuation holding a
+# sentence together -- "page 55—Entertainment" -- and the token stays whole, so the
+# cross-reference is not read as the quantity fifty-five.
+_FIGURE_DASH = re.compile(
+    rf"(?<=[\d%)])[\u2013\u2014](?=[\d({CURRENCY_SYMBOL_PATTERN[1:-1]}])"
+)
+
 
 @dataclass(frozen=True)
 class RejectedToken:
@@ -135,12 +160,26 @@ class RejectedToken:
 
 
 def token_spans(text: str) -> list[tuple[int, int]]:
-    """Maximal runs of non-whitespace, the units a value must align to."""
-    return [(match.start(), match.end()) for match in _TOKEN_RE.finditer(text)]
+    """The units a value must align to.
+
+    Runs of non-whitespace, split again wherever a dash stands between two
+    figures rather than binding one token together.
+    """
+    spans: list[tuple[int, int]] = []
+    for match in _TOKEN_RE.finditer(text):
+        start = match.start()
+        for dash in _FIGURE_DASH.finditer(match.group(0)):
+            spans.append((start, match.start() + dash.start()))
+            start = match.start() + dash.end()
+        spans.append((start, match.end()))
+    return spans
 
 
-# "#7" and "No.7" name a thing rather than count one.
+# "#7" and "№7" name a thing rather than count one.
 _REFERENCE_MARKS = "#\u2116"
+
+# The two characters a true minus sign is written with.
+_MINUS = frozenset("-\u2212")
 
 
 def token_shape(token: str) -> str:
@@ -339,19 +378,28 @@ def recognize_spans(
         if bool(open_paren) != bool(close_paren):
             # Trim unmatched optional punctuation rather than claiming prose parens.
             if open_paren:
-                start = match.start("number")
+                # The opener belongs to the sentence, not to the figure:
+                # "($748 million after tax)" closes long after the amount ends.
+                # The currency printed inside it still belongs to the figure.
+                start = min(
+                    position
+                    for position in (match.start("code"), match.start("symbol"), match.start("number"))
+                    if position >= 0
+                )
             else:
                 # A closer with no opener still leaves the percentage behind it.
                 end = match.end("percent") if match.group("percent") else match.end("number")
         number_text = match.group("number")
-        negative = match.group("sign") == "-" or bool(open_paren and close_paren)
+        negative = match.group("sign") in _MINUS or bool(open_paren and close_paren)
         magnitude_text = match.group("magnitude") or ""
         magnitude = MAGNITUDES.get(magnitude_text.lower(), 0)
         normalized = _scaled_decimal(number_text, negative, magnitude)
         if not normalized:
             continue
-        code = (match.group("code") or "").upper()
-        currency = CURRENCY_CODES.get(code, "") or CURRENCY_SYMBOLS.get(match.group("symbol") or "", "")
+        # Whichever position it was printed in, there is one currency here.
+        code = (match.group("code") or match.group("lead_code") or match.group("trail_code") or "").upper()
+        symbol = match.group("symbol") or match.group("lead_symbol") or ""
+        currency = CURRENCY_CODES.get(code, "") or CURRENCY_SYMBOLS.get(symbol, "")
         percent = bool(match.group("percent"))
         if percent and magnitude:
             # A magnitude following "percent" belongs to surrounding prose, not the percentage.

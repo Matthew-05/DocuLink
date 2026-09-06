@@ -211,6 +211,28 @@ class TokenAlignmentTests(unittest.TestCase):
     def test_sentence_punctuation_is_not_part_of_the_token(self) -> None:
         self.assertEqual([span.text for span in recognize_spans("was $1,234.")], ["$1,234"])
 
+    def test_an_en_dash_separates_where_a_hyphen_binds(self) -> None:
+        """No identifier is written with an en dash, so a range is two figures."""
+        self.assertEqual(
+            [span.text for span in recognize_spans("2024\u20132025")], ["2024", "2025"]
+        )
+        refused: list = []
+        self.assertEqual([span.text for span in recognize_spans("2024-2025", rejected=refused)], [])
+        self.assertEqual([token.reason for token in refused], ["identifier"])
+        # Only between two figures. The same dash joining a figure to a word is
+        # a sentence's punctuation, and the cross-reference is not the number 55.
+        self.assertEqual(
+            [span.text for span in recognize_spans("see page 55\u2014Entertainment")], []
+        )
+
+    def test_a_currency_printed_outside_the_bracket_stays_with_the_figure(self) -> None:
+        """"$(1,234)" is one token, and it is the commonest negative in a statement."""
+        for text in ("$(1,234)", "$ (1,234)", "($1,234)", "(1,234 USD)"):
+            with self.subTest(text=text):
+                spans = recognize_spans(text)
+                self.assertEqual([span.normalized_value for span in spans], ["-1234"])
+                self.assertEqual([span.currency for span in spans], ["USD"])
+
     def test_a_cut_token_is_reported_whole_and_once(self) -> None:
         refused: list = []
         recognize_spans("call 123-456-7890 today", rejected=refused)
@@ -262,6 +284,19 @@ class SuppressionTests(unittest.TestCase):
     def test_an_identifier_label_only_condemns_what_follows_it(self) -> None:
         published, _, _ = _detect([_line("Total 1,234 CUSIP 037833100", y=0.1, line_index=0)])
         self.assertEqual(published, ["1,234"])
+
+    def test_a_number_mark_names_the_number_beside_it(self) -> None:
+        """"#7" is refused on shape; "No. 7" is two tokens, so the mark is a cue."""
+        result = detect_pages([_line("Invoice No. 00550 totalling 1,234", y=0.1, line_index=0)])
+        self.assertEqual(_published(result), ["1,234"])
+        self.assertEqual(
+            [(item["kind"], item["text"]) for item in _references(result)],
+            [("identifier", "00550")],
+        )
+
+    def test_a_number_mark_answers_only_for_the_number_after_it(self) -> None:
+        published, _, _ = _detect([_line("Nos. 3 and 4 were 1,234", y=0.1, line_index=0)])
+        self.assertEqual(published, ["4", "1,234"])
 
     def test_refusals_and_redirections_are_counted_apart(self) -> None:
         _, _, diagnostics = _detect([
