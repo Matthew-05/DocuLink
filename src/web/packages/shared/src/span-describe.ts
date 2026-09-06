@@ -46,6 +46,7 @@ const NOISE_EXPLANATIONS: Readonly<Record<NoiseReason, string>> = {
   "page-furniture": "On a running header or footer, repeated across pages",
   "superscript": "Set smaller than the page's text, so a mark rather than a figure",
   "citation-year": "A year reached through a citation, so not a period",
+  "unsupported": "A bare number in a sentence, with nothing about it saying it measures anything",
 };
 
 /** What each reference identifies, in the reader's words. */

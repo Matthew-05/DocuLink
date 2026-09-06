@@ -118,12 +118,13 @@
         "bounds": { "$ref": "#/definitions/Bounds" },
         "reason": {
           "type": "string",
-          "description": "Why the span was refused. A new reason is added here before it is implemented.",
+          "description": "Why the span was refused. A new reason is added here before it is implemented. Three of these name what the span is; `unsupported` names an absence, and is the only one that refuses a figure the detector could read in full.",
           "enum": [
             "partial-token",
             "page-furniture",
             "superscript",
-            "citation-year"
+            "citation-year",
+            "unsupported"
           ]
         }
       }

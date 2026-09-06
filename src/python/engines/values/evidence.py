@@ -26,6 +26,7 @@ from .categories import (
     SECURITY_ID,
     SUPERSCRIPT,
     TAX_ID,
+    UNSUPPORTED,
     VALUE,
 )
 from .profile import DocumentProfile
@@ -87,6 +88,26 @@ _IDENTIFIER_CUES: tuple[tuple[str, re.Pattern[str]], ...] = (
     ),
 )
 
+# What a figure written like a figure carries on its face: a comma group, a
+# percent sign or a decimal fraction. Currency and magnitude are read off the
+# span itself rather than its text.
+_INTRINSIC_MARK = re.compile(r"[,%]|\.\d")
+
+# Language that puts a number in a period rather than in a sentence.
+_PERIOD_CONTEXT = re.compile(
+    r"\b(?:due|ended|ending|as of|fiscal|through|maturing|maturity|years?"
+    r"|quarter|period|expiring|beginning|thereafter)\b[^.]{0,20}$",
+    re.I,
+)
+
+# How many words a line carries before it is prose rather than a row. A
+# statement sets its figures on lines of no words at all -- 726 of 772 on the
+# corpus CAFR, 89 of 97 on the invoice -- while a filing's narrative runs well
+# past this. The threshold only has to separate those two populations, and the
+# gap between them is wide enough that its exact value is not load-bearing.
+_PROSE_WORDS = 6
+_WORD = re.compile(r"[^\W\d_]{2,}")
+
 # A year reached through a citation is naming a law, not a period.
 _CITATION_CONTEXT = re.compile(
     r"\b(?:act|section|rule|item|part|exhibit|form|schedule|chapter|article"
@@ -116,6 +137,49 @@ def reference_kind(line: str, start: int, end: int) -> str:
     return IDENTIFIER
 
 
+def _unsupported(
+    span: RecognizedSpan, *, line: str, start: int, isolated: bool, modifier_follows: bool
+) -> bool:
+    """Whether a figure has anything at all to say that it measures something.
+
+    Every other rule here refuses a span for something it *is*. This one
+    refuses it for what it lacks, so it is deliberately the narrowest: it
+    reaches only a bare number -- no currency, no magnitude, no comma group, no
+    decimal -- standing in a sentence, with nothing beside it to explain it.
+
+    Four things speak for a number and any one of them is enough:
+
+    * **How it is written.** `1,234`, `$5`, `4.5%` and `1.0 million` are set as
+      quantities and are read as quantities wherever they appear -- including
+      when the magnitude word wrapped onto the next line, which the caller
+      reports as `modifier_follows`.
+    * **Where it sits.** A number in its own island of whitespace is a cell in a
+      column, whether or not table detection resolved the table around it. This
+      is what keeps a statement's figures out of reach of the rule entirely.
+    * **What precedes it.** Period language -- `due`, `ended`, `maturing` --
+      puts a number in a period rather than in a sentence.
+
+    What is left is `SECTION 13`, `Rule 405` and `See note 2 to the financial
+    statements; table 3`: integers a sentence needed, printed in prose, that a
+    reader would never link into a workpaper.
+
+    Bare years are deliberately out of scope. `During 2025, the Company
+    repurchased ...` is a period anchor and looks identical to a statute year;
+    separating those needs the section classifier, not this rule.
+    """
+    if span.kind != "number":
+        return False
+    if span.currency or span.magnitude or _INTRINSIC_MARK.search(span.text):
+        return False
+    if modifier_follows:
+        return False
+    if isolated:
+        return False
+    if _PERIOD_CONTEXT.search(line[:start]):
+        return False
+    return len(_WORD.findall(line)) >= _PROSE_WORDS
+
+
 def classify(
     span: RecognizedSpan,
     *,
@@ -125,6 +189,8 @@ def classify(
     page_index: int,
     top: float,
     glyph_height: float,
+    isolated: bool,
+    modifier_follows: bool,
     profile: DocumentProfile,
 ) -> Verdict:
     """What this span is, and why.
@@ -136,6 +202,9 @@ def classify(
     A token that could never be read as a value at all -- a form number, a
     product code -- is refused earlier, by `recognize_spans`, and reaches the
     model through its token shape rather than through this stage.
+
+    `isolated` is whether the span sits in its own island of whitespace, which
+    is geometry and so is measured by the caller, as `glyph_height` is.
     """
     furniture = profile.furniture_reason(line, page_index, top)
     if furniture:
@@ -157,4 +226,10 @@ def classify(
         and _CITATION_CONTEXT.search(before)
     ):
         return (NOISE, CITATION_YEAR)
+    # Last, because it is the only rule that asks what a span lacks: everything
+    # above has already had its say about what the span is.
+    if _unsupported(
+        span, line=line, start=start, isolated=isolated, modifier_follows=modifier_follows
+    ):
+        return (NOISE, UNSUPPORTED)
     return KEEP

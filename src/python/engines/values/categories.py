@@ -75,17 +75,25 @@ STRUCTURE_KINDS = (
 # --- noise reasons ---------------------------------------------------------
 # What is left once values, references and structure have been taken: damage,
 # and spans the detector refused without being able to say what they were.
+#
+# The first four name what a span is. `unsupported` is the exception and the
+# only one that refuses a figure the recognizer read in full: it names an
+# absence -- a number in a sentence with nothing about it saying it measures
+# anything -- so it is the reason most likely to be wrong, and the one to look
+# at first when a real value goes missing.
 
 PARTIAL_TOKEN = "partial-token"
 PAGE_FURNITURE = "page-furniture"
 SUPERSCRIPT = "superscript"
 CITATION_YEAR = "citation-year"
+UNSUPPORTED = "unsupported"
 
 NOISE_REASONS = (
     PARTIAL_TOKEN,
     PAGE_FURNITURE,
     SUPERSCRIPT,
     CITATION_YEAR,
+    UNSUPPORTED,
 )
 
 

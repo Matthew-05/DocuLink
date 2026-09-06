@@ -115,6 +115,7 @@ export const NOISE_REASONS = [
   "page-furniture",
   "superscript",
   "citation-year",
+  "unsupported",
 ] as const;
 
 export type NoiseReason = (typeof NOISE_REASONS)[number];

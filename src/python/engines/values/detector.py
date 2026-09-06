@@ -56,7 +56,7 @@ from .spans import (
 )
 
 
-DETECTOR_VERSION = "document-values-detector-2"
+DETECTOR_VERSION = "document-values-detector-3"
 
 
 def _value_payload(span: RecognizedSpan, bounds: dict, identifier: str, inherited_currency: str = "") -> dict:
@@ -350,6 +350,16 @@ def detect_values(
                 continue
             if overlaps_ranges(start, end, fenced):
                 continue
+            # The recognizer reads one line, so "1" at the end of this line and
+            # "million" at the start of the next is a bare integer until the two
+            # are joined below. Classification runs first and has to be told.
+            modifier_follows = (
+                line_index + 1 < len(document.lines)
+                and span.kind == "number"
+                and not span.magnitude
+                and _ends_line(span, line.text)
+                and recognize_magnitude_prefix(document.lines[line_index + 1].text) is not None
+            )
             category, resolved = classify(
                 span,
                 line=line.text,
@@ -358,6 +368,8 @@ def detect_values(
                 page_index=page_index,
                 top=line.top,
                 glyph_height=span_height(start, end, line.source),
+                isolated=is_isolated_fragment(start, end, line.source),
+                modifier_follows=modifier_follows,
                 profile=document.profile,
             )
             if category != VALUE:
@@ -367,12 +379,7 @@ def detect_values(
             value = _value_payload(span, bounds, identifier, inherited_currency)
             if segments is not None:
                 value["segments"] = segments
-            if (
-                line_index + 1 < len(document.lines)
-                and span.kind == "number"
-                and not span.magnitude
-                and _ends_line(span, line.text)
-            ):
+            if modifier_follows:
                 _attach_wrapped_magnitude(value, span, page_index, document.lines[line_index + 1])
             by_page[VALUE][page_index].append(value)
 

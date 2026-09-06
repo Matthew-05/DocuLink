@@ -205,8 +205,9 @@ in `fs-structure-v1` whose bounds contain it on the same page.
 
 ## 5. Noise
 
-What is left once the other three are taken: damage, and spans the detector
-refused without being able to say what they were. Four reasons.
+What is left once the other three are taken: damage, spans the detector refused
+without being able to say what they were, and figures with nothing to say they
+are figures. Five reasons.
 
 | Reason | What it refuses |
 |---|---|
@@ -214,6 +215,26 @@ refused without being able to say what they were. Four reasons.
 | `page-furniture` | a line repeating across pages as a running header, footer or page number |
 | `superscript` | a glyph set below 0.72 of the ordinary line height around it, so a mark rather than a figure |
 | `citation-year` | a year reached through a citation — `the Act of 1934` names a law, not this document's structure |
+| `unsupported` | a bare number standing in a sentence with nothing beside it to say it measures anything — `Rule 405`, `iOS 26`, `See note 2 to the financial statements; table 3` |
+
+`unsupported` is the one reason that names an absence rather than a thing, and
+so the one most likely to be wrong. Every other rule refuses a span for what it
+is; this one refuses a figure the recognizer read in full, because nothing
+spoke for it. Four things speak for a number and any one is enough: **how it is
+written** (a currency, a percentage, a magnitude, a comma group or a decimal —
+including a magnitude word that wrapped onto the next line), **where it sits**
+(its own island of whitespace, which is a cell in a column whether or not table
+detection resolved the table around it), **what precedes it** (period language —
+`due`, `ended`, `maturing`), and failing all three, **the line it shares**: a
+line of fewer than six words is a row, not a sentence, and its figures are left
+alone.
+
+Two deliberate limits. A bare *year* is out of scope — `During 2025, the Company
+repurchased ...` is a period anchor printed identically to a statute year, and
+separating them needs the section classifier rather than another lexical rule.
+And table membership is not consulted: on the corpus CAFR only 314 of 772 values
+sit inside a detected table, so requiring one would refuse the face of the
+statements. The island test reaches the same figures without the dependency.
 
 `page-furniture` is found by identity plus role rather than by position. A
 running footer is found by its skeleton (the line with digit runs masked)

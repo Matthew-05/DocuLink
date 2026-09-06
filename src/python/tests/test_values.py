@@ -345,6 +345,59 @@ class SuppressionTests(unittest.TestCase):
         )
 
 
+class UnsupportedTests(unittest.TestCase):
+    """A bare number in a sentence, with nothing about it saying it measures."""
+
+    PROSE = "Indicate by check mark whether the Registrant is an issuer as defined in Rule 405"
+
+    def test_a_number_a_sentence_needed_is_refused(self) -> None:
+        published, rejected, _ = _detect([_line(self.PROSE, y=0.1, line_index=0)])
+        self.assertEqual(published, [])
+        self.assertEqual([_label(item) for item in rejected], ["unsupported"])
+
+    def test_a_figure_written_as_a_figure_survives_in_prose(self) -> None:
+        """Market value and par value are printed in sentences and are wanted."""
+        for text, expected in (
+            ("The aggregate market value of the shares held was $3,253,431 on that date", "$3,253,431"),
+            ("Common Stock, $0.00001 par value per share, was registered under the Act", "$0.00001"),
+            ("Net sales in the segment grew 5% compared with the prior fiscal year", "5%"),
+            ("The Company repurchased 166,000 shares of its common stock in the period", "166,000"),
+        ):
+            with self.subTest(text=text):
+                published, _, _ = _detect([_line(text, y=0.1, line_index=0)])
+                self.assertEqual(published, [expected])
+
+    def test_a_number_in_its_own_cell_is_never_unsupported(self) -> None:
+        """A column keeps its figures even where the row carries a long label."""
+        row = _cell("Weighted average shares outstanding, basic and diluted", y=0.1, line_index=0, x=0.02)
+        row += _cell("166", y=0.1, line_index=0, x=0.70)
+        published, rejected, _ = _detect([row])
+        self.assertEqual(published, ["166"])
+        self.assertEqual(rejected, [])
+
+    def test_period_language_speaks_for_the_number_after_it(self) -> None:
+        published, _, _ = _detect([
+            _line("The notes issued under the indenture are maturing 5 years from the date", y=0.1, line_index=0)
+        ])
+        self.assertIn("5", published)
+
+    def test_a_modifier_on_the_next_line_speaks_for_the_number_before_it(self) -> None:
+        """The recognizer reads one line; the magnitude arrives on the next."""
+        page = _line("wrapping number value modifiers. This is an example of a document with 1", y=0.10, line_index=0)
+        page += _line("million modifiers. This is an example of a document with wrapping values", y=0.12, line_index=1)
+        result = detect_model(_geometry([page]))
+        value = result["pages"][0]["values"][0]
+        self.assertEqual(value["text"], "1 million")
+        self.assertEqual(value["normalizedValue"], "1000000")
+
+    def test_a_bare_year_in_prose_is_left_alone(self) -> None:
+        """Deliberately out of scope: a year in a sentence is often a period."""
+        published, _, _ = _detect([
+            _line("During 2025, the Company repurchased shares of its common stock", y=0.1, line_index=0)
+        ])
+        self.assertEqual(published, ["2025"])
+
+
 class PageFurnitureTests(unittest.TestCase):
     @staticmethod
     def _pages(footer: str, *, copies_per_page: int = 1) -> list[list[dict]]:
