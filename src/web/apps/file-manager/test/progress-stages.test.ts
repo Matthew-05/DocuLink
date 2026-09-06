@@ -49,7 +49,7 @@ const SCANNED_RUN: Message[] = [
   ["source-check", 1, 40], ["source-check", 40, 40],
   ["geometry", 20, 40], ["ocr", 1, 40], ["ocr", 20, 40], ["ocr", 40, 40],
   ["orientation", 5, 40], ["adaptive-ocr"], ["table-recovery", 3, 40],
-  ["table-structure", 40, 40], ["fs-structure"], ["values"],
+  ["table-structure", 40, 40], ["financial-structure"], ["values"],
   ["result-transfer"], ["finalizing"],
 ];
 
@@ -57,7 +57,7 @@ const SCANNED_RUN: Message[] = [
 const CONVERTED_RUN: Message[] = [
   ["queue"], ["prepare", 2, 3], ["convert"], ["transfer", 1, 4],
   ["security", 1, 6], ["source-check", 6, 6], ["source"],
-  ["table-structure", 6, 6], ["fs-structure"], ["values"],
+  ["table-structure", 6, 6], ["financial-structure"], ["values"],
   ["result-transfer"], ["finalizing"],
 ];
 

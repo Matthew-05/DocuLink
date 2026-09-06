@@ -1,4 +1,4 @@
-import type { DetectedTable, TableStructure } from "@doculink/shared";
+import type { DetectedTable, TableStructure } from "@talliark/shared";
 import type { NormalizedRect } from "../types/index.js";
 
 // A selection has to sit meaningfully inside a table before it counts as that
@@ -38,7 +38,7 @@ export class TableStructureCache {
     if (!tableStructureBase64) return;
     try {
       const decode = this._decoder
-        ?? (await import("@doculink/shared")).decodeTableStructure;
+        ?? (await import("@talliark/shared")).decodeTableStructure;
       const structure = await decode(tableStructureBase64);
       this._cache.set(
         pdfId,

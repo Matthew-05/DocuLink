@@ -38,7 +38,7 @@ export const STAGES: ReadonlyMap<string, StageDefinition> = new Map([
   ["adaptive-ocr",    { label: "Refining",          weight: 15 }],
   ["table-recovery",  { label: "Reading tables",    weight: 8 }],
   ["table-structure", { label: "Finding tables",    weight: 6 }],
-  ["fs-structure",    { label: "Reading structure", weight: 3 }],
+  ["financial-structure",    { label: "Reading structure", weight: 3 }],
   ["values",          { label: "Finding values",    weight: 3 }],
   ["result-transfer", { label: "Saving",            weight: 3 }],
   ["finalizing",      { label: "Finalizing",        weight: 2 }],

@@ -29,7 +29,7 @@ CATEGORIES = (VALUE, REFERENCE, STRUCTURE, NOISE)
 
 # --- reference kinds -------------------------------------------------------
 # What the reference identifies. A citation resolves to a catalogue entry in
-# fs-structure-v1; the rest stand alone.
+# financial-structure-v1; the rest stand alone.
 
 IDENTIFIER = "identifier"
 PHONE = "phone"

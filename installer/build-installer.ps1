@@ -1,7 +1,7 @@
 #Requires -Version 5.1
 <#
 .SYNOPSIS
-    Full clean rebuild of DocuLink and packaging into a single MSI.
+    Full clean rebuild of Talliark and packaging into a single MSI.
 
 .DESCRIPTION
     Runs every build step from scratch in order:
@@ -9,8 +9,8 @@
       2. Build the Python OCR runtime (downloads Tesseract if needed)
       3. Build the C# add-in in Release mode (also builds TypeScript web apps and
          copies the worker into bin\Release\)
-      4. Harvest the Release output into a WiX component group (doculink-files.wxs)
-      5. Compile and link into DocuLink-Setup-<version>.msi
+      4. Harvest the Release output into a WiX component group (talliark-files.wxs)
+      5. Compile and link into Talliark-Setup-<version>.msi
 
 .PREREQUISITES
     - Python 3.12+ on PATH
@@ -19,7 +19,7 @@
     - WiX Toolset v3 (https://github.com/wixtoolset/wix3/releases)
 
 .OUTPUTS
-    installer\Output\DocuLink-Setup-1.0.0.msi
+    installer\Output\Talliark-Setup-1.0.0.msi
 #>
 param(
     [string]$Version = ""
@@ -87,13 +87,13 @@ Write-Host "  Python  : $pythonVer"
 # ── Paths ─────────────────────────────────────────────────────────────────────
 $PythonDir    = Join-Path $RepoRoot "src\python"
 $PythonDist   = Join-Path $PythonDir "dist"
-$AddinProj    = Join-Path $RepoRoot "src\DocuLink.Addin\DocuLink.Addin.csproj"
-$ReleaseDir   = Join-Path $RepoRoot "src\DocuLink.Addin\bin\Release"
+$AddinProj    = Join-Path $RepoRoot "src\Talliark.Addin\Talliark.Addin.csproj"
+$ReleaseDir   = Join-Path $RepoRoot "src\Talliark.Addin\bin\Release"
 $ObjDir       = Join-Path $InstallerDir "obj"
 $OutputDir    = Join-Path $InstallerDir "Output"
-$FilesWxs     = Join-Path $InstallerDir "doculink-files.wxs"
-$MainWxs      = Join-Path $InstallerDir "doculink.wxs"
-$MsiOut       = Join-Path $OutputDir "DocuLink-Setup-$Version.msi"
+$FilesWxs     = Join-Path $InstallerDir "talliark-files.wxs"
+$MainWxs      = Join-Path $InstallerDir "talliark.wxs"
+$MsiOut       = Join-Path $OutputDir "Talliark-Setup-$Version.msi"
 
 # ── Step 1: Clean ─────────────────────────────────────────────────────────────
 Step "Cleaning previous build artifacts"
@@ -125,8 +125,8 @@ Step "Building C# add-in (Release)"
 & $MSBuild $AddinProj /t:Rebuild /p:Configuration=Release /p:Platform=AnyCPU /p:AppVersion=$Version /p:BetaMode=true /nologo /v:minimal
 if ($LASTEXITCODE -ne 0) { Fail "MSBuild failed (exit $LASTEXITCODE)." }
 
-$addinDll = Join-Path $ReleaseDir "DocuLink.Addin.dll"
-if (-not (Test-Path $addinDll)) { Fail "DocuLink.Addin.dll not found after build: $addinDll" }
+$addinDll = Join-Path $ReleaseDir "Talliark.Addin.dll"
+if (-not (Test-Path $addinDll)) { Fail "Talliark.Addin.dll not found after build: $addinDll" }
 Write-Host "  Build output: $ReleaseDir"
 
 # ── Step 4: Harvest Release output into WiX component group ──────────────────

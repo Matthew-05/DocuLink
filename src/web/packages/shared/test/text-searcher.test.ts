@@ -17,7 +17,7 @@ const textSearcher = await import(textSearcherUrl) as typeof import("../src/text
 const {
   buildSearchPageIndexFromEntries,
   cleanAutoInsertedSearchQuery,
-  normalizeMatcherQuery,
+  normalizeLinkerQuery,
   normalizeSearchQuery,
   searchPage,
   searchPageWithIndex,
@@ -43,14 +43,14 @@ assert.equal(normalizeSearchQuery(" 1,000 "), "1000");
 assert.equal(normalizeSearchQuery(" (1,000) "), "-1000");
 assert.equal(normalizeSearchQuery("08/07/26"), "08/07/26");
 assert.equal(normalizeSearchQuery("Invoice..."), "invoice");
-assert.equal(normalizeMatcherQuery(" 03/05/2026 "), "3/5/2026");
-assert.equal(normalizeMatcherQuery("2026-03-05"), "3/5/2026");
-assert.equal(normalizeMatcherQuery("March 5th, 2026"), "3/5/2026");
-assert.equal(normalizeMatcherQuery("5 Mar 2026"), "3/5/2026");
-assert.equal(normalizeMatcherQuery("03/05/26"), "3/5/2026");
-assert.equal(normalizeMatcherQuery("03/05/30"), "3/5/2030");
-assert.equal(normalizeMatcherQuery("02/30/2026"), "02/30/2026");
-assert.equal(normalizeMatcherQuery("Acme Corp,"), "acme corp");
+assert.equal(normalizeLinkerQuery(" 03/05/2026 "), "3/5/2026");
+assert.equal(normalizeLinkerQuery("2026-03-05"), "3/5/2026");
+assert.equal(normalizeLinkerQuery("March 5th, 2026"), "3/5/2026");
+assert.equal(normalizeLinkerQuery("5 Mar 2026"), "3/5/2026");
+assert.equal(normalizeLinkerQuery("03/05/26"), "3/5/2026");
+assert.equal(normalizeLinkerQuery("03/05/30"), "3/5/2030");
+assert.equal(normalizeLinkerQuery("02/30/2026"), "02/30/2026");
+assert.equal(normalizeLinkerQuery("Acme Corp,"), "acme corp");
 
 assert.equal(cleanAutoInsertedSearchQuery("       $1,234.56   "), "1,234.56");
 assert.equal(cleanAutoInsertedSearchQuery(" \u20ac 1.234,56 "), "1.234,56");
@@ -158,7 +158,7 @@ for (const sourceDate of ["03/05/2026", "2026-03-05", "March 5th, 2026", "5 Mar 
     0,
     entries,
     index,
-    normalizeMatcherQuery("3/5/2026"),
+    normalizeLinkerQuery("3/5/2026"),
   );
   assert.equal(matches.length, 1, `expected formatted date to match ${sourceDate}`);
   assert.equal(matches[0]!.exactMatch, true);
@@ -175,9 +175,9 @@ for (const sourceDate of ["03/05/2026", "2026-03-05", "March 5th, 2026", "5 Mar 
     0,
     entries,
     index,
-    normalizeMatcherQuery("12/31/2025"),
+    normalizeLinkerQuery("12/31/2025"),
   );
-  assert.equal(matches.length, 1, "matcher index should find an exact formatted date");
+  assert.equal(matches.length, 1, "linker index should find an exact formatted date");
 }
 
 {
@@ -189,9 +189,9 @@ for (const sourceDate of ["03/05/2026", "2026-03-05", "March 5th, 2026", "5 Mar 
     0,
     entries,
     index,
-    normalizeMatcherQuery("8/7/2026"),
+    normalizeLinkerQuery("8/7/2026"),
   );
-  assert.equal(matches.length, 1, "matcher should respect a PDF line boundary before a date");
+  assert.equal(matches.length, 1, "linker should respect a PDF line boundary before a date");
   assert.equal(matches[0]!.contextText, "08/07/26");
 }
 
@@ -245,4 +245,4 @@ for (const sourceDate of ["03/05/2026", "2026-03-05", "March 5th, 2026", "5 Mar 
   assert.equal(matches.length, 0);
 }
 
-console.log("[DocuLink] text-searcher tests passed");
+console.log("[Talliark] text-searcher tests passed");

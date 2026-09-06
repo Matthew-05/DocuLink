@@ -7,7 +7,7 @@ note catalogue without knowing which artifact carried it; `values_model` and
 """
 from __future__ import annotations
 
-from engines.fs.detector import detect_fs_structure
+from engines.financial.detector import detect_financial_structure
 from engines.values.detector import detect_values
 from engines.values.lines import prepare
 
@@ -52,7 +52,7 @@ def geometry(pages: list[list[dict]]) -> dict:
 def detect(model: dict, *, tables: dict | None = None) -> Detected:
     """Run both tiers over one text-geometry model."""
     document = prepare(model)
-    structure = detect_fs_structure(document, tables=tables)
+    structure = detect_financial_structure(document, tables=tables)
     diagnostics: dict = {}
     values = detect_values(document, claims=structure.spans, diagnostics=diagnostics)
 

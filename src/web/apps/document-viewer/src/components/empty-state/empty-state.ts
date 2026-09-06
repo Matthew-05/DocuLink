@@ -1,7 +1,7 @@
 import {
   createDocumentIcon,
   createManageFilesIcon,
-} from "../icons/doculink-icons.js";
+} from "../icons/talliark-icons.js";
 
 export function createEmptyState(onManageFiles: () => void): HTMLElement {
   const emptyState = document.createElement("section");

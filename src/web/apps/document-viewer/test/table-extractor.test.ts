@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { registerHooks } from "node:module";
 import test from "node:test";
-import type { DetectedTable } from "@doculink/shared";
+import type { DetectedTable } from "@talliark/shared";
 
 const tableExtractorUrl = new URL("../src/services/table-extractor.ts", import.meta.url).href;
 const zeroPlaceholderUrl = new URL(
@@ -13,7 +13,7 @@ const zeroPlaceholderUrl = new URL(
 // shared barrel would drag pdfjs along with it. Only the zero-placeholder helper is needed.
 registerHooks({
   resolve(specifier, context, nextResolve) {
-    if (specifier === "@doculink/shared" && context.parentURL === tableExtractorUrl) {
+    if (specifier === "@talliark/shared" && context.parentURL === tableExtractorUrl) {
       return { url: zeroPlaceholderUrl, shortCircuit: true };
     }
     return nextResolve(specifier, context);

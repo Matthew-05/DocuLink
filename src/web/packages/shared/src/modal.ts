@@ -16,7 +16,7 @@ export interface ModalOptions {
 
 let nextModalId = 1;
 
-/** Shared native-dialog wrapper used by every DocuLink web app modal. */
+/** Shared native-dialog wrapper used by every Talliark web app modal. */
 export class Modal {
   private readonly _dialog: HTMLDialogElement;
   private readonly _title: HTMLHeadingElement;
@@ -25,23 +25,23 @@ export class Modal {
   private _resolve: ((value: string | null) => void) | null = null;
 
   constructor() {
-    const titleId = `doculink-modal-title-${nextModalId++}`;
+    const titleId = `talliark-modal-title-${nextModalId++}`;
     this._dialog = document.createElement("dialog");
-    this._dialog.className = "doculink-modal";
+    this._dialog.className = "talliark-modal";
     this._dialog.setAttribute("aria-labelledby", titleId);
 
     const surface = document.createElement("div");
-    surface.className = "doculink-modal__surface";
+    surface.className = "talliark-modal__surface";
 
     this._title = document.createElement("h2");
     this._title.id = titleId;
-    this._title.className = "doculink-modal__title";
+    this._title.className = "talliark-modal__title";
 
     this._content = document.createElement("div");
-    this._content.className = "doculink-modal__content";
+    this._content.className = "talliark-modal__content";
 
     this._actions = document.createElement("div");
-    this._actions.className = "doculink-modal__actions";
+    this._actions.className = "talliark-modal__actions";
 
     surface.append(this._title, this._content, this._actions);
     this._dialog.append(surface);
@@ -70,7 +70,7 @@ export class Modal {
     for (const action of options.actions) {
       const button = document.createElement("button");
       button.type = "button";
-      button.className = `doculink-modal__button doculink-modal__button--${action.variant ?? "secondary"}`;
+      button.className = `talliark-modal__button talliark-modal__button--${action.variant ?? "secondary"}`;
       button.textContent = action.label;
       button.autofocus = action.autofocus === true;
       button.addEventListener("click", () => this._finish(action.value));

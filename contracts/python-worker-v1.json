@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "http://doculink.dev/schemas/python-worker/1",
-  "title": "DocuLink Python Worker Protocol v1",
+  "$id": "urn:talliark:schemas:python-worker:1",
+  "title": "Talliark Python Worker Protocol v1",
   "description": "Defines the newline-delimited JSON messages exchanged between the C# host and the Python worker over stdin/stdout. The worker handles two commands: 'ocr' (extract sidecar text geometry from a PDF without adding a PDF text layer) and 'convert' (turn a non-PDF source document into a PDF, or into HTML for the host to render).",
 
   "definitions": {
@@ -87,7 +87,7 @@
         "adaptive-ocr",
         "table-recovery",
         "table-structure",
-        "fs-structure",
+        "financial-structure",
         "values",
         "result-transfer",
         "finalizing"
@@ -165,12 +165,12 @@
         "value_references": { "type": "integer", "minimum": 0, "description": "Reference spans published: printed data that identifies rather than measures. Click targets, like values." },
         "value_structure": { "type": "integer", "minimum": 0, "description": "Structure spans published: the document indexing itself. Drawn as a diagnostic today; clickability is stated per span." },
         "value_noise": { "type": "integer", "minimum": 0, "description": "Spans refused as none of the other three: damage, and spans nothing could identify." },
-        "fs_structure_ms": { "type": "integer", "minimum": 0, "description": "Milliseconds spent detecting and encoding the fs-structure-v1 model." },
-        "fs_structure_error": { "type": "string", "description": "Present when optional financial-structure detection failed and the worker safely retained the OCR result." },
-        "fs_structure_detector_version": { "type": "string", "description": "Identifier of the detector that produced the returned fs-structure-v1 model." },
-        "fs_document_class": { "type": "string", "enum": ["filing", "statement", "neither"], "description": "What the document appears to be. Metadata: nothing in detection branches on it." },
-        "fs_notes_found": { "type": "integer", "minimum": 0, "description": "Entries in the note catalogue. Zero on a document with no notes, which apparatus.notes in the model distinguishes from a stage that did not run." },
-        "fs_items_found": { "type": "integer", "minimum": 0, "description": "Entries in the item catalogue. Zero is the correct answer for a compilation, a review or any document that is not a filing." },
+        "financial_structure_ms": { "type": "integer", "minimum": 0, "description": "Milliseconds spent detecting and encoding the financial-structure-v1 model." },
+        "financial_structure_error": { "type": "string", "description": "Present when optional financial-structure detection failed and the worker safely retained the OCR result." },
+        "financial_structure_detector_version": { "type": "string", "description": "Identifier of the detector that produced the returned financial-structure-v1 model." },
+        "financial_document_class": { "type": "string", "enum": ["filing", "statement", "neither"], "description": "What the document appears to be. Metadata: nothing in detection branches on it." },
+        "financial_notes_found": { "type": "integer", "minimum": 0, "description": "Entries in the note catalogue. Zero on a document with no notes, which apparatus.notes in the model distinguishes from a stage that did not run." },
+        "financial_items_found": { "type": "integer", "minimum": 0, "description": "Entries in the item catalogue. Zero is the correct answer for a compilation, a review or any document that is not a filing." },
         "table_detector_version": { "type": "string", "description": "Identifier of the table detector that produced the returned table-structure-v1 model. Bumped whenever detection behaviour changes, so cached structures from an older detector can be told apart." },
         "table_pages_detected": { "type": "integer", "minimum": 0, "description": "Pages examined by table detection. Fewer than page_count when detection stopped at its time budget." },
         "table_structure_truncated": { "type": "boolean", "description": "Present when detection stopped early against its wall-clock budget. The pages already detected are published; later pages carry no tables because they were never examined." },
@@ -222,7 +222,7 @@
         "geometry_base64":  { "type": "string", "description": "Gzip-compressed text-geometry-v1 JSON, base64-encoded." },
         "table_structure_base64": { "type": "string", "description": "Gzip-compressed table-structure-v1 JSON, base64-encoded. Present for full OCR jobs when optional table detection succeeds." },
         "document_values_base64": { "type": "string", "description": "Gzip-compressed document-values-v1 JSON, base64-encoded when optional value detection succeeds. Published for every document." },
-        "fs_structure_base64": { "type": "string", "description": "Gzip-compressed fs-structure-v1 JSON, base64-encoded. Published only for documents in the financial tier; absent means the tier did not run, not that the document has no notes -- the model's apparatus field is what records that." },
+        "financial_structure_base64": { "type": "string", "description": "Gzip-compressed financial-structure-v1 JSON, base64-encoded. Published only for documents in the financial tier; absent means the tier did not run, not that the document has no notes -- the model's apparatus field is what records that." },
         "diagnostics":      { "$ref": "#/definitions/OcrDiagnostics" }
       },
       "examples": [

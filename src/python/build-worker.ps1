@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Builds the DocuLink OCR worker using Python embeddable distribution.
+    Builds the Talliark OCR worker using Python embeddable distribution.
 
 .DESCRIPTION
     Prerequisites:

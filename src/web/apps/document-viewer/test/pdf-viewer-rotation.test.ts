@@ -4,7 +4,7 @@ import test from "node:test";
 import { resolvePageRotation } from "../src/components/viewer/page-rotation.ts";
 
 
-test("preserves intrinsic PDF rotation when no DocuLink rotation is stored", () => {
+test("preserves intrinsic PDF rotation when no Talliark rotation is stored", () => {
   assert.equal(resolvePageRotation(90, 0), 90);
   assert.equal(resolvePageRotation(270, 0), 270);
 });

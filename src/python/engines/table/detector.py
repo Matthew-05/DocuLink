@@ -20,12 +20,12 @@ from engines.table.redesign import DETECTOR_VERSION, PERIOD_ANALYSIS, detect_pag
 # Wall-clock ceiling for detecting one document, in milliseconds. Deliberately
 # generous: it exists to bound a pathological page, not to trade accuracy for
 # speed, and a normal filing finishes orders of magnitude inside it. Override
-# with DOCULINK_TABLE_BUDGET_MS; zero or negative disables the budget entirely.
+# with TALLIARK_TABLE_BUDGET_MS; zero or negative disables the budget entirely.
 DEFAULT_BUDGET_MS = 300_000
 
 
 def _budget_ms() -> int:
-    raw = os.environ.get("DOCULINK_TABLE_BUDGET_MS")
+    raw = os.environ.get("TALLIARK_TABLE_BUDGET_MS")
     if raw is None:
         return DEFAULT_BUDGET_MS
     try:

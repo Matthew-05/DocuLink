@@ -1,6 +1,6 @@
 # -*- mode: python ; coding: utf-8 -*-
 #
-# PyInstaller spec for the DocuLink OCR worker.
+# PyInstaller spec for the Talliark OCR worker.
 # Target: Python 3.12, Windows x64, onedir mode.
 #
 # PREREQUISITES (on the build machine):

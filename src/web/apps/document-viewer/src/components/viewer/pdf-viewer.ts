@@ -42,7 +42,7 @@ export class PdfViewer {
 
     const placeholder = document.createElement("div");
     placeholder.className = "viewer__placeholder";
-    placeholder.textContent = "DocuLink Initializing…";
+    placeholder.textContent = "Talliark Initializing…";
     this.element.appendChild(placeholder);
   }
 

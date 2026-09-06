@@ -7,7 +7,7 @@ const CELL_CLASS    = "char-bbox-debug__cell";
 /**
  * Debug overlay that draws per-character bounding boxes from the text cache.
  * Driven by the host's `set-char-bboxes-visible` message (Settings → Development
- * in development/beta builds), or from the console: `__docuLink.toggleCharBboxes()`.
+ * in development/beta builds), or from the console: `__talliark.toggleCharBboxes()`.
  */
 export class CharBboxOverlay {
   private _visible = false;
@@ -26,7 +26,7 @@ export class CharBboxOverlay {
     this._visible = !this._visible;
     if (this._visible) this._renderAll();
     else this._clearAll();
-    console.log(`[DocuLink] Char bbox overlay: ${this._visible ? "ON" : "OFF"}`);
+    console.log(`[Talliark] Char bbox overlay: ${this._visible ? "ON" : "OFF"}`);
     return this._visible;
   }
 
@@ -34,14 +34,14 @@ export class CharBboxOverlay {
     if (this._visible) return;
     this._visible = true;
     this._renderAll();
-    console.log("[DocuLink] Char bbox overlay: ON");
+    console.log("[Talliark] Char bbox overlay: ON");
   }
 
   hide(): void {
     if (!this._visible) return;
     this._visible = false;
     this._clearAll();
-    console.log("[DocuLink] Char bbox overlay: OFF");
+    console.log("[Talliark] Char bbox overlay: OFF");
   }
 
   isVisible(): boolean {

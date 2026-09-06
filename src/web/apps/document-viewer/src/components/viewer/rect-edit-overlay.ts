@@ -1,8 +1,8 @@
 import type { PdfViewer } from "./pdf-viewer.js";
 import type { TextContentCache } from "../../services/text-content-cache.js";
-import type { DetectedTable } from "@doculink/shared";
+import type { DetectedTable } from "@talliark/shared";
 import type { RectRenderer } from "./rect-renderer.js";
-import { extractText } from "@doculink/shared";
+import { extractText } from "@talliark/shared";
 import { detectTableGrid } from "../../services/table-extractor.js";
 import type { LinkRectUpdatedPayload, NormalizedRect } from "../../types/index.js";
 import { DragAutoScroller } from "./drag-auto-scroller.js";

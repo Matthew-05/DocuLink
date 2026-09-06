@@ -149,14 +149,14 @@
 }
 
 /* ── Hover tip accents ────────────────────────────────────────────────────
-   The tip itself is the shared `doculink-hover-tip`; only the per-subject
+   The tip itself is the shared `talliark-hover-tip`; only the per-subject
    accent belongs here. `data-variant` carries the span's category. */
 
 .values__tip[data-variant="value"] { border-left-color: rgba(14, 116, 144, 0.9); }
-.values__tip[data-variant="value"] .doculink-hover-tip__label { color: rgba(12, 74, 110, 0.95); }
+.values__tip[data-variant="value"] .talliark-hover-tip__label { color: rgba(12, 74, 110, 0.95); }
 .values__tip[data-variant="reference"] { border-left-color: rgba(109, 40, 217, 0.9); }
-.values__tip[data-variant="reference"] .doculink-hover-tip__label { color: rgba(76, 29, 149, 0.95); }
+.values__tip[data-variant="reference"] .talliark-hover-tip__label { color: rgba(76, 29, 149, 0.95); }
 .values__tip[data-variant="structure"] { border-left-color: rgba(67, 56, 202, 0.9); }
-.values__tip[data-variant="structure"] .doculink-hover-tip__label { color: rgba(55, 48, 163, 0.95); }
+.values__tip[data-variant="structure"] .talliark-hover-tip__label { color: rgba(55, 48, 163, 0.95); }
 .values__tip[data-variant="noise"] { border-left-color: rgba(190, 24, 93, 0.9); }
-.values__tip[data-variant="noise"] .doculink-hover-tip__label { color: rgba(157, 23, 77, 0.95); }
+.values__tip[data-variant="noise"] .talliark-hover-tip__label { color: rgba(157, 23, 77, 0.95); }

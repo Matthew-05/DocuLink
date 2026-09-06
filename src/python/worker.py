@@ -1,4 +1,4 @@
-"""DocuLink worker — stdin/stdout JSON-line protocol.
+"""Talliark worker — stdin/stdout JSON-line protocol.
 
 OCR is geometry-first: the worker sanitizes the visual PDF, recognizes only the
 pages that need OCR, and returns text geometry beside the passive PDF. It never
@@ -35,7 +35,7 @@ from engines.ocr_engine import (
     summarize_geometry_quality,
 )
 from engines.pdf_security import sanitize_pdf_bytes
-from engines.fs.detector import detect_fs_structure, structure_to_base64 as fs_structure_to_base64
+from engines.financial.detector import detect_financial_structure, structure_to_base64 as financial_structure_to_base64
 from engines.values.detector import detect_values, values_to_base64
 from engines.values.lines import prepare as prepare_lines
 from engines.table.detector import detect_tables, structure_to_base64
@@ -525,36 +525,36 @@ def _handle_job(job: OcrJob) -> None:
             diagnostics["values_error"] = str(exc)
         diagnostics["lines_ms"] = elapsed_ms(prepare_started)
 
-        fs_structure_base64 = ""
+        financial_structure_base64 = ""
         claims: tuple = ()
         structure_started = time.perf_counter()
         if prepared is not None:
             try:
-                on_progress("Reading financial structure…", Stage.FS_STRUCTURE)
+                on_progress("Reading financial structure…", Stage.FINANCIAL_STRUCTURE)
                 # Table structure is optional input, not a prerequisite: it
                 # corroborates the contents rows item detection reads, and item
                 # detection falls back to text geometry when it is absent.
-                structure = detect_fs_structure(prepared, tables=table_structure)
+                structure = detect_financial_structure(prepared, tables=table_structure)
                 claims = structure.spans
                 model = structure.model
-                diagnostics["fs_structure_detector_version"] = model["detectorVersion"]
-                diagnostics["fs_document_class"] = model["documentClass"]
-                diagnostics["fs_notes_found"] = model["apparatus"]["notes"]["found"]
-                diagnostics["fs_items_found"] = model["apparatus"]["items"]["found"]
-                diagnostics["fs_note_references"] = len(model["noteReferences"])
-                diagnostics["fs_item_references"] = len(model["itemReferences"])
-                diagnostics["fs_items_from_contents"] = sum(
+                diagnostics["financial_structure_detector_version"] = model["detectorVersion"]
+                diagnostics["financial_document_class"] = model["documentClass"]
+                diagnostics["financial_notes_found"] = model["apparatus"]["notes"]["found"]
+                diagnostics["financial_items_found"] = model["apparatus"]["items"]["found"]
+                diagnostics["financial_note_references"] = len(model["noteReferences"])
+                diagnostics["financial_item_references"] = len(model["itemReferences"])
+                diagnostics["financial_items_from_contents"] = sum(
                     1 for item in model["items"] if item["tocEntries"]
                 )
                 # A document with no apparatus at all carries no artifact: there
-                # is nothing for the suite to read, and every scanned invoice
+                # is nothing for financial analysis to read, and every scanned invoice
                 # would otherwise pay to carry an empty one.
                 if model["documentClass"] != "neither":
-                    fs_structure_base64 = fs_structure_to_base64(model)
+                    financial_structure_base64 = financial_structure_to_base64(model)
             except Exception as exc:  # noqa: BLE001 — optional stage must preserve OCR
-                diagnostics["fs_structure_error"] = str(exc)
-                on_progress("Financial structure detection unavailable; keeping OCR geometry…", Stage.FS_STRUCTURE)
-        diagnostics["fs_structure_ms"] = elapsed_ms(structure_started)
+                diagnostics["financial_structure_error"] = str(exc)
+                on_progress("Financial structure detection unavailable; keeping OCR geometry…", Stage.FINANCIAL_STRUCTURE)
+        diagnostics["financial_structure_ms"] = elapsed_ms(structure_started)
 
         document_values_base64 = ""
         values_started = time.perf_counter()
@@ -608,7 +608,7 @@ def _handle_job(job: OcrJob) -> None:
                 geometry_base64=geometry_base64,
                 table_structure_base64=table_structure_base64,
                 document_values_base64=document_values_base64,
-                fs_structure_base64=fs_structure_base64,
+                financial_structure_base64=financial_structure_base64,
                 diagnostics=diagnostics,
             ).to_dict()
         )

@@ -28,7 +28,7 @@ matters here (values, spans, repeats, column widths) is a short read.
 Charts, shapes, embedded images and conditional formatting are out of scope for
 all of them — nothing here lays out drawing objects.
 
-Why HTML and not PDF bytes: DocuLink already renders HTML through an offscreen
+Why HTML and not PDF bytes: Talliark already renders HTML through an offscreen
 WebView2 (Modules/Services/Conversion/HtmlToPdfConverter.cs), and Chromium's table
 layout is far better than anything that could be assembled here. The worker returns
 ``ConversionOutput.as_html`` and the host finishes the job. See

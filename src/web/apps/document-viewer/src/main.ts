@@ -24,7 +24,7 @@ function mountStartupShell(target: HTMLElement): void {
 
   const message = document.createElement("div");
   message.className = "viewer__placeholder";
-  message.textContent = "DocuLink Initializing...";
+  message.textContent = "Talliark Initializing...";
   placeholder.appendChild(message);
 
   target.replaceChildren(toolbar, placeholder);

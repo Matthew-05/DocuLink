@@ -1,5 +1,5 @@
 {
-  "name": "@doculink/document-viewer",
+  "name": "@talliark/document-viewer",
   "version": "0.0.1",
   "private": true,
   "type": "module",
@@ -8,7 +8,7 @@
     "test": "node --test test/*.test.ts"
   },
   "dependencies": {
-    "@doculink/shared": "*",
+    "@talliark/shared": "*",
     "pdfjs-dist": "^4.10.38"
   }
 }

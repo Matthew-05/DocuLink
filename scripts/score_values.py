@@ -97,13 +97,13 @@ def run_oracle() -> int:
 def score_document(pdf: Path) -> dict:
     from table_corpus import geometry_for
 
-    from engines.fs.detector import detect_fs_structure
+    from engines.financial.detector import detect_financial_structure
     from engines.values.detector import DETECTOR_VERSION, detect_values
     from engines.values.lines import prepare
 
     diagnostics: dict = {}
     document = prepare(geometry_for(pdf.read_bytes()))
-    structure = detect_fs_structure(document)
+    structure = detect_financial_structure(document)
     model = detect_values(document, claims=structure.spans, diagnostics=diagnostics)
 
     published = [value for page in model["pages"] for value in page["values"]]

@@ -95,7 +95,7 @@ export function initHostBridge(
     }
 
     if (msg.type === "files-loaded") {
-      console.log(`[DocuLink] files-loaded received: ${msg.files.length} files`);
+      console.log(`[Talliark] files-loaded received: ${msg.files.length} files`);
       onFilesLoaded(msg.folders, msg.files);
     } else if (msg.type === "ocr-status" && onOcrStatus) {
       onOcrStatus(msg.pdfId, msg.status, {
@@ -124,7 +124,7 @@ export function sendBrowsePdfFiles(): void {
 }
 
 export function sendRenameFile(id: string, newName: string): void {
-  console.time("[DocuLink] rename round-trip");
+  console.time("[Talliark] rename round-trip");
   send({ type: "rename-file", id, newName });
 }
 

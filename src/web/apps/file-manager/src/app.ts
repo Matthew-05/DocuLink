@@ -88,7 +88,7 @@ export function mountApp(root: HTMLElement): void {
   let currentFiles: FileEntry[] = [];
 
   function onFilesLoaded(folders: FolderEntry[], files: FileEntry[]): void {
-    console.timeEnd("[DocuLink] rename round-trip");
+    console.timeEnd("[Talliark] rename round-trip");
     currentFiles = files;
     currentFolders = folders;
     const t0 = performance.now();
@@ -96,7 +96,7 @@ export function mountApp(root: HTMLElement): void {
     fileTable.update(files, selectedFolderId);
     fileTable.updateFolders(folders);
     toolbar.updateFolders(currentFolders);
-    console.log(`[DocuLink] DOM update: ${(performance.now() - t0).toFixed(1)}ms`);
+    console.log(`[Talliark] DOM update: ${(performance.now() - t0).toFixed(1)}ms`);
   }
 
   function onOcrStatus(
@@ -105,7 +105,7 @@ export function mountApp(root: HTMLElement): void {
     progress: OcrProgress
   ): void {
     if (status === "error") {
-      console.error(`[DocuLink] OCR error for pdf ${pdfId}:`, progress.message ?? "(no details)");
+      console.error(`[Talliark] OCR error for pdf ${pdfId}:`, progress.message ?? "(no details)");
     }
     // Patch one row so determinate stage progress stays smooth and other rows
     // retain their queued state without a full-table repaint.

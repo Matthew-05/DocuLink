@@ -147,7 +147,7 @@ src/web/package-lock.json
 
 # --- Generated source files ---
 # Written by generate-version.ps1 before each C# build
-src/DocuLink.Addin/Properties/GeneratedVersion.cs
+src/Talliark.Addin/Properties/GeneratedVersion.cs
 
 # Generated analysis and diagnostic artifacts
 /output/
@@ -156,7 +156,7 @@ src/DocuLink.Addin/Properties/GeneratedVersion.cs
 # Generated at build time; not committed
 installer/obj/
 installer/Output/
-installer/doculink-files.wxs
+installer/talliark-files.wxs
 
 # --- Misc ---
 *.tmp

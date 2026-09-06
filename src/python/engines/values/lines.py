@@ -2,7 +2,7 @@
 
 Pure geometry over text-geometry-v1: no OCR, PDF or Excel APIs, and no opinion
 about what a number means. Both tiers read from here -- `engines.values` to
-recognize spans, `engines.fs` to find headings and contents rows -- so the two
+recognize spans, `engines.financial` to find headings and contents rows -- so the two
 engines share one reading of the page rather than two that can disagree.
 """
 from __future__ import annotations

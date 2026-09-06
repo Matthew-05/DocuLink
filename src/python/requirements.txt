@@ -1,4 +1,4 @@
-# DocuLink Python OCR worker — Python 3.12
+# Talliark Python OCR worker — Python 3.12
 # Install with: pip install -r requirements.txt
 Pillow>=10.0.0
 PyMuPDF>=1.24.0

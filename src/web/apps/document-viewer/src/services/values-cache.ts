@@ -3,18 +3,18 @@ import type {
   DetectedStructure,
   DetectedValue,
   DocumentValues,
-  FsApparatus,
-  FsDocumentClass,
-  FsItem,
-  FsItemReference,
-  FsNote,
-  FsNoteReference,
-  FsStructure,
+  FinancialApparatus,
+  FinancialDocumentClass,
+  FinancialItem,
+  FinancialItemReference,
+  FinancialNote,
+  FinancialNoteReference,
+  FinancialStructure,
   NoiseSpan,
   ValueContext,
-} from "@doculink/shared";
+} from "@talliark/shared";
 
-const EMPTY_APPARATUS: FsApparatus = {
+const EMPTY_APPARATUS: FinancialApparatus = {
   notes: { searched: false, found: 0 },
   items: { searched: false, found: 0 },
   contents: { searched: false, found: 0 },
@@ -38,36 +38,36 @@ export class ValuesCache {
   private readonly _noise = new Map<string, Map<number, NoiseSpan[]>>();
   private readonly _pageContexts = new Map<string, Map<number, ValueContext>>();
   private readonly _documentContexts = new Map<string, ValueContext>();
-  private readonly _fsStructure = new Map<string, FsStructure | null>();
+  private readonly _financialStructure = new Map<string, FinancialStructure | null>();
   private readonly _valuesDecoder: ((base64: string) => Promise<DocumentValues>) | undefined;
-  private readonly _structureDecoder: ((base64: string) => Promise<FsStructure>) | undefined;
+  private readonly _structureDecoder: ((base64: string) => Promise<FinancialStructure>) | undefined;
 
   constructor(
     valuesDecoder?: (base64: string) => Promise<DocumentValues>,
-    structureDecoder?: (base64: string) => Promise<FsStructure>,
+    structureDecoder?: (base64: string) => Promise<FinancialStructure>,
   ) {
     this._valuesDecoder = valuesDecoder;
     this._structureDecoder = structureDecoder;
   }
 
-  async build(pdfId: string, documentValuesBase64?: string, fsStructureBase64?: string): Promise<void> {
+  async build(pdfId: string, documentValuesBase64?: string, financialStructureBase64?: string): Promise<void> {
     this.clearPdf(pdfId);
     this._reset(pdfId);
     if (documentValuesBase64) {
       try {
-        const decode = this._valuesDecoder ?? (await import("@doculink/shared")).decodeDocumentValues;
+        const decode = this._valuesDecoder ?? (await import("@talliark/shared")).decodeDocumentValues;
         this._ingestValues(pdfId, await decode(documentValuesBase64));
       } catch {
         // A malformed optional artifact must not prevent the PDF itself loading.
         this._reset(pdfId);
       }
     }
-    if (fsStructureBase64) {
+    if (financialStructureBase64) {
       try {
-        const decode = this._structureDecoder ?? (await import("@doculink/shared")).decodeFsStructure;
-        this._fsStructure.set(pdfId, await decode(fsStructureBase64));
+        const decode = this._structureDecoder ?? (await import("@talliark/shared")).decodeFinancialStructure;
+        this._financialStructure.set(pdfId, await decode(financialStructureBase64));
       } catch {
-        this._fsStructure.set(pdfId, null);
+        this._financialStructure.set(pdfId, null);
       }
     }
   }
@@ -80,7 +80,7 @@ export class ValuesCache {
     this._noise.set(pdfId, new Map());
     this._pageContexts.set(pdfId, new Map());
     this._documentContexts.set(pdfId, {});
-    this._fsStructure.set(pdfId, null);
+    this._financialStructure.set(pdfId, null);
   }
 
   private _ingestValues(pdfId: string, model: DocumentValues): void {
@@ -194,8 +194,8 @@ export class ValuesCache {
   }
 
   /** What the document appears to be. "neither" also when no structure was published. */
-  documentClass(pdfId: string): FsDocumentClass {
-    return this._fsStructure.get(pdfId)?.documentClass ?? "neither";
+  documentClass(pdfId: string): FinancialDocumentClass {
+    return this._financialStructure.get(pdfId)?.documentClass ?? "neither";
   }
 
   /**
@@ -203,28 +203,28 @@ export class ValuesCache {
    * unsearched when the document carries no structure artifact, which is what
    * distinguishes "not a financial document" from "a statement with no notes".
    */
-  apparatus(pdfId: string): FsApparatus {
-    return this._fsStructure.get(pdfId)?.apparatus ?? EMPTY_APPARATUS;
+  apparatus(pdfId: string): FinancialApparatus {
+    return this._financialStructure.get(pdfId)?.apparatus ?? EMPTY_APPARATUS;
   }
 
   /** Canonical financial-statement notes detected across the document. */
-  notes(pdfId: string): FsNote[] {
-    return this._fsStructure.get(pdfId)?.notes ?? [];
+  notes(pdfId: string): FinancialNote[] {
+    return this._financialStructure.get(pdfId)?.notes ?? [];
   }
 
   /** Citations resolved to entries in the canonical note catalogue. */
-  noteReferences(pdfId: string): FsNoteReference[] {
-    return this._fsStructure.get(pdfId)?.noteReferences ?? [];
+  noteReferences(pdfId: string): FinancialNoteReference[] {
+    return this._financialStructure.get(pdfId)?.noteReferences ?? [];
   }
 
   /** Canonical filing items detected across the document. */
-  items(pdfId: string): FsItem[] {
-    return this._fsStructure.get(pdfId)?.items ?? [];
+  items(pdfId: string): FinancialItem[] {
+    return this._financialStructure.get(pdfId)?.items ?? [];
   }
 
   /** Citations resolved to entries in the canonical item catalogue. */
-  itemReferences(pdfId: string): FsItemReference[] {
-    return this._fsStructure.get(pdfId)?.itemReferences ?? [];
+  itemReferences(pdfId: string): FinancialItemReference[] {
+    return this._financialStructure.get(pdfId)?.itemReferences ?? [];
   }
 
   clearPdf(pdfId: string): void {
@@ -235,7 +235,7 @@ export class ValuesCache {
     this._noise.delete(pdfId);
     this._pageContexts.delete(pdfId);
     this._documentContexts.delete(pdfId);
-    this._fsStructure.delete(pdfId);
+    this._financialStructure.delete(pdfId);
   }
 
   clear(): void {
@@ -246,6 +246,6 @@ export class ValuesCache {
     this._noise.clear();
     this._pageContexts.clear();
     this._documentContexts.clear();
-    this._fsStructure.clear();
+    this._financialStructure.clear();
   }
 }

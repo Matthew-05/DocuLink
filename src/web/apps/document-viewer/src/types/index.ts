@@ -17,8 +17,8 @@ export interface PdfEntry {
   tableStructureBase64?: string;
   /** Gzip-compressed document-values-v1 JSON, base64-encoded. */
   documentValuesBase64?: string;
-  /** Gzip-compressed fs-structure-v1 JSON, base64-encoded. Financial documents only. */
-  fsStructureBase64?: string;
+  /** Gzip-compressed financial-structure-v1 JSON, base64-encoded. Financial documents only. */
+  financialStructureBase64?: string;
   linkCount?: number;
   /** Per-page clockwise rotation in degrees (0, 90, 180, 270). Absent entries default to 0. */
   pageRotations?: Record<number, number>;
@@ -104,4 +104,4 @@ export interface LinkSelectionEntry {
   cellValue: string;
 }
 
-export type { SearchMatch } from "@doculink/shared";
+export type { SearchMatch } from "@talliark/shared";

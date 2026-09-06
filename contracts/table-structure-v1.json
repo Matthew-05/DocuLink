@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "http://doculink.dev/schemas/table-structure/1",
-  "title": "DocuLink Table Structure v1",
+  "$id": "urn:talliark:schemas:table-structure:1",
+  "title": "Talliark Table Structure v1",
   "description": "Detected per-page table regions. Coordinates use the same normalized displayed-page, top-left-origin 0–1 space as text-geometry-v1.",
   "type": "object",
   "required": ["version", "coordinateSpace", "pages"],

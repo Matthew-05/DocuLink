@@ -13,7 +13,7 @@ const sharedZeroPlaceholderUrl = new URL(
 
 registerHooks({
   resolve(specifier, context, nextResolve) {
-    if (specifier === "@doculink/shared") {
+    if (specifier === "@talliark/shared") {
       return { url: sharedTextSearcherUrl, shortCircuit: true };
     }
     if (specifier === "./zero-placeholder.js" && context.parentURL === sharedTextSearcherUrl) {
@@ -24,7 +24,7 @@ registerHooks({
   },
 });
 
-const { buildSearchPageIndexFromEntries } = await import("@doculink/shared");
+const { buildSearchPageIndexFromEntries } = await import("@talliark/shared");
 const { PdfTextSearcher } = await import("../src/components/viewer/pdf-text-searcher.ts");
 
 function entriesFromText(text: string) {

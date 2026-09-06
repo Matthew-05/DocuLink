@@ -24,7 +24,7 @@ FIXTURES = Path(__file__).resolve().parent / "fixtures" / "tables" / "synthetic"
 def _source() -> Path:
     # A local corpus document when one is offered, otherwise the committed
     # fixture, so the renderer is exercised on every machine.
-    override = os.environ.get("DOCULINK_OVERLAY_PDF")
+    override = os.environ.get("TALLIARK_OVERLAY_PDF")
     return Path(override) if override else FIXTURES / "two-schemas.pdf"
 
 

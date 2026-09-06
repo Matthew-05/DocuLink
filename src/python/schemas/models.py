@@ -1,4 +1,4 @@
-"""Data models for the DocuLink Python worker protocol (python-worker-v1.json)."""
+"""Data models for the Talliark Python worker protocol (python-worker-v1.json)."""
 from __future__ import annotations
 
 from typing import Protocol
@@ -35,7 +35,7 @@ class OcrResult:
     geometry_base64: str = ""
     table_structure_base64: str = ""
     document_values_base64: str = ""
-    fs_structure_base64: str = ""
+    financial_structure_base64: str = ""
     error: str = ""      # populated on error
     # OcrDiagnostics per contracts/python-worker-v1.json. Host debug logging
     # only — the host must tolerate this being absent and must not branch on it.
@@ -52,8 +52,8 @@ class OcrResult:
                 d["table_structure_base64"] = self.table_structure_base64
             if self.document_values_base64:
                 d["document_values_base64"] = self.document_values_base64
-            if self.fs_structure_base64:
-                d["fs_structure_base64"] = self.fs_structure_base64
+            if self.financial_structure_base64:
+                d["financial_structure_base64"] = self.financial_structure_base64
             if self.diagnostics:
                 d["diagnostics"] = self.diagnostics
         else:
@@ -138,7 +138,7 @@ class Stage:
     ADAPTIVE_OCR = "adaptive-ocr"
     TABLE_RECOVERY = "table-recovery"
     TABLE_STRUCTURE = "table-structure"
-    FS_STRUCTURE = "fs-structure"
+    FINANCIAL_STRUCTURE = "financial-structure"
     VALUES = "values"
     RESULT_TRANSFER = "result-transfer"
     FINALIZING = "finalizing"
@@ -158,7 +158,7 @@ STAGE_ORDER: tuple[str, ...] = (
     Stage.ADAPTIVE_OCR,
     Stage.TABLE_RECOVERY,
     Stage.TABLE_STRUCTURE,
-    Stage.FS_STRUCTURE,
+    Stage.FINANCIAL_STRUCTURE,
     Stage.VALUES,
     Stage.RESULT_TRANSFER,
     Stage.FINALIZING,

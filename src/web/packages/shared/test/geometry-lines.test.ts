@@ -43,4 +43,4 @@ assert.ok(deduplicatedEntries);
 assert.equal(deduplicatedEntries.map((entry) => entry.char).join(""), "A1A1");
 assert.deepEqual(deduplicatedEntries.map((entry) => entry.lineIndex), [0, 0, 1, 1]);
 
-console.log("[DocuLink] geometry line tests passed");
+console.log("[Talliark] geometry line tests passed");

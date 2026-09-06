@@ -31,7 +31,7 @@ async function indexAllPdfs(
       await Promise.all([
         cache.buildForUrl(entry.id, entry.url, entry.geometryBase64),
         tableCache.build(entry.id, entry.tableStructureBase64),
-        valuesCache.build(entry.id, entry.documentValuesBase64, entry.fsStructureBase64),
+        valuesCache.build(entry.id, entry.documentValuesBase64, entry.financialStructureBase64),
       ]);
     }),
   );
@@ -132,7 +132,7 @@ export function connectViewerToHostBridge(
         await Promise.all([
           cache.buildForUrl(entry.id, entry.url, entry.geometryBase64),
           tableCache.build(entry.id, entry.tableStructureBase64),
-          valuesCache.build(entry.id, entry.documentValuesBase64, entry.fsStructureBase64),
+          valuesCache.build(entry.id, entry.documentValuesBase64, entry.financialStructureBase64),
         ]);
         onTableStructureChanged();
       })().finally(endIndexing);

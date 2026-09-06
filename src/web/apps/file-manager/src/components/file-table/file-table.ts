@@ -4,7 +4,7 @@ import type { OcrProgress } from "../../host-bridge.js";
 // Imported as its own entry point rather than through the package barrel:
 // the barrel re-exports the pdf.js geometry module, whose top-level worker
 // setup is a side effect that keeps all of pdf.js in whatever bundles it.
-import { isTextEntryTarget } from "@doculink/shared/text-entry-target.js";
+import { isTextEntryTarget } from "@talliark/shared/text-entry-target.js";
 import { fileProgressFraction, stageLabel } from "../../progress-stages.js";
 
 export interface FileTableOptions {
@@ -535,7 +535,7 @@ export class FileTable {
       const empty = document.createElement("tr");
       empty.className = "file-table__empty-row";
       empty.innerHTML = this._isLoading
-        ? `<td colspan="7" class="file-table__empty">DocuLink Initializing…</td>`
+        ? `<td colspan="7" class="file-table__empty">Talliark Initializing…</td>`
         : `<td colspan="7" class="file-table__empty">Add files to get started.</td>`;
       this._tbody.appendChild(empty);
       return;

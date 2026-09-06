@@ -1,0 +1,13 @@
+{
+  "name": "@talliark/document-linker",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p ../../tsconfig.tools.json && node build.ts"
+  },
+  "dependencies": {
+    "@talliark/shared": "*",
+    "pdfjs-dist": "^4.10.38"
+  }
+}

@@ -284,7 +284,7 @@ export function cleanAutoInsertedSearchQuery(raw: string): string {
   return stripTrailingPunctuation(cleaned);
 }
 
-export function normalizeMatcherQuery(raw: string): string {
+export function normalizeLinkerQuery(raw: string): string {
   return normalizeQuery(raw, true);
 }
 

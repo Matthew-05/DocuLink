@@ -1,6 +1,6 @@
 import { SearchResultsPanel } from "./search-results-panel.js";
 import { normalizeSearchQuery } from "../viewer/pdf-text-searcher.js";
-import { cleanAutoInsertedSearchQuery } from "@doculink/shared";
+import { cleanAutoInsertedSearchQuery } from "@talliark/shared";
 import type { SearchMatch } from "../../types/index.js";
 
 const DEBOUNCE_MS = 250;

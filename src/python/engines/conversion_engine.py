@@ -15,7 +15,7 @@ which has far better fidelity and requires no extra bundled runtime. See
 Modules/Services/Conversion/OfficeInteropConverter.cs.
 
 Spreadsheets used to be in that group and are not any more. Excel cannot be
-automated from inside Excel without borrowing the user's own instance — DocuLink
+automated from inside Excel without borrowing the user's own instance — Talliark
 is loaded into it, so every activation route returns the host — which meant each
 converted workbook opened a visible window in their session. Attempts to isolate
 it in a private process failed on Excel's own single-instance behaviour: it hands
@@ -392,12 +392,12 @@ def _compress_pdf(pdf_bytes: bytes) -> bytes:
 
 _MAIL_CSS = """
 body { font-family: 'Segoe UI', sans-serif; font-size: 11pt; margin: 24px; color: #111; }
-table.doculink-headers { border-collapse: collapse; margin-bottom: 18px; width: 100%; }
-table.doculink-headers th { text-align: left; padding: 2px 12px 2px 0; width: 90px;
+table.talliark-headers { border-collapse: collapse; margin-bottom: 18px; width: 100%; }
+table.talliark-headers th { text-align: left; padding: 2px 12px 2px 0; width: 90px;
     vertical-align: top; color: #555; font-weight: 600; }
-table.doculink-headers td { padding: 2px 0; vertical-align: top; }
-hr.doculink-rule { border: none; border-top: 1px solid #ccc; margin: 0 0 18px 0; }
-pre.doculink-body { font-family: 'Segoe UI', sans-serif; white-space: pre-wrap; font-size: 11pt; }
+table.talliark-headers td { padding: 2px 0; vertical-align: top; }
+hr.talliark-rule { border: none; border-top: 1px solid #ccc; margin: 0 0 18px 0; }
+pre.talliark-body { font-family: 'Segoe UI', sans-serif; white-space: pre-wrap; font-size: 11pt; }
 img { max-width: 100%; }
 """
 
@@ -430,7 +430,7 @@ def _mail_to_html(source_bytes: bytes, source_name: str) -> str:
 
     title = html_module.escape(str(message.get("Subject") or source_name or "Message"))
     headers = (
-        f"<table class='doculink-headers'>{''.join(header_rows)}</table><hr class='doculink-rule'/>"
+        f"<table class='talliark-headers'>{''.join(header_rows)}</table><hr class='talliark-rule'/>"
         if header_rows
         else ""
     )
@@ -459,11 +459,11 @@ def _mail_body_html(message) -> str:
     try:
         text_part = message.get_body(preferencelist=("plain",))
         if text_part is not None:
-            return "<pre class='doculink-body'>" + html_module.escape(text_part.get_content()) + "</pre>"
+            return "<pre class='talliark-body'>" + html_module.escape(text_part.get_content()) + "</pre>"
     except Exception:  # noqa: BLE001
         pass
 
-    return "<pre class='doculink-body'>(No readable message body.)</pre>"
+    return "<pre class='talliark-body'>(No readable message body.)</pre>"
 
 
 def _inline_cid_images(body_html: str, message) -> str:
@@ -514,7 +514,7 @@ def _attachment_list_html(message) -> str:
 
     items = "".join(f"<li>{name}</li>" for name in names)
     return (
-        "<hr class='doculink-rule'/><p><b>Attachments</b> "
+        "<hr class='talliark-rule'/><p><b>Attachments</b> "
         "(not included in the converted PDF):</p>"
         f"<ul>{items}</ul>"
     )

@@ -2,13 +2,13 @@ import type {
   DetectedReference,
   DetectedStructure,
   DetectedValue,
-  FsHeading,
-  FsItemTocEntry,
+  FinancialHeading,
+  FinancialItemTocEntry,
   HoverTipContent,
   NoiseSpan,
   SpanBounds,
   SpanTipContext,
-} from "@doculink/shared";
+} from "@talliark/shared";
 import {
   HoverTip,
   describeItemHeader,
@@ -20,7 +20,7 @@ import {
   describeReference,
   describeStructure,
   describeValue,
-} from "@doculink/shared";
+} from "@talliark/shared";
 import type { ClickableSpan } from "./span-link-bounds.js";
 import type { ValuesCache } from "../../services/values-cache.js";
 import type { PdfViewer } from "./pdf-viewer.js";
@@ -384,19 +384,19 @@ export class ValuesOverlay {
     );
     if (span.kind === "note-header") {
       for (const note of this._cache.notes(pdfId)) {
-        const header = note.headers.find((candidate: FsHeading) => encloses(candidate));
+        const header = note.headers.find((candidate: FinancialHeading) => encloses(candidate));
         if (header) return describeNoteHeader(span, note, header, context);
       }
     }
     if (span.kind === "item-header") {
       for (const item of this._cache.items(pdfId)) {
-        const header = item.headers.find((candidate: FsHeading) => encloses(candidate));
+        const header = item.headers.find((candidate: FinancialHeading) => encloses(candidate));
         if (header) return describeItemHeader(span, item, header, context);
       }
     }
     if (span.kind === "item-toc-entry") {
       for (const item of this._cache.items(pdfId)) {
-        const tocEntry = item.tocEntries.find((candidate: FsItemTocEntry) => encloses(candidate));
+        const tocEntry = item.tocEntries.find((candidate: FinancialItemTocEntry) => encloses(candidate));
         if (tocEntry) return describeItemTocEntry(span, item, tocEntry, context);
       }
     }

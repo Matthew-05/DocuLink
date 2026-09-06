@@ -4,16 +4,16 @@ A span's id is a hash over what it is and where it sits, never over the order it
 was found in. Positional ids -- the previous scheme -- renumber every span after
 an insertion, so a detector upgrade would orphan any review state a workbook had
 attached to them. Hashing the content keeps an id stable across detector
-versions, which is what lets the financial-statement suite persist a disposition
+versions, which is what lets the financial document analysis persist a disposition
 against a value and still find it after the engine changes.
 
 The honest limit: this is stable across *detector* versions, not across a
 re-OCR. Rebuilt geometry moves bounds, and a moved span is a new id. Re-anchoring
 after a geometry rebuild is a separate problem and deliberately not solved here.
 
-The scheme has a second use the suite depends on. Because the id is derived and
+The scheme has a second use financial analysis depends on. Because the id is derived and
 not assigned, two engines can arrive at the same id for the same span without
-speaking to each other: `engines.fs` names the citation spans it resolved by the
+speaking to each other: `engines.financial` names the citation spans it resolved by the
 id they will be published under, and `engines.values` publishes them under
 exactly that id.
 """

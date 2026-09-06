@@ -1,4 +1,4 @@
-"""Direct Tesseract OCR that emits DocuLink text geometry."""
+"""Direct Tesseract OCR that emits Talliark text geometry."""
 from __future__ import annotations
 
 import os

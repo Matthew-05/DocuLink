@@ -19,7 +19,7 @@ if str(SCRIPT_ROOT) not in sys.path:
 
 from table_corpus import geometry_for
 
-from engines.fs.detector import detect_fs_structure  # noqa: E402
+from engines.financial.detector import detect_financial_structure  # noqa: E402
 from engines.values.detector import detect_values  # noqa: E402
 from engines.values.lines import prepare  # noqa: E402
 
@@ -75,7 +75,7 @@ def render(
     pdf_bytes = source.read_bytes()
     diagnostics: dict = {}
     document = prepare(geometry_for(pdf_bytes))
-    structure = detect_fs_structure(document)
+    structure = detect_financial_structure(document)
     model = detect_values(document, claims=structure.spans, diagnostics=diagnostics)
     document_pdf = pymupdf.open(stream=pdf_bytes, filetype="pdf")
     try:

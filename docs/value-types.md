@@ -1,7 +1,7 @@
 # Value types and categories
 
 What the detector publishes for a document, and what each thing means. This
-describes `document-values-v1` and the parts of `fs-structure-v1` that resolve
+describes `document-values-v1` and the parts of `financial-structure-v1` that resolve
 against it. The rules live in `src/python/engines/values/`; this document is the
 reader's view of them, not a second copy.
 
@@ -35,7 +35,7 @@ button with nothing behind it. Noise is also the category that should *shrink*
 as detection improves — it is the residue after the other three are taken.
 
 A structure span is not the same thing as the heading it sits in. The heading is
-one printed thing and lives in `fs-structure-v1` with its full text and geometry;
+one printed thing and lives in `financial-structure-v1` with its full text and geometry;
 what appears here is the integer printed inside it, which has a place on the page
 of its own.
 
@@ -133,7 +133,7 @@ The confidence ladder as it stands: `0.99` with a percent sign or currency,
 `0.94` with comma grouping, `0.82` with a decimal point, `0.62` for a bare
 integer; dates are `0.98` at day precision and `0.92` otherwise. This measures
 *shape*. Rebasing it on evidence — how many independent supports hold — is
-phase 3 of `fs-value-precision.local.md`, and the number changes meaning when
+phase 3 of `financial-value-precision.local.md`, and the number changes meaning when
 that lands.
 
 ## 3. References
@@ -201,7 +201,7 @@ The first three arrive differently. The financial tier finds a heading or a
 contents row, fences the range it occupies, and names the role; anything
 value-shaped inside that range is published here rather than read as a figure.
 The catalogue entry the span belongs to is joined by enclosure — the occurrence
-in `fs-structure-v1` whose bounds contain it on the same page.
+in `financial-structure-v1` whose bounds contain it on the same page.
 
 ## 5. Noise
 
@@ -291,14 +291,14 @@ under a thousands caption is a known gap rather than a bug to file.
 
 | Concern | Home |
 |---|---|
-| Contract shapes and closed enums | `contracts/document-values-v1.json`, `contracts/fs-structure-v1.json` |
+| Contract shapes and closed enums | `contracts/document-values-v1.json`, `contracts/financial-structure-v1.json` |
 | Category, kind and reason vocabulary, and the clickability policy | `src/python/engines/values/categories.py` |
 | What a piece of text looks like | `src/python/engines/values/spans.py` |
 | Which category a recognized span belongs to | `src/python/engines/values/evidence.py` |
 | Document-level facts: furniture, glyph heights | `src/python/engines/values/profile.py` |
 | Ordinal apparatus | `src/python/engines/values/lists.py` |
 | Span identity | `src/python/engines/values/ids.py` |
-| Note and item catalogues | `src/python/engines/fs/` |
+| Note and item catalogues | `src/python/engines/financial/` |
 | Reader-facing wording for every kind and reason | `src/web/packages/shared/src/span-describe.ts` |
 
 The enums are closed on both sides, and a test reads the contract rather than

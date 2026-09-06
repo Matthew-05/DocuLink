@@ -1,5 +1,5 @@
 import { sendExcelNavigate, sendUndoLinkCreation } from "../../host-bridge.js";
-import { isTextEntryTarget } from "@doculink/shared";
+import { isTextEntryTarget } from "@talliark/shared";
 
 /**
  * Forwards Excel's cell-navigation and undo keystrokes from the viewer to the host.

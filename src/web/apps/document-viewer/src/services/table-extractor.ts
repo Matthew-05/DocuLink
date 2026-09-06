@@ -1,7 +1,7 @@
 import type { CharacterEntry } from "./text-content-cache.js";
 import type { NormalizedRect, TableGridData } from "../types/index.js";
-import type { DetectedTable, TableRow } from "@doculink/shared";
-import { normalizeExtractedZeroPlaceholder } from "@doculink/shared";
+import type { DetectedTable, TableRow } from "@talliark/shared";
+import { normalizeExtractedZeroPlaceholder } from "@talliark/shared";
 
 const MIN_CHAR_OVERLAP = 0.3;
 const MIN_BOUNDARY_DISTANCE = 0.005;

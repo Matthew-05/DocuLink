@@ -12,7 +12,7 @@ re-derives it, which is what lets a kind of span become capturable without any
 change here or in the contract.
 
 This is the value tier, and it runs on every document. What a financial document
-additionally knows about itself arrives as claims from `engines.fs`; nothing
+additionally knows about itself arrives as claims from `engines.financial`; nothing
 here imports that engine, and the model is complete without it.
 """
 from __future__ import annotations

@@ -1,8 +1,8 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "http://doculink.dev/schemas/document-values/1",
-  "title": "DocuLink Document Values v1",
-  "description": "Numbers, percentages, dates and other printed spans detected from text geometry on any document, financial or not. Every span is classified into exactly one of four categories: a value measures, a reference identifies something outside the document, structure is the document indexing itself, and noise is damage. Whether a span is a click target is carried by its own required `clickable` field rather than inferred from its category, so the policy is stated once in the model and read once in the viewer. The catalogues that structure spans belong to -- notes, filing items and their citations -- are published in fs-structure-v1. Coordinates use normalized displayed-page, top-left-origin 0-1 space.",
+  "$id": "urn:talliark:schemas:document-values:1",
+  "title": "Talliark Document Values v1",
+  "description": "Numbers, percentages, dates and other printed spans detected from text geometry on any document, financial or not. Every span is classified into exactly one of four categories: a value measures, a reference identifies something outside the document, structure is the document indexing itself, and noise is damage. Whether a span is a click target is carried by its own required `clickable` field rather than inferred from its category, so the policy is stated once in the model and read once in the viewer. The catalogues that structure spans belong to -- notes, filing items and their citations -- are published in financial-structure-v1. Coordinates use normalized displayed-page, top-left-origin 0-1 space.",
   "type": "object",
   "required": ["version", "coordinateSpace", "detectorVersion", "documentContext", "pages"],
   "additionalProperties": false,
@@ -76,7 +76,7 @@
     },
     "Reference": {
       "type": "object",
-      "description": "A span that identifies rather than measures: an invoice or account number, a phone number, a citation naming a note or a filing item. Printed data a reader may want to capture, so it is a click target on every document -- an auditor sampling invoices captures the invoice number as readily as the amount. What a note or item citation resolves to is published in fs-structure-v1, keyed by this span's id.",
+      "description": "A span that identifies rather than measures: an invoice or account number, a phone number, a citation naming a note or a filing item. Printed data a reader may want to capture, so it is a click target on every document -- an auditor sampling invoices captures the invoice number as readily as the amount. What a note or item citation resolves to is published in financial-structure-v1, keyed by this span's id.",
       "required": ["id", "kind", "text", "bounds", "clickable"],
       "additionalProperties": false,
       "properties": {
@@ -132,7 +132,7 @@
 
     "Structure": {
       "type": "object",
-      "description": "A span that is the document indexing itself: the number in a note or item heading, a figure printed in a contents row, the ordinal that opens a list item or a footnote, the indicator pointing at one. Structure is printed text with meaning, which is what separates it from noise, and it measures nothing, which is what separates it from a value. The catalogue entry a structure span belongs to is published in fs-structure-v1; here it carries only its place and its role.",
+      "description": "A span that is the document indexing itself: the number in a note or item heading, a figure printed in a contents row, the ordinal that opens a list item or a footnote, the indicator pointing at one. Structure is printed text with meaning, which is what separates it from noise, and it measures nothing, which is what separates it from a value. The catalogue entry a structure span belongs to is published in financial-structure-v1; here it carries only its place and its role.",
       "required": ["id", "kind", "text", "bounds", "clickable"],
       "additionalProperties": false,
       "properties": {

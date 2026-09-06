@@ -4,9 +4,9 @@ import {
   decodeTextGeometry,
   extractTextGeometryFromPdfDocument,
   extractTextGeometryFromPdfUrl,
-} from "@doculink/shared";
+} from "@talliark/shared";
 import * as pdfjsLib from "pdfjs-dist";
-import type { SearchPageIndex } from "@doculink/shared";
+import type { SearchPageIndex } from "@talliark/shared";
 
 export interface CharacterEntry {
   char: string;

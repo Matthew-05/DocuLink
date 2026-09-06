@@ -3,7 +3,7 @@ import type {
   DetectedStructure,
   DetectedValue,
   SpanBounds,
-} from "@doculink/shared";
+} from "@talliark/shared";
 
 /**
  * A span the user clicked to create a link. Discriminated rather than widened

@@ -1,5 +1,5 @@
 {
-  "name": "@doculink/file-manager",
+  "name": "@talliark/file-manager",
   "version": "0.0.1",
   "private": true,
   "type": "module",
@@ -8,6 +8,6 @@
     "test": "node --test test/*.test.ts"
   },
   "dependencies": {
-    "@doculink/shared": "*"
+    "@talliark/shared": "*"
   }
 }

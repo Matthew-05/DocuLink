@@ -46,7 +46,7 @@ interface PdfPayload {
   geometryBase64?: string;
   tableStructureBase64?: string;
   documentValuesBase64?: string;
-  fsStructureBase64?: string;
+  financialStructureBase64?: string;
   pageRotations?: Record<string, number>;
 }
 
@@ -200,7 +200,7 @@ function toPdfEntry(pdf: PdfPayload): PdfEntry {
     ...(pdf.geometryBase64 !== undefined ? { geometryBase64: pdf.geometryBase64 } : {}),
     ...(pdf.tableStructureBase64 !== undefined ? { tableStructureBase64: pdf.tableStructureBase64 } : {}),
     ...(pdf.documentValuesBase64 !== undefined ? { documentValuesBase64: pdf.documentValuesBase64 } : {}),
-    ...(pdf.fsStructureBase64 !== undefined ? { fsStructureBase64: pdf.fsStructureBase64 } : {}),
+    ...(pdf.financialStructureBase64 !== undefined ? { financialStructureBase64: pdf.financialStructureBase64 } : {}),
     ...(pageRotations !== undefined ? { pageRotations } : {}),
   };
 }

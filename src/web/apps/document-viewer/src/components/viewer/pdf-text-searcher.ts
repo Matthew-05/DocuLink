@@ -1,9 +1,9 @@
-import { normalizeSearchQuery, searchPageWithIndex } from "@doculink/shared";
+import { normalizeSearchQuery, searchPageWithIndex } from "@talliark/shared";
 import type { TextContentCache } from "../../services/text-content-cache.js";
 import type { ValuesCache } from "../../services/values-cache.js";
 import type { PdfEntry, SearchMatch } from "../../types/index.js";
 
-export { normalizeSearchQuery } from "@doculink/shared";
+export { normalizeSearchQuery } from "@talliark/shared";
 
 interface SearchPageRef {
   entry: PdfEntry;

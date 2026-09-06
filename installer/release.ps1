@@ -1,7 +1,7 @@
 #Requires -Version 5.1
 <#
 .SYNOPSIS
-    Build DocuLink, tag the release, and publish to GitHub.
+    Build Talliark, tag the release, and publish to GitHub.
 
 .DESCRIPTION
     Full release pipeline in one command:
@@ -80,7 +80,7 @@ try {
 
 # ── Version ───────────────────────────────────────────────────────────────────
 Write-Host ""
-$latestTag = gh release list --repo Matthew-05/DocuLink --limit 1 --json tagName --jq ".[0].tagName" 2>$null
+$latestTag = gh release list --repo Matthew-05/Talliark --limit 1 --json tagName --jq ".[0].tagName" 2>$null
 if ($latestTag) {
     Write-Host "  Latest release : $latestTag" -ForegroundColor DarkGray
 } else {
@@ -124,7 +124,7 @@ $buildScript = Join-Path $InstallerDir "build-installer.ps1"
 & powershell.exe -NonInteractive -ExecutionPolicy Bypass -File $buildScript -Version $Version
 if ($LASTEXITCODE -ne 0) { Fail "build-installer.ps1 failed." }
 
-$MsiPath = Join-Path $InstallerDir "Output\DocuLink-Setup-$Version.msi"
+$MsiPath = Join-Path $InstallerDir "Output\Talliark-Setup-$Version.msi"
 if (-not (Test-Path $MsiPath)) { Fail "MSI not found at $MsiPath" }
 Write-Host "  MSI: $MsiPath" -ForegroundColor Green
 
@@ -148,7 +148,7 @@ try {
 Step "Creating GitHub release $Tag"
 
 $releaseUrl = gh release create $Tag $MsiPath `
-    --title "DocuLink $Tag" `
+    --title "Talliark $Tag" `
     --notes $ReleaseNotes
 if ($LASTEXITCODE -ne 0) { Fail "gh release create failed." }
 

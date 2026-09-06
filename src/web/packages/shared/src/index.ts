@@ -37,18 +37,18 @@ export {
   parseDocumentValues,
 } from "./document-values-decoder.js";
 export type {
-  FsApparatus,
-  FsDocumentClass,
-  FsHeading,
-  FsItem,
-  FsItemReference,
-  FsItemTocEntry,
-  FsNote,
-  FsNoteReference,
-  FsPresence,
-  FsStructure,
-} from "./fs-structure-decoder.js";
-export { decodeFsStructure, parseFsStructure } from "./fs-structure-decoder.js";
+  FinancialApparatus,
+  FinancialDocumentClass,
+  FinancialHeading,
+  FinancialItem,
+  FinancialItemReference,
+  FinancialItemTocEntry,
+  FinancialNote,
+  FinancialNoteReference,
+  FinancialPresence,
+  FinancialStructure,
+} from "./financial-structure-decoder.js";
+export { decodeFinancialStructure, parseFinancialStructure } from "./financial-structure-decoder.js";
 export type { SpanTipContext } from "./span-describe.js";
 export {
   describeItemHeader,
@@ -70,7 +70,7 @@ export {
   buildSearchPageIndex,
   buildSearchPageIndexFromEntries,
   cleanAutoInsertedSearchQuery,
-  normalizeMatcherQuery,
+  normalizeLinkerQuery,
   normalizeSearchQuery,
   pageTextMatchesQuery,
   searchPage,

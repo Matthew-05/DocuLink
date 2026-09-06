@@ -1,4 +1,4 @@
-import { Modal } from "@doculink/shared";
+import { Modal } from "@talliark/shared";
 import { resolveTableCopyPages } from "./table-copy-pages.js";
 import type { TableCopyMode } from "./table-copy-pages.js";
 

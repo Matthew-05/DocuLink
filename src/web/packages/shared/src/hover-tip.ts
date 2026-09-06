@@ -35,14 +35,14 @@ export interface HoverTipContent {
 export interface HoverTipOptions {
   /**
    * Extra class on the root, for styling one use differently from another.
-   * `doculink-hover-tip` is always present.
+   * `talliark-hover-tip` is always present.
    */
   className?: string;
   /** What sits at this client point, or null. Called on every pointer move. */
   resolve: (clientX: number, clientY: number) => HoverTipContent | null;
 }
 
-const ROOT_CLASS = "doculink-hover-tip";
+const ROOT_CLASS = "talliark-hover-tip";
 /** Clear of the cursor without putting the tip under the pointer. */
 const CURSOR_OFFSET = 14;
 const EDGE_MARGIN = 4;

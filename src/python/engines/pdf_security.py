@@ -24,7 +24,7 @@ def sanitize_pdf_bytes(
     """
     Rewrite a PDF while removing content that can perform actions or carry files.
 
-    DocuLink's viewer is a reference surface, so JavaScript, attachments, launch
+    Talliark's viewer is a reference surface, so JavaScript, attachments, launch
     actions, links, thumbnails, response data, and XML metadata are unnecessary.
     Visible page content is retained. Hidden text is left in the visual PDF and
     excluded when the worker selects authoritative sidecar geometry; attempting

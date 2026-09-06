@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="utf-8"?>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           targetNamespace="urn:talliark:schemas:storage:1:links"
+           xmlns:tns="urn:talliark:schemas:storage:1:links"
+           elementFormDefault="qualified">
+
+  <xs:element name="TalliarkLinks" type="tns:TalliarkLinksType" />
+
+  <xs:complexType name="TalliarkLinksType">
+    <xs:sequence>
+      <xs:element name="LinkedRectangles" type="tns:LinkedRectanglesType" />
+    </xs:sequence>
+    <xs:attribute name="version" type="xs:unsignedInt" use="required" />
+  </xs:complexType>
+
+  <xs:complexType name="LinkedRectanglesType">
+    <xs:sequence>
+      <xs:element name="LinkedRectangle" type="tns:LinkedRectangleType"
+                  minOccurs="0" maxOccurs="unbounded" />
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="LinkedRectangleType">
+    <xs:sequence>
+      <xs:element name="Cell" type="tns:CellType" />
+      <xs:element name="Rect" type="tns:RectType" />
+      <xs:element name="TableGrid" type="tns:TableGridType" minOccurs="0" />
+    </xs:sequence>
+    <xs:attribute name="id"         type="xs:string"        use="required" />
+    <xs:attribute name="pdfId"      type="xs:string"        use="required" />
+    <xs:attribute name="linkType"   type="tns:LinkTypeEnum"  use="optional" />
+    <xs:attribute name="sourceText" type="xs:string"        use="optional" />
+  </xs:complexType>
+
+  <xs:simpleType name="LinkTypeEnum">
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="auto" />
+      <xs:enumeration value="raw" />
+      <xs:enumeration value="sum" />
+      <xs:enumeration value="table" />
+    </xs:restriction>
+  </xs:simpleType>
+
+  <xs:complexType name="TableGridType">
+    <xs:sequence>
+      <xs:element name="ColumnBoundary" type="tns:BoundaryType" minOccurs="0" maxOccurs="unbounded" />
+      <xs:element name="RowBoundary" type="tns:BoundaryType" minOccurs="0" maxOccurs="unbounded" />
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="BoundaryType">
+    <xs:attribute name="position" type="xs:double" use="required" />
+  </xs:complexType>
+
+  <xs:complexType name="CellType">
+    <xs:attribute name="sheet"      type="xs:string"      use="required" />
+    <xs:attribute name="address"    type="xs:string"      use="required" />
+    <xs:attribute name="trackIndex" type="xs:positiveInteger" use="required" />
+  </xs:complexType>
+
+  <xs:complexType name="RectType">
+    <xs:attribute name="page"            type="xs:unsignedInt"          use="required" />
+    <xs:attribute name="x"               type="xs:double"               use="required" />
+    <xs:attribute name="y"               type="xs:double"               use="required" />
+    <xs:attribute name="width"           type="xs:double"               use="required" />
+    <xs:attribute name="height"          type="xs:double"               use="required" />
+    <xs:attribute name="coordinateSpace" type="tns:CoordinateSpaceType"  use="required" />
+  </xs:complexType>
+
+  <xs:simpleType name="CoordinateSpaceType">
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="normalized" />
+    </xs:restriction>
+  </xs:simpleType>
+
+</xs:schema>

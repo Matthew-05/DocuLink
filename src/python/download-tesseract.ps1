@@ -59,7 +59,7 @@ function Invoke-TesseractDownload {
     [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
     $headers = @{
-        'User-Agent' = 'DocuLink-Build/1.0 (Windows; Tesseract OCR installer download)'
+        'User-Agent' = 'Talliark-Build/1.0 (Windows; Tesseract OCR installer download)'
     }
 
     $curl = Get-Command curl.exe -ErrorAction SilentlyContinue

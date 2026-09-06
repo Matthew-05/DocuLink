@@ -24,7 +24,7 @@ import { TableStructureCache } from "../../services/table-structure-cache.js";
 import { ValuesCache } from "../../services/values-cache.js";
 import { ValuesOverlay } from "./values-overlay.js";
 import { getSpanLinkTarget } from "./span-link-bounds.js";
-import { extractText } from "@doculink/shared";
+import { extractText } from "@talliark/shared";
 import {
   detectCopiedTable,
   detectTableGrid,
@@ -40,7 +40,7 @@ import {
   sendOpenFileManager,
   sendRotatePage,
 } from "../../host-bridge.js";
-import type { DetectedTable } from "@doculink/shared";
+import type { DetectedTable } from "@talliark/shared";
 import type {
   SearchMatch, LinkedRectEntry, LinkSelectionEntry, NormalizedRect, ZoomLevel,
 } from "../../types/index.js";
@@ -65,7 +65,7 @@ function prioritizePdfEntries(entries: PdfEntry[], preferredPdfId: string | null
   ];
 }
 
-interface DocuLinkDebugApi {
+interface TalliarkDebugApi {
   toggleCharBboxes: () => boolean;
   showCharBboxes: () => void;
   hideCharBboxes: () => void;
@@ -663,7 +663,7 @@ export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLEleme
       linkType,
     });
     renderer.addRectangle({
-      id: `temp-fs-${Date.now()}`,
+      id: `temp-financial-${Date.now()}`,
       pdfId,
       page,
       rect,
@@ -757,7 +757,7 @@ export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLEleme
       : cache.buildFromDoc(pdfId, doc);
 
     void buildPromise
-      .then(() => valuesCache.build(pdfId, entry?.documentValuesBase64, entry?.fsStructureBase64))
+      .then(() => valuesCache.build(pdfId, entry?.documentValuesBase64, entry?.financialStructureBase64))
       .then(() => {
         if (gen !== cacheGeneration) return;
         finish();
@@ -768,7 +768,7 @@ export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLEleme
 
   // ── Console debug API ─────────────────────────────────────────────────────
 
-  (window as Window & { __docuLink?: DocuLinkDebugApi }).__docuLink = {
+  (window as Window & { __talliark?: TalliarkDebugApi }).__talliark = {
     toggleCharBboxes: () => charBboxDebug.toggle(),
     showCharBboxes:   () => charBboxDebug.show(),
     hideCharBboxes:   () => charBboxDebug.hide(),

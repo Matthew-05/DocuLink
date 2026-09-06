@@ -1,7 +1,7 @@
 /**
  * Human-readable descriptions of what the value detector decided.
  *
- * These read the document-values and fs-structure contracts and nothing else.
+ * These read the document-values and financial-structure contracts and nothing else.
  * The detector's rules live in Python and are not restated here: a span is
  * described by the fields it carries, never by re-deriving why it carries them.
  *
@@ -22,13 +22,13 @@ import type {
   ValueContext,
 } from "./document-values-decoder.js";
 import type {
-  FsHeading,
-  FsItem,
-  FsItemTocEntry,
-  FsNote,
-  FsNoteReference,
-  FsItemReference,
-} from "./fs-structure-decoder.js";
+  FinancialHeading,
+  FinancialItem,
+  FinancialItemTocEntry,
+  FinancialNote,
+  FinancialNoteReference,
+  FinancialItemReference,
+} from "./financial-structure-decoder.js";
 import type { HoverTipContent } from "./hover-tip.js";
 
 /** Where a span sits, and what its page says its figures are denominated in. */
@@ -70,7 +70,7 @@ const STRUCTURE_EXPLANATIONS: Readonly<Record<StructureKind, string>> = {
   "footnote-reference": "An indicator pointing at a footnote printed nearby",
 };
 
-const DESCRIPTION_SOURCES: Readonly<Record<FsItem["descriptionSource"], string>> = {
+const DESCRIPTION_SOURCES: Readonly<Record<FinancialItem["descriptionSource"], string>> = {
   toc: "The table of contents",
   heading: "A heading in the body",
   none: "Neither — none was found",
@@ -187,7 +187,7 @@ export function describeStructure(
 /** Describe a note citation using the catalogue entry it resolved to. */
 export function describeNoteReference(
   entry: DetectedReference,
-  reference: FsNoteReference,
+  reference: FinancialNoteReference,
   context?: SpanTipContext,
 ): HoverTipContent {
   return {
@@ -211,7 +211,7 @@ export function describeNoteReference(
 /** Describe an item citation using the catalogue entry it resolved to. */
 export function describeItemReference(
   entry: DetectedReference,
-  reference: FsItemReference,
+  reference: FinancialItemReference,
   context?: SpanTipContext,
 ): HoverTipContent {
   return {
@@ -236,8 +236,8 @@ export function describeItemReference(
 /** Describe the number inside a note heading, with the note's metadata. */
 export function describeNoteHeader(
   entry: DetectedStructure,
-  note: FsNote,
-  header: FsHeading,
+  note: FinancialNote,
+  header: FinancialHeading,
   context?: SpanTipContext,
 ): HoverTipContent {
   return {
@@ -260,8 +260,8 @@ export function describeNoteHeader(
 /** Describe the number inside an item heading, with the item's metadata. */
 export function describeItemHeader(
   entry: DetectedStructure,
-  item: FsItem,
-  header: FsHeading,
+  item: FinancialItem,
+  header: FinancialHeading,
   context?: SpanTipContext,
 ): HoverTipContent {
   return {
@@ -289,8 +289,8 @@ export function describeItemHeader(
  */
 export function describeItemTocEntry(
   entry: DetectedStructure,
-  item: FsItem,
-  tocEntry: FsItemTocEntry,
+  item: FinancialItem,
+  tocEntry: FinancialItemTocEntry,
   context?: SpanTipContext,
 ): HoverTipContent {
   return {

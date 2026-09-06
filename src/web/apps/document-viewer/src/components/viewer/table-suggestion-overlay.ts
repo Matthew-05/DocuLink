@@ -1,4 +1,4 @@
-import type { DetectedTable } from "@doculink/shared";
+import type { DetectedTable } from "@talliark/shared";
 import type { TableStructureCache } from "../../services/table-structure-cache.js";
 import type { PdfViewer } from "./pdf-viewer.js";
 import { ensureOverlayLayer } from "./page-renderer.js";

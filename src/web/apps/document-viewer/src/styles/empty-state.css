@@ -32,41 +32,41 @@
   filter: drop-shadow(0 14px 18px rgba(71, 61, 145, 0.14));
 }
 
-.doculink-icon {
+.talliark-icon {
   display: block;
   overflow: visible;
 }
 
-.doculink-icon--document {
+.talliark-icon--document {
   width: 100%;
   height: 100%;
 }
 
-.doculink-icon__halo {
+.talliark-icon__halo {
   fill: rgba(var(--color-accent-rgb), 0.11);
 }
 
-.doculink-icon__back-page {
+.talliark-icon__back-page {
   fill: #e9e5ff;
   stroke: rgba(var(--color-accent-rgb), 0.18);
   stroke-width: 1.4;
 }
 
-.doculink-icon__page {
+.talliark-icon__page {
   fill: #fff;
   stroke: rgba(var(--color-accent-rgb), 0.32);
   stroke-linejoin: round;
   stroke-width: 1.4;
 }
 
-.doculink-icon__fold {
+.talliark-icon__fold {
   fill: #eeeaff;
   stroke: rgba(var(--color-accent-rgb), 0.28);
   stroke-linejoin: round;
   stroke-width: 1.4;
 }
 
-.doculink-icon__document-lines {
+.talliark-icon__document-lines {
   fill: none;
   stroke: #d9d4f4;
   stroke-linecap: round;
@@ -128,23 +128,23 @@
   outline-offset: 3px;
 }
 
-.doculink-icon--manage-files {
+.talliark-icon--manage-files {
   width: 21px;
   height: 21px;
   flex: 0 0 21px;
 }
 
-.doculink-icon__folder-back,
-.doculink-icon__folder-middle,
-.doculink-icon__folder-front {
+.talliark-icon__folder-back,
+.talliark-icon__folder-middle,
+.talliark-icon__folder-front {
   stroke: #fff;
   stroke-linejoin: round;
   stroke-width: 1.35;
 }
 
-.doculink-icon__folder-back { fill: rgba(255, 255, 255, 0.20); }
-.doculink-icon__folder-middle { fill: rgba(255, 255, 255, 0.42); }
-.doculink-icon__folder-front { fill: rgba(255, 255, 255, 0.92); }
+.talliark-icon__folder-back { fill: rgba(255, 255, 255, 0.20); }
+.talliark-icon__folder-middle { fill: rgba(255, 255, 255, 0.42); }
+.talliark-icon__folder-front { fill: rgba(255, 255, 255, 0.92); }
 
 .viewer-empty-state__hint {
   margin-top: 10px;
