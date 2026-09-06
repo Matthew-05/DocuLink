@@ -127,8 +127,11 @@ htmlcov/
 .python-version
 
 # --- AI tool configuration (development-only) ---
+.agents/
+.codex/
 .cursor/
 .claude/
+docs/superpowers/
 CLAUDE.md
 AGENTS.md
 
@@ -158,4 +161,5 @@ installer/doculink-files.wxs
 # --- Misc ---
 *.tmp
 *.temp
+**/.tmp-*/
 ~$*
