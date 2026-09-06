@@ -93,8 +93,60 @@ export function cursorForResizeCorner(corner: ResizeHandle | null): string {
   }
 }
 
+/** Pixel-space corner that stays put while the opposite corner is dragged. */
+interface ResizeAnchorPx {
+  x: number;
+  y: number;
+}
+
+/**
+ * The corner diagonally opposite the dragged handle. It is fixed for the whole
+ * drag, which is what lets the pointer travel past it and flip the rectangle.
+ */
+function resizeAnchorPx(
+  startRect: NormalizedRect,
+  handle: ResizeHandle,
+  pageW: number,
+  pageH: number,
+): ResizeAnchorPx {
+  const holdsWest  = handle === "nw" || handle === "sw";
+  const holdsNorth = handle === "nw" || handle === "ne";
+  return {
+    x: (holdsWest  ? startRect.x + startRect.width  : startRect.x) * pageW,
+    y: (holdsNorth ? startRect.y + startRect.height : startRect.y) * pageH,
+  };
+}
+
+/**
+ * Orders an anchored edge pair and keeps at least MIN_DRAG_PX between them.
+ * The anchor never moves, so the minimum is taken out of the free edge, pushed
+ * away from the anchor on whichever side the pointer is on.
+ */
+function spanFromAnchor(
+  anchor: number,
+  pointer: number,
+  extent: number,
+): { min: number; max: number } {
+  let free = clamp(pointer, 0, extent);
+
+  if (Math.abs(free - anchor) < MIN_DRAG_PX) {
+    // A pointer sitting on the anchor has no side yet; grow whichever way fits.
+    const towardEnd = free > anchor
+      || (free === anchor && anchor + MIN_DRAG_PX <= extent);
+    free = clamp(towardEnd ? anchor + MIN_DRAG_PX : anchor - MIN_DRAG_PX, 0, extent);
+  }
+
+  return free < anchor
+    ? { min: free,   max: anchor }
+    : { min: anchor, max: free };
+}
+
 /**
  * Computes a new normalized rect after a resize drag from a corner.
+ *
+ * Corners pass through each other: dragging one past its opposite flips the
+ * rectangle rather than pinning it, and the result is always normalized with
+ * positive width and height.
  */
 export function resizeRectFromHandle(
   pageWrapper: HTMLElement,
@@ -107,58 +159,36 @@ export function resizeRectFromHandle(
   const pageH = pageWrapper.offsetHeight;
   if (pageW <= 0 || pageH <= 0) return startRect;
 
-  const startLeft   = startRect.x * pageW;
-  const startTop    = startRect.y * pageH;
-  const startRight  = (startRect.x + startRect.width) * pageW;
-  const startBottom = (startRect.y + startRect.height) * pageH;
-
-  let left = startLeft;
-  let top = startTop;
-  let right = startRight;
-  let bottom = startBottom;
-
-  switch (handle) {
-    case "nw":
-      left = curXPx;
-      top = curYPx;
-      break;
-    case "ne":
-      right = curXPx;
-      top = curYPx;
-      break;
-    case "sw":
-      left = curXPx;
-      bottom = curYPx;
-      break;
-    case "se":
-      right = curXPx;
-      bottom = curYPx;
-      break;
-  }
-
-  left   = clamp(left,   0, pageW);
-  top    = clamp(top,    0, pageH);
-  right  = clamp(right,  0, pageW);
-  bottom = clamp(bottom, 0, pageH);
-
-  if (right - left < MIN_DRAG_PX) {
-    if (handle === "nw" || handle === "sw") left = right - MIN_DRAG_PX;
-    else right = left + MIN_DRAG_PX;
-  }
-  if (bottom - top < MIN_DRAG_PX) {
-    if (handle === "nw" || handle === "ne") top = bottom - MIN_DRAG_PX;
-    else bottom = top + MIN_DRAG_PX;
-  }
-
-  left   = clamp(left,   0, pageW - MIN_DRAG_PX);
-  top    = clamp(top,    0, pageH - MIN_DRAG_PX);
-  right  = clamp(right,  left + MIN_DRAG_PX, pageW);
-  bottom = clamp(bottom, top + MIN_DRAG_PX, pageH);
+  const anchor = resizeAnchorPx(startRect, handle, pageW, pageH);
+  const horizontal = spanFromAnchor(anchor.x, curXPx, pageW);
+  const vertical   = spanFromAnchor(anchor.y, curYPx, pageH);
 
   return {
-    x:      left / pageW,
-    y:      top / pageH,
-    width:  (right - left) / pageW,
-    height: (bottom - top) / pageH,
+    x:      horizontal.min / pageW,
+    y:      vertical.min   / pageH,
+    width:  (horizontal.max - horizontal.min) / pageW,
+    height: (vertical.max   - vertical.min)   / pageH,
   };
+}
+
+/**
+ * The corner the pointer is holding now, which is the handle it grabbed
+ * mirrored across each axis it has since crossed. Used to keep the resize
+ * cursor pointing along the live diagonal mid-flip.
+ */
+export function resizeHandleFromDrag(
+  pageWrapper: HTMLElement,
+  startRect: NormalizedRect,
+  handle: ResizeHandle,
+  curXPx: number,
+  curYPx: number,
+): ResizeHandle {
+  const pageW = pageWrapper.offsetWidth;
+  const pageH = pageWrapper.offsetHeight;
+  if (pageW <= 0 || pageH <= 0) return handle;
+
+  const anchor = resizeAnchorPx(startRect, handle, pageW, pageH);
+  const west  = clamp(curXPx, 0, pageW) < anchor.x ? "w" : "e";
+  const north = clamp(curYPx, 0, pageH) < anchor.y ? "n" : "s";
+  return `${north}${west}` as ResizeHandle;
 }

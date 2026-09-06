@@ -12,6 +12,7 @@ import {
   cursorForResizeCorner,
   getLinkResizeCorner,
   MIN_DRAG_PX,
+  resizeHandleFromDrag,
   resizeRectFromHandle,
   type ResizeHandle,
 } from "./rect-utils.js";
@@ -200,6 +201,11 @@ export class RectEditOverlay {
 
     const newRect = resizeRectFromHandle(pageWrapper, startRect, handle, curXPx, curYPx);
     applyNormalizedRectToElement(linkEl, newRect);
+
+    // Dragging a corner past its anchor flips the rectangle, so the diagonal
+    // the pointer is on changes with it.
+    const liveHandle = resizeHandleFromDrag(pageWrapper, startRect, handle, curXPx, curYPx);
+    linkEl.style.cursor = cursorForResizeCorner(liveHandle);
   }
 
   private _onMouseUp(e: MouseEvent): void {
