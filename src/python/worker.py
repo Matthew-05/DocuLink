@@ -40,7 +40,14 @@ from engines.values.detector import detect_values, values_to_base64
 from engines.values.lines import prepare as prepare_lines
 from engines.table.detector import detect_tables, structure_to_base64
 from engines.table_cell_engine import recover_table_geometry
-from schemas.models import ConvertJob, ConvertResult, OcrJob, OcrProgress, OcrResult
+from schemas.models import (
+    ConvertJob,
+    ConvertResult,
+    OcrJob,
+    OcrProgress,
+    OcrResult,
+    Stage,
+)
 
 
 def _claim_protocol_stream():
@@ -66,8 +73,24 @@ def _write(obj: dict) -> None:
 
 
 def _handle_convert_job(job: ConvertJob) -> None:
-    def on_progress(message: str) -> None:
-        _write(OcrProgress(job_id=job.job_id, message=message).to_dict())
+    def on_progress(
+        message: str,
+        stage: str,
+        *,
+        current: int | None = None,
+        total: int | None = None,
+        unit: str | None = None,
+    ) -> None:
+        _write(
+            OcrProgress(
+                job_id=job.job_id,
+                message=message,
+                stage=stage,
+                current=current,
+                total=total,
+                unit=unit,
+            ).to_dict()
+        )
 
     try:
         source_bytes = base64.b64decode(job.source_base64)
@@ -120,7 +143,9 @@ def _run_direct_ocr(
         "direct_rotated_page_numbers": [],
         "adaptive_ocr_ms": 0,
     }
-    progress_callback(f"Direct OCR on {len(page_numbers)} page(s) at 300 DPI…")
+    progress_callback(
+        f"Direct OCR on {len(page_numbers)} page(s) at 300 DPI…", Stage.OCR
+    )
     pages, stats = extract_direct_text_geometry(
         pdf_bytes,
         page_numbers,
@@ -142,7 +167,8 @@ def _run_direct_ocr(
     if rotations:
         diagnostics["evaluated_profiles"].append("direct-hocr-oriented-300")
         progress_callback(
-            f"Retrying {len(rotations)} confidently sideways page(s) upright…"
+            f"Retrying {len(rotations)} confidently sideways page(s) upright…",
+            Stage.ADAPTIVE_OCR,
         )
         started = time.perf_counter()
         rotated_pages, rotated_stats = extract_direct_text_geometry(
@@ -151,6 +177,7 @@ def _run_direct_ocr(
             dpi=300,
             page_rotations=rotations,
             progress_callback=progress_callback,
+            progress_stage=Stage.ADAPTIVE_OCR,
         )
         diagnostics["adaptive_ocr_ms"] += int((time.perf_counter() - started) * 1000)
         for page_number in sorted(rotations):
@@ -175,7 +202,10 @@ def _run_direct_ocr(
     ]
     if faint_pages:
         diagnostics["evaluated_profiles"].append("direct-hocr-faint-ink-psm6-300")
-        progress_callback(f"Enhancing {len(faint_pages)} faint or uneven scan page(s)…")
+        progress_callback(
+            f"Enhancing {len(faint_pages)} faint or uneven scan page(s)…",
+            Stage.ADAPTIVE_OCR,
+        )
         started = time.perf_counter()
         enhanced_pages, enhanced_stats = extract_direct_text_geometry(
             pdf_bytes,
@@ -184,6 +214,7 @@ def _run_direct_ocr(
             psm=6,
             preprocessing="faint-ink",
             progress_callback=progress_callback,
+            progress_stage=Stage.ADAPTIVE_OCR,
         )
         diagnostics["adaptive_ocr_ms"] += int((time.perf_counter() - started) * 1000)
         for page_number in faint_pages:
@@ -209,13 +240,17 @@ def _run_direct_ocr(
     ]
     if sparse_pages:
         diagnostics["evaluated_profiles"].append("direct-hocr-400")
-        progress_callback(f"Retrying {len(sparse_pages)} sparse page(s) at 400 DPI…")
+        progress_callback(
+            f"Retrying {len(sparse_pages)} sparse page(s) at 400 DPI…",
+            Stage.ADAPTIVE_OCR,
+        )
         started = time.perf_counter()
         high_res_pages, high_res_stats = extract_direct_text_geometry(
             pdf_bytes,
             sparse_pages,
             dpi=400,
             progress_callback=progress_callback,
+            progress_stage=Stage.ADAPTIVE_OCR,
         )
         diagnostics["adaptive_ocr_ms"] += int((time.perf_counter() - started) * 1000)
         for page_number in sparse_pages:
@@ -239,7 +274,8 @@ def _run_direct_ocr(
         diagnostics["evaluated_profiles"].append("direct-hocr-cropped-psm4-300")
         progress_callback(
             f"Retrying {len(remaining_sparse)} empty or sparse page(s) "
-            "with cropped single-column OCR…"
+            "with cropped single-column OCR…",
+            Stage.ADAPTIVE_OCR,
         )
         started = time.perf_counter()
         cropped_pages, cropped_stats = extract_direct_text_geometry(
@@ -249,6 +285,7 @@ def _run_direct_ocr(
             psm=4,
             crop_to_dominant_image=True,
             progress_callback=progress_callback,
+            progress_stage=Stage.ADAPTIVE_OCR,
         )
         diagnostics["adaptive_ocr_ms"] += int((time.perf_counter() - started) * 1000)
         for page_number in remaining_sparse:
@@ -265,8 +302,24 @@ def _run_direct_ocr(
 
 
 def _handle_job(job: OcrJob) -> None:
-    def on_progress(message: str) -> None:
-        _write(OcrProgress(job_id=job.job_id, message=message).to_dict())
+    def on_progress(
+        message: str,
+        stage: str,
+        *,
+        current: int | None = None,
+        total: int | None = None,
+        unit: str | None = None,
+    ) -> None:
+        _write(
+            OcrProgress(
+                job_id=job.job_id,
+                message=message,
+                stage=stage,
+                current=current,
+                total=total,
+                unit=unit,
+            ).to_dict()
+        )
 
     started_at = time.perf_counter()
     diagnostics: dict = {
@@ -315,6 +368,7 @@ def _handle_job(job: OcrJob) -> None:
             pdf_bytes,
             progress_callback=on_progress,
             progress_label="Checking source text",
+            progress_stage=Stage.SOURCE_CHECK,
         )
         diagnostics["preflight_geometry_ms"] = elapsed_ms(geometry_started)
         initial_summary = summarize_geometry_quality(geometry)
@@ -378,7 +432,7 @@ def _handle_job(job: OcrJob) -> None:
                     + ",".join(map(str, unresolved))
                 )
         else:
-            on_progress("Source text geometry is trustworthy; skipping OCR…")
+            on_progress("Source text geometry is trustworthy; skipping OCR…", Stage.SOURCE)
 
         recovery_started = time.perf_counter()
         try:
@@ -415,12 +469,13 @@ def _handle_job(job: OcrJob) -> None:
                     diagnostics["selected_profile"] = "table-cell"
                 on_progress(
                     f"Recovered {recovery['table_cells_resolved']} of "
-                    f"{recovery['table_cells_detected']} ruled-table cells"
+                    f"{recovery['table_cells_detected']} ruled-table cells",
+                    Stage.TABLE_RECOVERY,
                 )
         except Exception as exc:  # noqa: BLE001 — optional recovery must be safe
             diagnostics["table_text_recovery_error"] = str(exc)
             diagnostics["date_recovery_error"] = str(exc)
-            on_progress("Table-cell recovery unavailable; keeping direct geometry…")
+            on_progress("Table-cell recovery unavailable; keeping direct geometry…", Stage.TABLE_RECOVERY)
         diagnostics["table_text_recovery_ms"] = elapsed_ms(recovery_started)
         diagnostics["date_recovery_ms"] = diagnostics["table_text_recovery_ms"]
 
@@ -443,7 +498,7 @@ def _handle_job(job: OcrJob) -> None:
         table_structure: dict | None = None
         table_started = time.perf_counter()
         try:
-            on_progress("Detecting table structure…")
+            on_progress("Detecting table structure…", Stage.TABLE_STRUCTURE)
             table_diagnostics: dict = {}
             table_structure = detect_tables(
                 pdf_bytes,
@@ -455,7 +510,7 @@ def _handle_job(job: OcrJob) -> None:
             table_structure_base64 = structure_to_base64(table_structure)
         except Exception as exc:  # noqa: BLE001 — optional stage must preserve OCR
             diagnostics["table_structure_error"] = str(exc)
-            on_progress("Table structure detection unavailable; keeping OCR geometry…")
+            on_progress("Table structure detection unavailable; keeping OCR geometry…", Stage.TABLE_STRUCTURE)
         diagnostics["table_structure_ms"] = elapsed_ms(table_started)
 
         # The two tiers read one prepared document. The financial tier runs
@@ -475,7 +530,7 @@ def _handle_job(job: OcrJob) -> None:
         structure_started = time.perf_counter()
         if prepared is not None:
             try:
-                on_progress("Reading financial structure…")
+                on_progress("Reading financial structure…", Stage.FS_STRUCTURE)
                 # Table structure is optional input, not a prerequisite: it
                 # corroborates the contents rows item detection reads, and item
                 # detection falls back to text geometry when it is absent.
@@ -498,14 +553,14 @@ def _handle_job(job: OcrJob) -> None:
                     fs_structure_base64 = fs_structure_to_base64(model)
             except Exception as exc:  # noqa: BLE001 — optional stage must preserve OCR
                 diagnostics["fs_structure_error"] = str(exc)
-                on_progress("Financial structure detection unavailable; keeping OCR geometry…")
+                on_progress("Financial structure detection unavailable; keeping OCR geometry…", Stage.FS_STRUCTURE)
         diagnostics["fs_structure_ms"] = elapsed_ms(structure_started)
 
         document_values_base64 = ""
         values_started = time.perf_counter()
         if prepared is not None:
             try:
-                on_progress("Detecting values…")
+                on_progress("Detecting values…", Stage.VALUES)
                 values = detect_values(prepared, claims=claims, diagnostics=diagnostics)
                 document_values_base64 = values_to_base64(values)
                 counts = {"number": 0, "percent": 0, "date": 0}
@@ -522,7 +577,7 @@ def _handle_job(job: OcrJob) -> None:
                 diagnostics.setdefault("value_noise", 0)
             except Exception as exc:  # noqa: BLE001 — optional stage must preserve OCR
                 diagnostics["values_error"] = str(exc)
-                on_progress("Value detection unavailable; keeping OCR geometry…")
+                on_progress("Value detection unavailable; keeping OCR geometry…", Stage.VALUES)
         diagnostics["values_ms"] = elapsed_ms(values_started)
 
         geometry_encode_started = time.perf_counter()
@@ -544,7 +599,7 @@ def _handle_job(job: OcrJob) -> None:
             + diagnostics.get("table_text_recovery_ms", 0)
         )
         diagnostics["total_ms"] = elapsed_ms(started_at)
-        on_progress("Transferring OCR result…")
+        on_progress("Transferring OCR result…", Stage.RESULT_TRANSFER)
         _write(
             OcrResult(
                 job_id=job.job_id,

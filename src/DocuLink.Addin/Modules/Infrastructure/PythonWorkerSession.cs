@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -115,10 +115,13 @@ namespace DocuLink.Addin.Modules.Infrastructure
         /// <summary>
         /// Reads stdout lines until a terminal ("success" or "error") line for the
         /// given job id is found, silently skipping "progress" lines. Progress lines
-        /// for the job are handed to <paramref name="onProgress"/> when supplied.
+        /// for the job are handed to <paramref name="onProgress"/> when supplied,
+        /// parsed into the stage and counts the worker stated rather than the raw
+        /// text. A progress line carrying no stage is dropped: the contract requires
+        /// one, so a line without it is from a worker the host cannot render.
         /// Returns null — and marks the session dead — if the stream ends first.
         /// </summary>
-        public string ReadResultLine(string jobId, Action<string> onProgress = null)
+        public string ReadResultLine(string jobId, Action<WorkerProgress> onProgress = null)
         {
             if (_stdout == null)
                 throw new InvalidOperationException("Worker session not started.");
@@ -147,8 +150,11 @@ namespace DocuLink.Addin.Modules.Infrastructure
 
                 if (string.Equals(statusObj?.ToString(), "progress", StringComparison.Ordinal))
                 {
-                    if (onProgress != null && obj.TryGetValue("message", out object msgObj))
-                        onProgress(msgObj?.ToString() ?? string.Empty);
+                    if (onProgress != null)
+                    {
+                        WorkerProgress progress = WorkerProgress.FromJson(obj);
+                        if (progress != null) onProgress(progress);
+                    }
                     continue;
                 }
 

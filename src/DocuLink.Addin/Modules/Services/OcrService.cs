@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Text;
-using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Web.Script.Serialization;
@@ -67,7 +66,7 @@ namespace DocuLink.Addin.Modules.Services
         public Task RunOcrAsync(
             IList<string> pdfIds,
             Excel.Workbook workbook,
-            Action<string, string, string> onStatusUpdate)
+            Action<string, string, OcrStatusDetail> onStatusUpdate)
         {
             return RunJobsAsync(pdfIds, workbook, onStatusUpdate);
         }
@@ -75,7 +74,7 @@ namespace DocuLink.Addin.Modules.Services
         private async Task RunJobsAsync(
             IList<string> pdfIds,
             Excel.Workbook workbook,
-            Action<string, string, string> onStatusUpdate)
+            Action<string, string, OcrStatusDetail> onStatusUpdate)
         {
             if (pdfIds == null || pdfIds.Count == 0) return;
             if (workbook == null) throw new ArgumentNullException(nameof(workbook));
@@ -139,7 +138,9 @@ namespace DocuLink.Addin.Modules.Services
                 onStatusUpdate(
                     jobs[jobIndex].PdfId,
                     "queued",
-                    $"Waiting — file {jobIndex + 1} of {jobs.Count}");
+                    OcrStatusDetail.ForStage(
+                        $"Waiting — file {jobIndex + 1} of {jobs.Count}",
+                        ProgressStages.Queue, jobIndex + 1, jobs.Count));
             }
 
             _cts = new CancellationTokenSource();
@@ -193,7 +194,7 @@ namespace DocuLink.Addin.Modules.Services
         private void RunWorker(
             IList<OcrJobEntry> jobs,
             Excel.Workbook workbook,
-            Action<string, string, string> onStatusUpdate,
+            Action<string, string, OcrStatusDetail> onStatusUpdate,
             CancellationToken token,
             OcrBatchMetrics metrics)
         {
@@ -241,7 +242,9 @@ namespace DocuLink.Addin.Modules.Services
                         Invoke(() => onStatusUpdate(
                             job.PdfId,
                             "processing",
-                            $"Starting file {jobIndex + 1} of {jobs.Count}…"));
+                            OcrStatusDetail.ForStage(
+                                $"Preparing file {jobIndex + 1} of {jobs.Count}…",
+                                ProgressStages.Prepare, jobIndex + 1, jobs.Count)));
                         processingCallbackClock.Stop();
 
                         var buildClock = Stopwatch.StartNew();
@@ -254,7 +257,10 @@ namespace DocuLink.Addin.Modules.Services
                             (current, total) => Invoke(() => onStatusUpdate(
                                 job.PdfId,
                                 "processing",
-                                $"Sending PDF chunk {current} of {total}…")));
+                                OcrStatusDetail.ForStage(
+                                    $"Sending PDF chunk {current} of {total}…",
+                                    ProgressStages.Transfer, jobIndex + 1, jobs.Count,
+                                    current, total, "chunk"))));
                         sendClock.Stop();
 
                         // Read lines until we get a terminal result for this job_id
@@ -263,17 +269,14 @@ namespace DocuLink.Addin.Modules.Services
                         var progressLogClock = Stopwatch.StartNew();
                         string resultLine = session.ReadResultLine(
                             job.PdfId,
-                            message =>
+                            progress =>
                             {
-                                // Worker progress used to stop at the performance log.
-                                // Forward every stage/page update to the file manager;
-                                // the host serializer adds stable stage/count fields.
                                 Invoke(() => onStatusUpdate(
                                     job.PdfId,
                                     "processing",
-                                    message));
+                                    OcrStatusDetail.FromWorker(progress, jobIndex + 1, jobs.Count)));
 
-                                string stage = ProgressStage(message);
+                                string stage = progress.Stage;
                                 if (string.Equals(stage, lastProgressStage, StringComparison.Ordinal)
                                     && progressLogClock.ElapsedMilliseconds < 5000)
                                     return;
@@ -289,7 +292,7 @@ namespace DocuLink.Addin.Modules.Services
                                     ["pdf_id"] = job.PdfId,
                                     ["name"] = job.Name,
                                     ["stage"] = stage,
-                                    ["message"] = message,
+                                    ["message"] = progress.Message,
                                     ["elapsed_ms"] = jobClock.ElapsedMilliseconds,
                                 });
                             });
@@ -335,6 +338,18 @@ namespace DocuLink.Addin.Modules.Services
                         {
                             Invoke(() =>
                             {
+                                // Writing the result into the workbook is real work
+                                // on a large document, and it is the last thing that
+                                // happens to this file. Reporting it is what carries
+                                // the bar to the end of the run rather than leaving it
+                                // stalled on the worker's last message.
+                                onStatusUpdate(
+                                    job.PdfId,
+                                    "processing",
+                                    OcrStatusDetail.ForStage(
+                                        "Saving to workbook…",
+                                        ProgressStages.Finalizing, jobIndex + 1, jobs.Count));
+
                                 var storageClock = Stopwatch.StartNew();
                                 try
                                 {
@@ -491,74 +506,6 @@ namespace DocuLink.Addin.Modules.Services
             {
                 DocuLinkLog.Trace("OCR_PERF serialization-error=" + ex.Message);
             }
-        }
-
-        internal static string ProgressStage(string message)
-        {
-            string value = message ?? string.Empty;
-            if (value.StartsWith("Extracting geometry", StringComparison.OrdinalIgnoreCase))
-                return "geometry";
-            if (value.StartsWith("Checking source text", StringComparison.OrdinalIgnoreCase))
-                return "source-check";
-            if (value.StartsWith("Securing PDF", StringComparison.OrdinalIgnoreCase))
-                return "security";
-            if (value.StartsWith("Sending PDF", StringComparison.OrdinalIgnoreCase))
-                return "transfer";
-            if (value.StartsWith("Inspecting PDF", StringComparison.OrdinalIgnoreCase))
-                return "pdf-analysis";
-            if (value.StartsWith("Checking image quality", StringComparison.OrdinalIgnoreCase))
-                return "quality-check";
-            if (value.StartsWith("Building OCR PDF", StringComparison.OrdinalIgnoreCase))
-                return "ocr-output";
-            if (value.StartsWith("Transferring OCR result", StringComparison.OrdinalIgnoreCase))
-                return "result-transfer";
-            if (value.StartsWith("Finalizing PDF", StringComparison.OrdinalIgnoreCase))
-                return "finalizing";
-            if (value.StartsWith("Evaluating OCR layout", StringComparison.OrdinalIgnoreCase))
-                return "adaptive-evaluation";
-            if (value.StartsWith("Recognizing text", StringComparison.OrdinalIgnoreCase))
-                return "ocr";
-            if (value.StartsWith("Processing images", StringComparison.OrdinalIgnoreCase))
-                return "ocr";
-            if (value.StartsWith("Converting PDF", StringComparison.OrdinalIgnoreCase))
-                return "finalizing";
-            if (value.StartsWith("Direct OCR", StringComparison.OrdinalIgnoreCase))
-                return "ocr";
-            if (value.StartsWith("Retrying OCR", StringComparison.OrdinalIgnoreCase))
-                return "adaptive-ocr";
-            if (value.StartsWith("Retrying", StringComparison.OrdinalIgnoreCase))
-                return "retry";
-            if (value.StartsWith("Identical PDF", StringComparison.OrdinalIgnoreCase))
-                return "cache";
-            if (value.StartsWith("Source text", StringComparison.OrdinalIgnoreCase))
-                return "source";
-            if (value.IndexOf("high-resolution layout", StringComparison.OrdinalIgnoreCase) >= 0)
-                return "adaptive-evaluation";
-            if (value.IndexOf("table", StringComparison.OrdinalIgnoreCase) >= 0
-                || value.StartsWith("Recovering", StringComparison.OrdinalIgnoreCase))
-                return "table-recovery";
-            if (value.IndexOf("rasterizing", StringComparison.OrdinalIgnoreCase) >= 0)
-                return "forced-ocr";
-            if (value.IndexOf("OCR", StringComparison.OrdinalIgnoreCase) >= 0)
-                return "ocr";
-            return "worker";
-        }
-
-        internal static bool TryParseProgressCount(
-            string message,
-            out int current,
-            out int total)
-        {
-            current = 0;
-            total = 0;
-            Match match = Regex.Match(
-                message ?? string.Empty,
-                @"(?:\(|\b)(\d+)\s+of\s+(\d+)(?:\)|\b)",
-                RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
-            return match.Success
-                && int.TryParse(match.Groups[1].Value, out current)
-                && int.TryParse(match.Groups[2].Value, out total)
-                && total > 0;
         }
 
         private static long Base64DecodedLength(string value)

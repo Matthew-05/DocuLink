@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Text;
@@ -64,37 +64,53 @@ namespace DocuLink.Addin.Modules.WebView
 
         /// <summary>
         /// Builds a host→web <c>ocr-status</c> message for a single PDF.
-        /// message is optional — pass null to omit it.
+        /// detail is optional — pass null to omit it. A plain string converts to a
+        /// message-only detail, which is what terminal updates carry.
+        ///
+        /// Every field is written from what the caller supplies. Nothing here reads
+        /// the message: the stage and the counts arrive as their own fields because
+        /// the worker and the host state them, and parsing them back out of prose
+        /// is exactly the bug this shape removed.
         /// </summary>
-        public static string BuildOcrStatus(string pdfId, string status, string message = null)
+        public static string BuildOcrStatus(string pdfId, string status, OcrStatusDetail detail = null)
         {
             var sb = new StringBuilder();
             sb.Append("{\"type\":\"ocr-status\",\"pdfId\":");
             AppendString(sb, pdfId ?? string.Empty);
             sb.Append(",\"status\":");
             AppendString(sb, status ?? string.Empty);
-            if (!string.IsNullOrEmpty(message))
+            if (detail != null && !string.IsNullOrEmpty(detail.Message))
             {
                 sb.Append(",\"message\":");
-                AppendString(sb, message);
+                AppendString(sb, detail.Message);
 
-                bool isActive = string.Equals(status, "queued", StringComparison.Ordinal)
-                    || string.Equals(status, "processing", StringComparison.Ordinal);
-                if (isActive)
+                if (!string.IsNullOrEmpty(detail.Stage))
                 {
-                    string stage = string.Equals(status, "queued", StringComparison.Ordinal)
-                        ? "queue"
-                        : OcrService.ProgressStage(message);
                     sb.Append(",\"stage\":");
-                    AppendString(sb, stage);
+                    AppendString(sb, detail.Stage);
 
-                    if (OcrService.TryParseProgressCount(message, out int current, out int total))
+                    if (detail.Current.HasValue && detail.Total.HasValue && detail.Total.Value > 0)
                     {
                         sb.Append(",\"current\":");
-                        sb.Append(Math.Min(Math.Max(current, 0), total).ToString(CultureInfo.InvariantCulture));
+                        sb.Append(Math.Min(Math.Max(detail.Current.Value, 0), detail.Total.Value)
+                            .ToString(CultureInfo.InvariantCulture));
                         sb.Append(",\"total\":");
-                        sb.Append(total.ToString(CultureInfo.InvariantCulture));
+                        sb.Append(detail.Total.Value.ToString(CultureInfo.InvariantCulture));
+                        if (!string.IsNullOrEmpty(detail.Unit))
+                        {
+                            sb.Append(",\"unit\":");
+                            AppendString(sb, detail.Unit);
+                        }
                     }
+                }
+
+                if (detail.FileIndex.HasValue && detail.FileCount.HasValue && detail.FileCount.Value > 0)
+                {
+                    sb.Append(",\"fileIndex\":");
+                    sb.Append(Math.Min(Math.Max(detail.FileIndex.Value, 1), detail.FileCount.Value)
+                        .ToString(CultureInfo.InvariantCulture));
+                    sb.Append(",\"fileCount\":");
+                    sb.Append(detail.FileCount.Value.ToString(CultureInfo.InvariantCulture));
                 }
             }
             sb.Append('}');

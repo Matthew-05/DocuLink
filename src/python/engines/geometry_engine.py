@@ -7,6 +7,7 @@ from typing import Callable
 import pymupdf as fitz
 
 from engines.binary_codec import json_to_base64
+from schemas.models import ProgressReporter, Stage
 
 # rawdict normally materializes the fully decoded bytes of every image block.
 # We discard image blocks (type != 0), so on an OCR'd scan — where each page is
@@ -337,8 +338,9 @@ def _extract_page_characters(page: fitz.Page) -> list[dict]:
 def extract_text_geometry(
     pdf_bytes: bytes,
     language: str = "eng",
-    progress_callback: Callable[[str], None] | None = None,
+    progress_callback: ProgressReporter | None = None,
     progress_label: str = "Extracting geometry",
+    progress_stage: str = Stage.GEOMETRY,
 ) -> dict:
     """
     Extract per-character boxes from each page's PDF text layer.
@@ -357,7 +359,11 @@ def extract_text_geometry(
         for page_index in range(page_count):
             if progress_callback:
                 progress_callback(
-                    f"{progress_label} page {page_index + 1} of {page_count}…"
+                    f"{progress_label} page {page_index + 1} of {page_count}…",
+                    progress_stage,
+                    current=page_index + 1,
+                    total=page_count,
+                    unit="page",
                 )
 
             page = doc.load_page(page_index)

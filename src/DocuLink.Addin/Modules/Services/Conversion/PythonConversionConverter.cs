@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Text;
 using DocuLink.Addin.Modules.Infrastructure;
@@ -40,12 +40,16 @@ namespace DocuLink.Addin.Modules.Services.Conversion
         /// <summary>
         /// Converts one source document. Returns PDF bytes, or HTML when only the
         /// host can render the source (currently .eml / .mht).
+        ///
+        /// Progress arrives as the worker states it — stage and counts, not a
+        /// sentence to be parsed — matching the OCR path. The worker reports the
+        /// "convert" stage throughout a job of this kind.
         /// </summary>
         public PythonConversionResult Convert(
             byte[] sourceBytes,
             string sourceExtension,
             string sourceName,
-            Action<string> onProgress = null)
+            Action<WorkerProgress> onProgress = null)
         {
             ThrowIfDisposed();
 

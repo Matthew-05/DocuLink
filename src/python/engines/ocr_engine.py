@@ -61,6 +61,7 @@ def _configure_bundled_tools() -> None:
 _configure_bundled_tools()
 
 from engines.text_lines import line_bounds, line_groups  # noqa: E402
+from schemas.models import ProgressReporter, Stage  # noqa: E402
 
 
 _ENGINE_DESCRIPTION_CACHE: str | None = None
@@ -721,7 +722,7 @@ def detect_direct_page_rotations(
     *,
     dpi: int = _DIRECT_ROTATION_DETECTION_DPI,
     minimum_confidence: float = _DIRECT_ROTATION_MINIMUM_CONFIDENCE,
-    progress_callback: "callable[[str], None] | None" = None,
+    progress_callback: ProgressReporter | None = None,
 ) -> dict[int, int]:
     """Detect trustworthy non-zero rotations for selected direct-OCR pages."""
     if not page_numbers:
@@ -753,7 +754,11 @@ def detect_direct_page_rotations(
             if progress_callback:
                 progress_callback(
                     f"Checking page orientation ({completed} of "
-                    f"{len(unique_pages)})…"
+                    f"{len(unique_pages)})…",
+                    Stage.ORIENTATION,
+                    current=completed,
+                    total=len(unique_pages),
+                    unit="page",
                 )
     return rotations
 
@@ -768,7 +773,8 @@ def extract_direct_text_geometry(
     crop_to_dominant_image: bool = False,
     preprocessing: str = "none",
     page_rotations: dict[int, int] | None = None,
-    progress_callback: "callable[[str], None] | None" = None,
+    progress_callback: ProgressReporter | None = None,
+    progress_stage: str = Stage.OCR,
 ) -> tuple[dict[int, dict], dict[int, dict]]:
     """OCR selected pages directly to geometry without constructing a PDF."""
     if not page_numbers:
@@ -810,7 +816,11 @@ def extract_direct_text_geometry(
                 if progress_callback:
                     progress_callback(
                         f"Direct OCR page {page_number} at {dpi} DPI "
-                        f"({completed} of {len(unique_pages)})…"
+                        f"({completed} of {len(unique_pages)})…",
+                        progress_stage,
+                        current=completed,
+                        total=len(unique_pages),
+                        unit="page",
                     )
     finally:
         if previous_thread_limit is None:

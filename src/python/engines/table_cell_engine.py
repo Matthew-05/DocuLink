@@ -14,6 +14,7 @@ import pymupdf as fitz
 from PIL import Image, ImageDraw, ImageFilter, ImageOps
 
 from engines.ocr_engine import configure_tesseract
+from schemas.models import Stage
 from engines.table_date_engine import (
     _map_image_rect,
     _prepare_cell,
@@ -968,7 +969,11 @@ def recover_table_geometry(
             if progress_callback:
                 progress_callback(
                     f"Scanning tables page {page_index + 1} "
-                    f"of {source_doc.page_count}…"
+                    f"of {source_doc.page_count}…",
+                    Stage.TABLE_RECOVERY,
+                    current=page_index + 1,
+                    total=source_doc.page_count,
+                    unit="page",
                 )
             source_page = source_doc.load_page(page_index)
             seen_xrefs: set[int] = set()
@@ -1012,7 +1017,8 @@ def recover_table_geometry(
                 if progress_callback:
                     progress_callback(
                         f"Recovering {column_count}-column ruled table "
-                        f"on page {page_index + 1}…"
+                        f"on page {page_index + 1}…",
+                        Stage.TABLE_RECOVERY,
                     )
 
                 headers: list[dict] = []

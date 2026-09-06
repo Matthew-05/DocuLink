@@ -41,6 +41,7 @@ from typing import Callable
 import pymupdf as fitz
 from PIL import Image, ImageSequence
 
+from schemas.models import ProgressReporter, Stage
 from engines.spreadsheet_engine import (
     SPREADSHEET_EXTENSIONS,
     SpreadsheetError,
@@ -106,14 +107,14 @@ def convert_to_pdf(
     source_bytes: bytes,
     extension: str,
     source_name: str = "",
-    progress_callback: Callable[[str], None] | None = None,
+    progress_callback: ProgressReporter | None = None,
 ) -> ConversionOutput:
     """Converts a source document to PDF bytes, or to HTML when only the host can render it."""
     ext = _normalise_extension(extension)
 
     def progress(message: str) -> None:
         if progress_callback:
-            progress_callback(message)
+            progress_callback(message, Stage.CONVERT)
 
     if not source_bytes:
         raise ConversionError("Source document is empty.")

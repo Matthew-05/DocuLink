@@ -5,6 +5,7 @@ import type { OcrProgress } from "../../host-bridge.js";
 // the barrel re-exports the pdf.js geometry module, whose top-level worker
 // setup is a side effect that keeps all of pdf.js in whatever bundles it.
 import { isTextEntryTarget } from "@doculink/shared/text-entry-target.js";
+import { fileProgressFraction, stageLabel } from "../../progress-stages.js";
 
 export interface FileTableOptions {
   onSelectionChange(selectedIds: string[]): void;
@@ -52,6 +53,13 @@ export class FileTable {
   private _contextMenuRow: HTMLTableRowElement | null = null;
   private _isLoading = true;
   private readonly _ocrProgress = new Map<string, OcrProgress>();
+  /**
+   * Furthest point each file has reached, 0-1. The pipeline is adaptive and
+   * its steps do not always arrive in declared order — an orientation check
+   * can follow a retry — so the bar is held at its high-water mark. A bar
+   * that slides backwards reads as a fault even when the work is fine.
+   */
+  private readonly _progressFloor = new Map<string, number>();
   private readonly _onSelectionChange: (ids: string[]) => void;
   private _sortKey: SortKey | null = null;
   private _sortDirection: SortDirection = "ascending";
@@ -275,6 +283,7 @@ export class FileTable {
           file.status !== "error")
       ) {
         this._ocrProgress.delete(id);
+        this._progressFloor.delete(id);
       }
     }
     this._render();
@@ -297,9 +306,20 @@ export class FileTable {
       status === "processing" ||
       (status === "error" && progress.message)
     ) {
+      // A fresh run starts the bar over; within a run it only ever advances.
+      if (status === "queued") this._progressFloor.delete(fileId);
+
+      const fraction = fileProgressFraction(
+        progress.stage, progress.current, progress.total,
+      );
+      if (fraction !== null) {
+        const floor = this._progressFloor.get(fileId) ?? 0;
+        this._progressFloor.set(fileId, Math.max(floor, fraction));
+      }
       this._ocrProgress.set(fileId, progress);
     } else {
       this._ocrProgress.delete(fileId);
+      this._progressFloor.delete(fileId);
     }
 
     if (this._sortKey === "status" && previousStatus !== status) {
@@ -313,7 +333,9 @@ export class FileTable {
     const cell = row?.querySelector<HTMLTableCellElement>("td.col-status");
     if (!cell) return;
 
-    cell.replaceChildren(buildStatusIndicator(status, this._ocrProgress.get(fileId)));
+    cell.replaceChildren(buildStatusIndicator(
+      status, this._ocrProgress.get(fileId), this._progressFloor.get(fileId),
+    ));
   }
 
   setFilter(text: string): void {
@@ -614,7 +636,9 @@ export class FileTable {
     // Status cell
     const statusTd = document.createElement("td");
     statusTd.className = "col-status";
-    statusTd.appendChild(buildStatusIndicator(file.status, this._ocrProgress.get(file.id)));
+    statusTd.appendChild(buildStatusIndicator(
+      file.status, this._ocrProgress.get(file.id), this._progressFloor.get(file.id),
+    ));
 
     // Size cell
     const sizeTd = document.createElement("td");
@@ -731,36 +755,20 @@ function formatStatusLabel(status: string): string {
 }
 
 /**
- * Builds the visible text for a row's status. Active stages name the stage
- * rather than the status, and append a work-unit count when the underlying
- * tool exposes one.
+ * Builds the visible text for a row's status: the stage's name, plus the count
+ * within that stage when the step exposes one ("Recognizing 7/40" is pages of
+ * this OCR pass, not of the file).
+ *
+ * A stage the pane has no name for falls back to the plain status rather than
+ * borrowing another stage's words. That fallback is why the vocabulary is
+ * covered by a test: the previous version silently reported unknown stages as
+ * "Starting", so a step added late in the pipeline announced that a run already
+ * minutes old was just beginning.
  */
 function formatProgressLabel(status: string, progress?: OcrProgress): string {
-  const stageLabels: Record<string, string> = {
-    queue: "Queued",
-    worker: "Starting",
-    transfer: "Sending",
-    security: "Securing",
-    "pdf-analysis": "Inspecting",
-    "source-check": "Checking text",
-    geometry: "Analyzing",
-    "quality-check": "Quality check",
-    ocr: "OCR",
-    "ocr-output": "Building PDF",
-    "result-transfer": "Saving",
-    finalizing: "Finalizing",
-    retry: "Refining",
-    "adaptive-evaluation": "Evaluating",
-    "adaptive-ocr": "Refining",
-    "table-recovery": "Table OCR",
-    "forced-ocr": "Rasterizing",
-    table: "Table OCR",
-    cache: "Cached",
-    source: "Using text",
-  };
-  const base = ACTIVE_OCR_STATUSES.has(status) && progress?.stage
-    ? stageLabels[progress.stage]
-    : undefined;
+  const base = ACTIVE_OCR_STATUSES.has(status)
+    ? stageLabel(progress?.stage)
+    : null;
   const label = base ?? formatStatusLabel(status);
   if (
     typeof progress?.current === "number" &&
@@ -773,15 +781,26 @@ function formatProgressLabel(status: string, progress?: OcrProgress): string {
 }
 
 /**
- * Builds the status indicator for a row: a state-coloured dot plus a label,
- * with a progress bar beneath while work is running. Stages with real
- * work-unit totals fill the bar; stages whose underlying tool exposes no count
- * get a sweeping segment as an honest liveness cue.
+ * Builds a row's status cell.
+ *
+ * `fraction` is progress through the whole file, already held at its
+ * high-water mark by the caller. The stage's own current/total is deliberately
+ * not used here: those units change meaning between stages — pages, then
+ * chunks, then pages again — so driving the bar with them filled and reset it
+ * several times per file. It belongs in the label, where the unit is stated.
  */
-function buildStatusIndicator(status: string, progress?: OcrProgress): HTMLSpanElement {
+function buildStatusIndicator(
+  status: string,
+  progress?: OcrProgress,
+  fraction?: number,
+): HTMLSpanElement {
   const root = document.createElement("span");
   root.className = `file-status file-status--${status}`;
-  if (progress?.message) root.title = progress.message;
+  if (progress?.message) {
+    root.title = progress.fileIndex && progress.fileCount
+      ? `File ${progress.fileIndex} of ${progress.fileCount} — ${progress.message}`
+      : progress.message;
+  }
 
   const dot = document.createElement("span");
   dot.className = "file-status__dot";
@@ -795,10 +814,7 @@ function buildStatusIndicator(status: string, progress?: OcrProgress): HTMLSpanE
   root.appendChild(label);
 
   if (ACTIVE_OCR_STATUSES.has(status)) {
-    const determinate =
-      typeof progress?.current === "number" &&
-      typeof progress.total === "number" &&
-      progress.total > 0;
+    const determinate = typeof fraction === "number";
 
     const track = document.createElement("span");
     track.className = "file-status__track";
@@ -808,13 +824,13 @@ function buildStatusIndicator(status: string, progress?: OcrProgress): HTMLSpanE
     bar.className = "file-status__bar";
 
     if (determinate) {
-      const current = Math.min(Math.max(progress!.current!, 0), progress!.total!);
-      bar.style.width = `${(current / progress!.total!) * 100}%`;
+      const percent = Math.min(Math.max(fraction!, 0), 1) * 100;
+      bar.style.width = `${percent}%`;
       root.setAttribute("role", "progressbar");
       root.setAttribute("aria-label", text);
       root.setAttribute("aria-valuemin", "0");
-      root.setAttribute("aria-valuenow", String(current));
-      root.setAttribute("aria-valuemax", String(progress!.total));
+      root.setAttribute("aria-valuenow", String(Math.round(percent)));
+      root.setAttribute("aria-valuemax", "100");
     } else {
       bar.classList.add("file-status__bar--indeterminate");
       root.setAttribute("role", "status");

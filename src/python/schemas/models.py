@@ -1,6 +1,7 @@
 """Data models for the DocuLink Python worker protocol (python-worker-v1.json)."""
 from __future__ import annotations
 
+from typing import Protocol
 from dataclasses import dataclass
 
 
@@ -113,11 +114,98 @@ class ConvertResult:
         return d
 
 
+class Stage:
+    """
+    The steps a job moves through, mirroring the ProgressStage enum in
+    contracts/python-worker-v1.json. Declared in pipeline order, which is what
+    lets a consumer place a step on a progress bar; an adaptive run skips
+    steps, so the order is a ranking, not a sequence to expect in full.
+
+    QUEUE, PREPARE, TRANSFER and FINALIZING belong to the host and are never
+    emitted here. They are listed so that STAGE_ORDER is the whole pipeline.
+    """
+
+    QUEUE = "queue"
+    PREPARE = "prepare"
+    CONVERT = "convert"
+    TRANSFER = "transfer"
+    SECURITY = "security"
+    SOURCE_CHECK = "source-check"
+    SOURCE = "source"
+    GEOMETRY = "geometry"
+    OCR = "ocr"
+    ORIENTATION = "orientation"
+    ADAPTIVE_OCR = "adaptive-ocr"
+    TABLE_RECOVERY = "table-recovery"
+    TABLE_STRUCTURE = "table-structure"
+    FS_STRUCTURE = "fs-structure"
+    VALUES = "values"
+    RESULT_TRANSFER = "result-transfer"
+    FINALIZING = "finalizing"
+
+
+STAGE_ORDER: tuple[str, ...] = (
+    Stage.QUEUE,
+    Stage.PREPARE,
+    Stage.CONVERT,
+    Stage.TRANSFER,
+    Stage.SECURITY,
+    Stage.SOURCE_CHECK,
+    Stage.SOURCE,
+    Stage.GEOMETRY,
+    Stage.OCR,
+    Stage.ORIENTATION,
+    Stage.ADAPTIVE_OCR,
+    Stage.TABLE_RECOVERY,
+    Stage.TABLE_STRUCTURE,
+    Stage.FS_STRUCTURE,
+    Stage.VALUES,
+    Stage.RESULT_TRANSFER,
+    Stage.FINALIZING,
+)
+
+
+class ProgressReporter(Protocol):
+    """
+    How every engine reports progress. The stage is required because it is the
+    fact a consumer renders; the message beside it is prose for a human and may
+    be reworded without breaking anything. Counts are optional and count within
+    the stage only.
+    """
+
+    def __call__(
+        self,
+        message: str,
+        stage: str,
+        *,
+        current: int | None = None,
+        total: int | None = None,
+        unit: str | None = None,
+    ) -> None: ...
+
+
 @dataclass
 class OcrProgress:
     """Intermediate progress message written to stdout during processing."""
     job_id: str
     message: str
+    stage: str
+    current: int | None = None
+    total: int | None = None
+    unit: str | None = None
 
     def to_dict(self) -> dict:
-        return {"job_id": self.job_id, "status": "progress", "message": self.message}
+        d: dict = {
+            "job_id": self.job_id,
+            "status": "progress",
+            "message": self.message,
+            "stage": self.stage,
+        }
+        # current and total travel together or not at all; the contract pins
+        # unit to the pair as well.
+        if self.current is not None and self.total is not None and self.total > 0:
+            d["current"] = max(0, min(self.current, self.total))
+            d["total"] = self.total
+            if self.unit is not None:
+                d["unit"] = self.unit
+        return d

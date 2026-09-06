@@ -70,18 +70,47 @@
       ]
     },
 
+    "ProgressStage": {
+      "description": "The step of the pipeline a progress message reports on. The enum is CLOSED and ORDERED: its order is the order the steps run in, and a consumer may rely on that to place a step on a progress bar. An adaptive run skips steps, so a consumer must tolerate gaps and must never assume the next message is the next member. Both the worker and the host emit these; 'queue', 'prepare', 'transfer' and 'finalizing' are the host's, the rest are the worker's. Add a member here before emitting it anywhere.",
+      "type": "string",
+      "enum": [
+        "queue",
+        "prepare",
+        "convert",
+        "transfer",
+        "security",
+        "source-check",
+        "source",
+        "geometry",
+        "ocr",
+        "orientation",
+        "adaptive-ocr",
+        "table-recovery",
+        "table-structure",
+        "fs-structure",
+        "values",
+        "result-transfer",
+        "finalizing"
+      ]
+    },
+
     "OcrProgressMessage": {
-      "description": "Emitted by the worker to stdout during processing. Zero or more per job (both commands).",
+      "description": "Emitted by the worker to stdout during processing. Zero or more per job (both commands). The stage is stated, never inferred from the message text: the message is prose for a human and may be reworded freely, while the stage is the machine-readable fact a consumer renders.",
       "type": "object",
-      "required": ["job_id", "status", "message"],
+      "required": ["job_id", "status", "message", "stage"],
       "additionalProperties": false,
       "properties": {
         "job_id":  { "type": "string" },
         "status":  { "const": "progress" },
-        "message": { "type": "string", "description": "Human-readable progress description." }
+        "message": { "type": "string", "description": "Human-readable progress description. Presentation only \u2014 a consumer must not parse it." },
+        "stage":   { "$ref": "#/definitions/ProgressStage" },
+        "current": { "type": "integer", "minimum": 0, "description": "Units of this stage completed. Counts only within the stage, and resets when the stage changes. Present only with total." },
+        "total":   { "type": "integer", "minimum": 1, "description": "Units of work in this stage. Present only with current." },
+        "unit":    { "type": "string", "enum": ["page", "chunk", "file", "table"], "description": "What current and total count, so a consumer can word the count. Present only with current and total." }
       },
       "examples": [
-        { "job_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6", "status": "progress", "message": "Processing page 1 of 5" }
+        { "job_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6", "status": "progress", "message": "Recognizing text on page 7 of 40\u2026", "stage": "ocr", "current": 7, "total": 40, "unit": "page" },
+        { "job_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6", "status": "progress", "message": "Detecting values\u2026", "stage": "values" }
       ]
     },
 

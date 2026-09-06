@@ -16,13 +16,26 @@ interface OcrStatusMessage {
   stage?: string;
   current?: number;
   total?: number;
+  unit?: string;
+  fileIndex?: number;
+  fileCount?: number;
 }
 
+/**
+ * Progress for one file, as webview-messages-v1 defines it.
+ *
+ * `stage` is stated by the host; `message` is prose beside it and must not be
+ * parsed. `current`/`total` count within `stage` only — they are not progress
+ * through the file. `fileIndex`/`fileCount` describe the run.
+ */
 export interface OcrProgress {
-  message?: string;
-  stage?: string;
-  current?: number;
-  total?: number;
+  message?: string | undefined;
+  stage?: string | undefined;
+  current?: number | undefined;
+  total?: number | undefined;
+  unit?: string | undefined;
+  fileIndex?: number | undefined;
+  fileCount?: number | undefined;
 }
 
 interface ResetUiMessage {
@@ -90,6 +103,9 @@ export function initHostBridge(
         stage: msg.stage,
         current: msg.current,
         total: msg.total,
+        unit: msg.unit,
+        fileIndex: msg.fileIndex,
+        fileCount: msg.fileCount,
       });
     } else if (msg.type === "reset-ui") {
       _onResetUi?.();

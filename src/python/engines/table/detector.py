@@ -13,6 +13,7 @@ import time
 import pymupdf as fitz
 
 from engines.binary_codec import json_to_base64
+from schemas.models import Stage
 from engines.table.redesign import DETECTOR_VERSION, PERIOD_ANALYSIS, detect_page
 
 
@@ -58,12 +59,17 @@ def detect_tables(
                 if progress_callback:
                     progress_callback(
                         f"Table structure detection stopped after page {page_index} "
-                        f"of {doc.page_count} at its time budget…"
+                        f"of {doc.page_count} at its time budget…",
+                        Stage.TABLE_STRUCTURE,
                     )
                 break
             if progress_callback:
                 progress_callback(
-                    f"Detecting table structure page {page_index + 1} of {doc.page_count}…"
+                    f"Detecting table structure page {page_index + 1} of {doc.page_count}…",
+                    Stage.TABLE_STRUCTURE,
+                    current=page_index + 1,
+                    total=doc.page_count,
+                    unit="page",
                 )
             page_geometry = geometry_by_page.get(
                 page_index, {"pageIndex": page_index, "characters": []}

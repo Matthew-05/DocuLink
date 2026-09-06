@@ -7,6 +7,8 @@ from dataclasses import dataclass
 
 import pymupdf
 
+from schemas.models import ProgressReporter, Stage
+
 
 @dataclass(frozen=True)
 class PdfSanitizationResult:
@@ -17,7 +19,7 @@ class PdfSanitizationResult:
 
 def sanitize_pdf_bytes(
     pdf_bytes: bytes,
-    progress_callback: Callable[[str], None] | None = None,
+    progress_callback: ProgressReporter | None = None,
 ) -> PdfSanitizationResult:
     """
     Rewrite a PDF while removing content that can perform actions or carry files.
@@ -40,7 +42,11 @@ def sanitize_pdf_bytes(
             links += len(page.get_links())
             if progress_callback:
                 progress_callback(
-                    f"Securing PDF page {page_index + 1} of {page_count}…"
+                    f"Securing PDF page {page_index + 1} of {page_count}…",
+                    Stage.SECURITY,
+                    current=page_index + 1,
+                    total=page_count,
+                    unit="page",
                 )
 
         document.scrub(
@@ -60,7 +66,11 @@ def sanitize_pdf_bytes(
         )
         if progress_callback and page_count > 0:
             progress_callback(
-                f"Securing PDF page {page_count} of {page_count} — rewriting…"
+                f"Securing PDF page {page_count} of {page_count} — rewriting…",
+                Stage.SECURITY,
+                current=page_count,
+                total=page_count,
+                unit="page",
             )
 
         normalized = document.tobytes(

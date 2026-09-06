@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Drawing2D;
@@ -610,16 +610,16 @@ namespace DocuLink.Addin.Modules.WebView
                 await _ocrService.RunOcrAsync(
                     req.PdfIds,
                     wb,
-                    onStatusUpdate: (pdfId, status, message) =>
+                    onStatusUpdate: (pdfId, status, detail) =>
                     {
-                        string json = FileManagerMessageSerializer.BuildOcrStatus(pdfId, status, message);
+                        string json = FileManagerMessageSerializer.BuildOcrStatus(pdfId, status, detail);
                         PostToWebView(json);
 
                         if (status != "queued" && status != "processing")
                             pendingIds.Remove(pdfId);
 
                         if (status == "error")
-                            errorMessages[pdfId] = message ?? "OCR failed.";
+                            errorMessages[pdfId] = detail?.Message ?? "OCR failed.";
 
                         if (status == PdfStatus.Ocr)
                         {

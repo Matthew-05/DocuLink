@@ -1027,6 +1027,30 @@
       ]
     },
 
+    "ProgressStage": {
+      "description": "The step of the pipeline a progress message reports on. Mirrors ProgressStage in python-worker-v1.json, which is the source of the vocabulary \u2014 the two must be changed together. The enum is CLOSED and ORDERED: its order is the order the steps run in, which is what lets the file manager place a step on a progress bar. An adaptive run skips steps, so a consumer must tolerate gaps and must never assume the next message is the next member.",
+      "type": "string",
+      "enum": [
+        "queue",
+        "prepare",
+        "convert",
+        "transfer",
+        "security",
+        "source-check",
+        "source",
+        "geometry",
+        "ocr",
+        "orientation",
+        "adaptive-ocr",
+        "table-recovery",
+        "table-structure",
+        "fs-structure",
+        "values",
+        "result-transfer",
+        "finalizing"
+      ]
+    },
+
     "OcrStatusMessage": {
       "description": "Sent by the C# host to the file-manager to report per-PDF OCR/Enhance progress. Transient values queued/processing/error are used during jobs; persisted status becomes ocr on success. Cancellation restores the prior persisted none or text status.",
       "type": "object",
@@ -1040,14 +1064,17 @@
           "enum": ["queued", "processing", "ocr", "error", "none", "text"],
           "description": "Job lifecycle state. ocr is sent when OCR or Enhance completes successfully; none or text restores the prior status after cancellation."
         },
-        "message": { "type": "string", "description": "Optional human-readable detail for errors or the current processing stage." },
-        "stage": { "type": "string", "description": "Optional stable identifier for the active processing stage, such as transfer, security, pdf-analysis, source-check, ocr, quality-check, geometry, table-recovery, result-transfer, retry, or cache." },
-        "current": { "type": "integer", "minimum": 0, "description": "Optional completed units within the active stage." },
-        "total": { "type": "integer", "minimum": 1, "description": "Optional total units within the active stage. When present with current, the file manager renders determinate progress." }
+        "message": { "type": "string", "description": "Optional human-readable detail for errors or the current processing stage. Presentation only \u2014 a consumer must not parse it for stage or counts, both of which are carried as their own fields." },
+        "stage": { "$ref": "#/definitions/ProgressStage" },
+        "current": { "type": "integer", "minimum": 0, "description": "Optional completed units within the active stage. Counts within the stage only, and resets when the stage changes \u2014 it is not progress through the file. Present only with total." },
+        "total": { "type": "integer", "minimum": 1, "description": "Optional total units within the active stage. When present with current, the file manager renders a determinate within-stage count. Present only with current." },
+        "unit": { "type": "string", "enum": ["page", "chunk", "file", "table"], "description": "Optional. What current and total count. Present only with current and total." },
+        "fileIndex": { "type": "integer", "minimum": 1, "description": "Optional one-based position of this file in the run, so the pane can report run-level progress without parsing it out of a message." },
+        "fileCount": { "type": "integer", "minimum": 1, "description": "Optional number of files in the run. Present only with fileIndex." }
       },
       "examples": [
         { "type": "ocr-status", "pdfId": "3fa85f64-5717-4562-b3fc-2c963f66afa6", "status": "processing" },
-        { "type": "ocr-status", "pdfId": "3fa85f64-5717-4562-b3fc-2c963f66afa6", "status": "processing", "message": "Direct OCR page 7 at 300 DPI (7 of 40)", "stage": "ocr", "current": 7, "total": 40 },
+        { "type": "ocr-status", "pdfId": "3fa85f64-5717-4562-b3fc-2c963f66afa6", "status": "processing", "message": "Recognizing text on page 7 of 40\u2026", "stage": "ocr", "current": 7, "total": 40, "unit": "page", "fileIndex": 2, "fileCount": 3 },
         { "type": "ocr-status", "pdfId": "3fa85f64-5717-4562-b3fc-2c963f66afa6", "status": "ocr" },
         { "type": "ocr-status", "pdfId": "3fa85f64-5717-4562-b3fc-2c963f66afa6", "status": "error", "message": "Tesseract not found" }
       ]
