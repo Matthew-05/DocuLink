@@ -14,6 +14,111 @@
   background: var(--color-bg);
 }
 
+/*
+ * The page canvas is the one surface here with a long scroll, and the pointer
+ * over it is busy drawing rectangles, so its scrollbar is a real grab target
+ * rather than the hairline the rest of the UI uses. The transparent border
+ * widens the hit area to the full track without thickening the visible thumb
+ * to match.
+ *
+ * The two axes are sized apart because they carry different loads. Vertical
+ * runs the length of an 80-page document; horizontal only appears at high zoom
+ * and spans one page, so it stays as it is. On this pseudo-element `width` is
+ * the vertical bar and `height` the horizontal one — a `:vertical` qualifier
+ * here is ignored and silently leaves the platform default of 15px.
+ */
+.viewer::-webkit-scrollbar {
+  width: 18px;
+  height: 14px;
+}
+
+.viewer::-webkit-scrollbar-track,
+.viewer::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+.viewer::-webkit-scrollbar-thumb {
+  background: var(--color-text-muted);
+  background-clip: content-box;
+  border: 3px solid transparent;
+  border-radius: 9px;
+}
+
+/*
+ * A thumb sized purely in proportion collapses to a nub over 80 pages, and a
+ * nub is small however wide the track is. The floor is what makes it findable.
+ */
+.viewer::-webkit-scrollbar-thumb:vertical {
+  border-width: 4px;
+  min-height: 48px;
+}
+
+.viewer::-webkit-scrollbar-thumb:hover {
+  background: var(--color-text);
+  background-clip: content-box;
+}
+
+/*
+ * Stepper arrows. The default pair a platform draws is a bevelled relic, so
+ * these are drawn here instead: a chevron on a pill that only takes on a
+ * surface when the pointer is over it, matching the toolbar's icon buttons
+ * rather than the OS.
+ *
+ * Chromium offers four buttons per axis — a pair at each end. Everything is
+ * hidden first so only the conventional single pair is turned back on per
+ * axis: the button that scrolls back at the start, and the one that scrolls
+ * forward at the end. Unqualified by axis, these rules cover both.
+ */
+.viewer::-webkit-scrollbar-button {
+  display: none;
+}
+
+.viewer::-webkit-scrollbar-button:start:decrement,
+.viewer::-webkit-scrollbar-button:end:increment {
+  display: block;
+  border-radius: 5px;
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: 10px 10px;
+}
+
+/* Each button is square in its own track, so it is sized along the axis. */
+.viewer::-webkit-scrollbar-button:vertical:start:decrement,
+.viewer::-webkit-scrollbar-button:vertical:end:increment {
+  height: 18px;
+}
+
+.viewer::-webkit-scrollbar-button:horizontal:start:decrement,
+.viewer::-webkit-scrollbar-button:horizontal:end:increment {
+  width: 14px;
+}
+
+.viewer::-webkit-scrollbar-button:vertical:start:decrement {
+  background-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'><path d='M2.6 6.1 5 3.7l2.4 2.4' fill='none' stroke='%235c5c70' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/></svg>");
+}
+
+.viewer::-webkit-scrollbar-button:vertical:end:increment {
+  background-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'><path d='M2.6 3.9 5 6.3l2.4-2.4' fill='none' stroke='%235c5c70' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/></svg>");
+}
+
+.viewer::-webkit-scrollbar-button:horizontal:start:decrement {
+  background-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'><path d='M6.1 2.6 3.7 5l2.4 2.4' fill='none' stroke='%235c5c70' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/></svg>");
+}
+
+.viewer::-webkit-scrollbar-button:horizontal:end:increment {
+  background-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'><path d='M3.9 2.6 6.3 5l-2.4 2.4' fill='none' stroke='%235c5c70' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/></svg>");
+}
+
+.viewer::-webkit-scrollbar-button:start:decrement:hover,
+.viewer::-webkit-scrollbar-button:end:increment:hover {
+  background-color: var(--color-surface-hover);
+}
+
+.viewer::-webkit-scrollbar-button:start:decrement:active,
+.viewer::-webkit-scrollbar-button:end:increment:active {
+  background-color: var(--color-border);
+}
+
 .viewer__document {
   display: flex;
   flex-direction: column;
