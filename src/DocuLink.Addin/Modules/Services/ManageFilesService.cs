@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using DocuLink.Addin.Modules.CustomXml;
@@ -105,7 +105,8 @@ namespace DocuLink.Addin.Modules.Services
         }
 
         public void UpdatePdfAfterOcr(Excel.Workbook workbook, string id, string newBase64,
-            string geometryBase64, string tableStructureBase64, string fsValuesBase64)
+            string geometryBase64, string tableStructureBase64, string documentValuesBase64,
+            string fsStructureBase64)
         {
             if (workbook == null) throw new ArgumentNullException(nameof(workbook));
             if (string.IsNullOrWhiteSpace(id)) throw new ArgumentException("id must be non-empty.", nameof(id));
@@ -122,7 +123,8 @@ namespace DocuLink.Addin.Modules.Services
                 Base64 = newBase64,
                 GeometryBase64 = geometryBase64,
                 TableStructureBase64 = tableStructureBase64,
-                FsValuesBase64 = fsValuesBase64,
+                DocumentValuesBase64 = documentValuesBase64,
+                FsStructureBase64 = fsStructureBase64,
             });
 
             var updated = new PdfMetadata(existing.Id, existing.Name, existing.FolderId, existing.DateAdded, existing.FileSizeBytes)
@@ -133,7 +135,7 @@ namespace DocuLink.Addin.Modules.Services
         }
 
         public void UpdatePdfGeometry(Excel.Workbook workbook, string id, string geometryBase64,
-            string tableStructureBase64, string fsValuesBase64)
+            string tableStructureBase64, string documentValuesBase64, string fsStructureBase64)
         {
             if (workbook == null) throw new ArgumentNullException(nameof(workbook));
             if (string.IsNullOrWhiteSpace(id)) throw new ArgumentException("id must be non-empty.", nameof(id));
@@ -150,7 +152,8 @@ namespace DocuLink.Addin.Modules.Services
                 Base64 = binaryParts.Base64,
                 GeometryBase64 = geometryBase64,
                 TableStructureBase64 = tableStructureBase64,
-                FsValuesBase64 = fsValuesBase64,
+                DocumentValuesBase64 = documentValuesBase64,
+                FsStructureBase64 = fsStructureBase64,
             });
 
             var updated = new PdfMetadata(existing.Id, existing.Name, existing.FolderId, existing.DateAdded, existing.FileSizeBytes)

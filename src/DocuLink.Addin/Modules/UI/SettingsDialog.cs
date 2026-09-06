@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Diagnostics;
 using System.Drawing;
 using System.IO;
@@ -120,46 +120,67 @@ namespace DocuLink.Addin.Modules.UI
 
             var valuesToggle = new CheckBox
             {
-                Text = "Show financial-value debug boxes",
+                Text = "Show detected-value debug boxes",
                 AutoSize = true,
                 Location = new Point(CardPadding, 126),
                 Font = DialogTheme.BodyFont,
                 ForeColor = DialogTheme.Text,
                 Cursor = Cursors.Hand,
-                Checked = DevSettings.ShowFsValues
+                Checked = DevSettings.ShowValues
             };
             valuesToggle.CheckedChanged += (s, e) =>
-                DevSettings.ShowFsValues = valuesToggle.Checked;
+                DevSettings.ShowValues = valuesToggle.Checked;
             card.Controls.Add(valuesToggle);
 
             card.Controls.Add(DialogTheme.CreateCaption(
                 "Click targets are always active; this draws every detected target box.",
                 new Point(CardPadding + 18, 148)));
 
-            var noiseToggle = new CheckBox
+            var referencesToggle = new CheckBox
             {
-                Text = "Show financial-value noise",
+                Text = "Show reference boxes",
                 AutoSize = true,
                 Location = new Point(CardPadding, 170),
                 Font = DialogTheme.BodyFont,
                 ForeColor = DialogTheme.Text,
                 Cursor = Cursors.Hand,
-                Checked = DevSettings.ShowFsValueNoise
+                Checked = DevSettings.ShowReferences
+            };
+            referencesToggle.CheckedChanged += (s, e) =>
+                DevSettings.ShowReferences = referencesToggle.Checked;
+            card.Controls.Add(referencesToggle);
+
+            card.Controls.Add(DialogTheme.CreateCaption(
+                "References identify rather than measure — an invoice number, a phone "
+                + "number, a note citation. They are click targets either way; this "
+                + "draws their boxes.",
+                new Point(CardPadding + 18, 192)));
+
+            var noiseToggle = new CheckBox
+            {
+                Text = "Show refused spans",
+                AutoSize = true,
+                Location = new Point(CardPadding, 214),
+                Font = DialogTheme.BodyFont,
+                ForeColor = DialogTheme.Text,
+                Cursor = Cursors.Hand,
+                Checked = DevSettings.ShowValueNoise
             };
             noiseToggle.CheckedChanged += (s, e) =>
-                DevSettings.ShowFsValueNoise = noiseToggle.Checked;
+                DevSettings.ShowValueNoise = noiseToggle.Checked;
             card.Controls.Add(noiseToggle);
 
             card.Controls.Add(DialogTheme.CreateCaption(
-                "Draws the spans the detector refused (page numbers, phone digits, "
-                + "identifiers), labelled with the rule that refused each one.",
-                new Point(CardPadding + 18, 192)));
+                "Draws the spans the detector refused as neither value nor reference "
+                + "(page numbers, footnote markers), labelled with the rule that "
+                + "refused each one.",
+                new Point(CardPadding + 18, 236)));
 
             var openLogsBtn = new Button
             {
                 Text = "Open Log Folder",
                 Size = new Size(140, 30),
-                Location = new Point(CardPadding, 220)
+                Location = new Point(CardPadding, 264)
             };
             DialogTheme.StyleSecondaryButton(openLogsBtn);
             openLogsBtn.Click += OpenLogFolder;

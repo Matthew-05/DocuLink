@@ -1,4 +1,4 @@
-using System.Xml.Linq;
+﻿using System.Xml.Linq;
 using DocuLink.Addin.Modules.CustomXml.Models;
 
 namespace DocuLink.Addin.Modules.CustomXml.Serialization
@@ -18,8 +18,10 @@ namespace DocuLink.Addin.Modules.CustomXml.Serialization
             if (!string.IsNullOrEmpty(parts?.TableStructureBase64))
                 root.Add(new XElement(ns + DocuLinkXml.TableStructureBase64ElementName, parts.TableStructureBase64));
 
-            if (!string.IsNullOrEmpty(parts?.FsValuesBase64))
-                root.Add(new XElement(ns + DocuLinkXml.FsValuesBase64ElementName, parts.FsValuesBase64));
+            if (!string.IsNullOrEmpty(parts?.DocumentValuesBase64))
+                root.Add(new XElement(ns + DocuLinkXml.DocumentValuesBase64ElementName, parts.DocumentValuesBase64));
+            if (!string.IsNullOrEmpty(parts?.FsStructureBase64))
+                root.Add(new XElement(ns + DocuLinkXml.FsStructureBase64ElementName, parts.FsStructureBase64));
 
             return new XDocument(new XDeclaration("1.0", "utf-8", null), root)
                 .ToString(SaveOptions.DisableFormatting);
@@ -41,7 +43,8 @@ namespace DocuLink.Addin.Modules.CustomXml.Serialization
             parts.Base64 = root.Element(ns + DocuLinkXml.Base64ElementName)?.Value ?? string.Empty;
             parts.GeometryBase64 = NullIfEmpty(root.Element(ns + DocuLinkXml.GeometryBase64ElementName)?.Value);
             parts.TableStructureBase64 = NullIfEmpty(root.Element(ns + DocuLinkXml.TableStructureBase64ElementName)?.Value);
-            parts.FsValuesBase64 = NullIfEmpty(root.Element(ns + DocuLinkXml.FsValuesBase64ElementName)?.Value);
+            parts.DocumentValuesBase64 = NullIfEmpty(root.Element(ns + DocuLinkXml.DocumentValuesBase64ElementName)?.Value);
+            parts.FsStructureBase64 = NullIfEmpty(root.Element(ns + DocuLinkXml.FsStructureBase64ElementName)?.Value);
             return parts;
         }
 

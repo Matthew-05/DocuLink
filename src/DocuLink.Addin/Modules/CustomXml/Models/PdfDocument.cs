@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 
 namespace DocuLink.Addin.Modules.CustomXml.Models
@@ -46,8 +46,14 @@ namespace DocuLink.Addin.Modules.CustomXml.Models
         /// <summary>Gzip-compressed table-structure-v1 JSON, base64-encoded.</summary>
         public string TableStructureBase64 { get; set; }
 
-        /// <summary>Gzip-compressed fs-values-v1 JSON, base64-encoded.</summary>
-        public string FsValuesBase64 { get; set; }
+        /// <summary>Gzip-compressed document-values-v1 JSON, base64-encoded.</summary>
+        public string DocumentValuesBase64 { get; set; }
+
+        /// <summary>
+        /// Gzip-compressed fs-structure-v1 JSON, base64-encoded. Financial documents
+        /// only: absent means the tier did not run, not that the document has no notes.
+        /// </summary>
+        public string FsStructureBase64 { get; set; }
 
         /// <summary>
         /// Per-page clockwise rotation in degrees (0, 90, 180, 270).

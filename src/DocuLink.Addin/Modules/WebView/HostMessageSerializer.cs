@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using DocuLink.Addin.Modules.CustomXml.Models;
@@ -269,18 +269,25 @@ namespace DocuLink.Addin.Modules.WebView
                 : "{\"type\":\"set-char-bboxes-visible\",\"visible\":false}";
         }
 
-        public static string BuildSetFsValuesVisible(bool visible)
+        public static string BuildSetValuesVisible(bool visible)
         {
             return visible
-                ? "{\"type\":\"set-fs-values-visible\",\"visible\":true}"
-                : "{\"type\":\"set-fs-values-visible\",\"visible\":false}";
+                ? "{\"type\":\"set-values-visible\",\"visible\":true}"
+                : "{\"type\":\"set-values-visible\",\"visible\":false}";
         }
 
-        public static string BuildSetFsValueNoiseVisible(bool visible)
+        public static string BuildSetReferencesVisible(bool visible)
         {
             return visible
-                ? "{\"type\":\"set-fs-value-noise-visible\",\"visible\":true}"
-                : "{\"type\":\"set-fs-value-noise-visible\",\"visible\":false}";
+                ? "{\"type\":\"set-references-visible\",\"visible\":true}"
+                : "{\"type\":\"set-references-visible\",\"visible\":false}";
+        }
+
+        public static string BuildSetValueNoiseVisible(bool visible)
+        {
+            return visible
+                ? "{\"type\":\"set-value-noise-visible\",\"visible\":true}"
+                : "{\"type\":\"set-value-noise-visible\",\"visible\":false}";
         }
 
         /// <summary>Returns the JSON payload for a <c>page-rotations-updated</c> message.</summary>
@@ -325,10 +332,15 @@ namespace DocuLink.Addin.Modules.WebView
                 sb.Append(",\"tableStructureBase64\":");
                 AppendString(sb, pdf.TableStructureBase64);
             }
-            if (!string.IsNullOrWhiteSpace(pdf.FsValuesBase64))
+            if (!string.IsNullOrWhiteSpace(pdf.DocumentValuesBase64))
             {
-                sb.Append(",\"fsValuesBase64\":");
-                AppendString(sb, pdf.FsValuesBase64);
+                sb.Append(",\"documentValuesBase64\":");
+                AppendString(sb, pdf.DocumentValuesBase64);
+            }
+            if (!string.IsNullOrWhiteSpace(pdf.FsStructureBase64))
+            {
+                sb.Append(",\"fsStructureBase64\":");
+                AppendString(sb, pdf.FsStructureBase64);
             }
             AppendPageRotations(sb, pdf.PageRotations);
             sb.Append('}');

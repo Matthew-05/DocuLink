@@ -26,8 +26,9 @@ export interface HostMessageHandlers {
   onLinkSelectionChanged?: (entries: LinkSelectionEntry[]) => void;
   onSetSearchQuery?: (query: string) => void;
   onSetCharBboxesVisible?: (visible: boolean) => void;
-  onSetFsValuesVisible?: (visible: boolean) => void;
-  onSetFsValueNoiseVisible?: (visible: boolean) => void;
+  onSetValuesVisible?: (visible: boolean) => void;
+  onSetReferencesVisible?: (visible: boolean) => void;
+  onSetValueNoiseVisible?: (visible: boolean) => void;
   onPdfUpdated?: (entry: PdfEntry) => void;
   onLinkRectanglesRemoved?: (ids: string[]) => void;
   onPdfNameUpdated?: (id: string, name: string) => void;
@@ -43,7 +44,8 @@ interface PdfPayload {
   folderId?: string;
   geometryBase64?: string;
   tableStructureBase64?: string;
-  fsValuesBase64?: string;
+  documentValuesBase64?: string;
+  fsStructureBase64?: string;
   pageRotations?: Record<string, number>;
 }
 
@@ -196,7 +198,8 @@ function toPdfEntry(pdf: PdfPayload): PdfEntry {
     ...(pdf.folderId !== undefined ? { folderId: pdf.folderId } : {}),
     ...(pdf.geometryBase64 !== undefined ? { geometryBase64: pdf.geometryBase64 } : {}),
     ...(pdf.tableStructureBase64 !== undefined ? { tableStructureBase64: pdf.tableStructureBase64 } : {}),
-    ...(pdf.fsValuesBase64 !== undefined ? { fsValuesBase64: pdf.fsValuesBase64 } : {}),
+    ...(pdf.documentValuesBase64 !== undefined ? { documentValuesBase64: pdf.documentValuesBase64 } : {}),
+    ...(pdf.fsStructureBase64 !== undefined ? { fsStructureBase64: pdf.fsStructureBase64 } : {}),
     ...(pageRotations !== undefined ? { pageRotations } : {}),
   };
 }
@@ -222,13 +225,18 @@ interface SetCharBboxesVisibleMessage {
   visible: boolean;
 }
 
-interface SetFsValuesVisibleMessage {
-  type: "set-fs-values-visible";
+interface SetValuesVisibleMessage {
+  type: "set-values-visible";
   visible: boolean;
 }
 
-interface SetFsValueNoiseVisibleMessage {
-  type: "set-fs-value-noise-visible";
+interface SetReferencesVisibleMessage {
+  type: "set-references-visible";
+  visible?: boolean;
+}
+
+interface SetValueNoiseVisibleMessage {
+  type: "set-value-noise-visible";
   visible: boolean;
 }
 
@@ -255,8 +263,9 @@ function handleMessage(raw: unknown, handlers: HostMessageHandlers): void {
     onLinkSelectionChanged,
     onSetSearchQuery,
     onSetCharBboxesVisible,
-    onSetFsValuesVisible,
-    onSetFsValueNoiseVisible,
+    onSetValuesVisible,
+    onSetReferencesVisible,
+    onSetValueNoiseVisible,
     onPdfUpdated,
     onLinkRectanglesRemoved,
     onPdfNameUpdated,
@@ -365,17 +374,24 @@ function handleMessage(raw: unknown, handlers: HostMessageHandlers): void {
       return;
     }
 
-    if (type === "set-fs-values-visible") {
-      if (!onSetFsValuesVisible) return;
-      const msg = parsed as SetFsValuesVisibleMessage;
-      onSetFsValuesVisible(msg.visible === true);
+    if (type === "set-values-visible") {
+      if (!onSetValuesVisible) return;
+      const msg = parsed as SetValuesVisibleMessage;
+      onSetValuesVisible(msg.visible === true);
       return;
     }
 
-    if (type === "set-fs-value-noise-visible") {
-      if (!onSetFsValueNoiseVisible) return;
-      const msg = parsed as SetFsValueNoiseVisibleMessage;
-      onSetFsValueNoiseVisible(msg.visible === true);
+    if (type === "set-references-visible") {
+      if (!onSetReferencesVisible) return;
+      const msg = parsed as SetReferencesVisibleMessage;
+      onSetReferencesVisible(msg.visible === true);
+      return;
+    }
+
+    if (type === "set-value-noise-visible") {
+      if (!onSetValueNoiseVisible) return;
+      const msg = parsed as SetValueNoiseVisibleMessage;
+      onSetValueNoiseVisible(msg.visible === true);
       return;
     }
 

@@ -1,0 +1,230 @@
+.values {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.values__value {
+  position: absolute;
+  box-sizing: border-box;
+  min-width: 3px;
+  min-height: 3px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 2px;
+  background: transparent;
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.values--debug .values__value {
+  border-color: rgba(14, 116, 144, 0.72);
+  background: rgba(6, 182, 212, 0.11);
+}
+
+.values--debug .values__value--percent {
+  border-color: rgba(180, 83, 9, 0.78);
+  background: rgba(245, 158, 11, 0.13);
+}
+
+.values--debug .values__value--date {
+  border-color: rgba(21, 128, 61, 0.78);
+  background: rgba(34, 197, 94, 0.12);
+}
+
+.values__value:hover,
+.values__value--related-hover {
+  border-bottom-color: rgba(37, 99, 235, 0.9);
+}
+
+.values__value:focus-visible {
+  border-bottom-color: rgba(37, 99, 235, 0.9);
+  outline: 1px dotted rgba(37, 99, 235, 0.72);
+  outline-offset: 1px;
+}
+
+.values__value:disabled {
+  pointer-events: none;
+}
+
+/* ── References ──────────────────────────────────────────────────────────
+   Spans that identify rather than measure. Click targets exactly as values
+   are, on every document alike, so the layer takes pointer events and is only
+   *drawn* when the reference view is on. */
+
+.values-references {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.values-references__value {
+  position: absolute;
+  box-sizing: border-box;
+  min-width: 3px;
+  min-height: 3px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 2px;
+  background: transparent;
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.values-references--debug .values-references__value {
+  border-color: rgba(109, 40, 217, 0.72);
+  background: rgba(139, 92, 246, 0.11);
+}
+
+.values-references--debug .values-references__value--note,
+.values-references--debug .values-references__value--item {
+  border-color: rgba(2, 132, 199, 0.78);
+  background: rgba(14, 165, 233, 0.12);
+}
+
+.values-references__value:hover,
+.values-references__value.values__value--related-hover {
+  border-bottom-color: rgba(37, 99, 235, 0.9);
+}
+
+.values-references__value:focus-visible {
+  border-bottom-color: rgba(37, 99, 235, 0.9);
+  outline: 1px dotted rgba(37, 99, 235, 0.72);
+  outline-offset: 1px;
+}
+
+.values-references__value:disabled {
+  pointer-events: none;
+}
+
+/* ── Noise ────────────────────────────────────────────────────────────────
+   Spans the detector recognized and then refused. A separate debug view from
+   the value boxes above, and deliberately inert: the layer never takes a
+   pointer event, so a rectangle drag begun over a noise box still reaches the
+   page. The overlay hit-tests the cursor itself and explains each box in a
+   floating tip rather than labelling it in place. */
+
+.values-noise {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.values-noise__value {
+  position: absolute;
+  box-sizing: border-box;
+  min-width: 3px;
+  min-height: 3px;
+  border: 1px dashed rgba(190, 24, 93, 0.85);
+  border-radius: 2px;
+  background: rgba(219, 39, 119, 0.1);
+}
+
+/* One colour per suppressor, so a page reads at a glance. */
+
+
+.values-noise__value[data-noise-reason="item-header"] {
+  border-color: rgba(126, 34, 206, 0.85);
+  background: rgba(168, 85, 247, 0.1);
+}
+
+.values-noise__value[data-noise-reason="item-toc-entry"] {
+  border-color: rgba(161, 98, 7, 0.85);
+  background: rgba(234, 179, 8, 0.1);
+}
+
+.values-noise__value[data-noise-reason="partial-token"] {
+  border-color: rgba(107, 114, 128, 0.85);
+  background: rgba(156, 163, 175, 0.12);
+}
+
+.values-noise__value[data-noise-reason="note-header"] {
+  border-color: rgba(67, 56, 202, 0.85);
+  background: rgba(99, 102, 241, 0.1);
+}
+
+
+.values-noise__value[data-noise-reason="list-marker"] {
+  border-color: rgba(101, 163, 13, 0.85);
+  background: rgba(132, 204, 22, 0.12);
+}
+
+.values-noise__value[data-noise-reason="footnote-marker"] {
+  border-color: rgba(13, 148, 136, 0.85);
+  background: rgba(45, 212, 191, 0.12);
+}
+
+.values-noise__value[data-noise-reason="footnote-reference"] {
+  border-color: rgba(8, 145, 178, 0.85);
+  background: rgba(34, 211, 238, 0.12);
+}
+
+.values-noise__value[data-noise-reason="page-furniture"] {
+  border-color: rgba(109, 40, 217, 0.85);
+  background: rgba(139, 92, 246, 0.1);
+}
+
+
+
+.values-noise__value[data-noise-reason="superscript"] {
+  border-color: rgba(15, 118, 110, 0.85);
+  background: rgba(20, 184, 166, 0.1);
+}
+
+.values-noise__value[data-noise-reason="citation-year"] {
+  border-color: rgba(51, 65, 85, 0.85);
+  background: rgba(100, 116, 139, 0.12);
+}
+
+/* ── Hover tip accents ────────────────────────────────────────────────────
+   The tip itself is the shared `doculink-hover-tip`; only the per-subject
+   accent belongs here. `data-variant` carries the value's kind when a value is
+   under the cursor, and the suppressor's name when noise is. */
+
+.values__tip[data-variant="number"] { border-left-color: rgba(14, 116, 144, 0.9); }
+.values__tip[data-variant="number"] .doculink-hover-tip__label { color: rgba(12, 74, 110, 0.95); }
+.values__tip[data-variant="percent"] { border-left-color: rgba(180, 83, 9, 0.9); }
+.values__tip[data-variant="percent"] .doculink-hover-tip__label { color: rgba(146, 64, 14, 0.95); }
+.values__tip[data-variant="date"] { border-left-color: rgba(21, 128, 61, 0.9); }
+.values__tip[data-variant="date"] .doculink-hover-tip__label { color: rgba(22, 101, 52, 0.95); }
+
+.values__tip[data-variant="partial-token"] { border-left-color: rgba(107, 114, 128, 0.9); }
+.values__tip[data-variant="partial-token"] .doculink-hover-tip__label { color: rgba(55, 65, 81, 0.95); }
+.values__tip[data-variant="note-header"] { border-left-color: rgba(67, 56, 202, 0.9); }
+.values__tip[data-variant="note-header"] .doculink-hover-tip__label { color: rgba(55, 48, 163, 0.95); }
+.values__tip[data-variant="list-marker"] { border-left-color: rgba(101, 163, 13, 0.9); }
+.values__tip[data-variant="list-marker"] .doculink-hover-tip__label { color: rgba(77, 124, 15, 0.95); }
+.values__tip[data-variant="footnote-marker"] { border-left-color: rgba(13, 148, 136, 0.9); }
+.values__tip[data-variant="footnote-marker"] .doculink-hover-tip__label { color: rgba(15, 118, 110, 0.95); }
+.values__tip[data-variant="footnote-reference"] { border-left-color: rgba(8, 145, 178, 0.9); }
+.values__tip[data-variant="footnote-reference"] .doculink-hover-tip__label { color: rgba(14, 116, 144, 0.95); }
+.values__tip[data-variant="page-furniture"] { border-left-color: rgba(109, 40, 217, 0.9); }
+.values__tip[data-variant="page-furniture"] .doculink-hover-tip__label { color: rgba(76, 29, 149, 0.95); }
+.values__tip[data-variant="superscript"] { border-left-color: rgba(15, 118, 110, 0.9); }
+.values__tip[data-variant="superscript"] .doculink-hover-tip__label { color: rgba(17, 94, 89, 0.95); }
+.values__tip[data-variant="citation-year"] { border-left-color: rgba(51, 65, 85, 0.9); }
+.values__tip[data-variant="citation-year"] .doculink-hover-tip__label { color: rgba(30, 41, 59, 0.95); }
+
+/* Reference kinds. A reference is a click target, so its tip is reader-facing
+   rather than a diagnostic, and the accents run warmer than the noise set. */
+.values__tip[data-variant="identifier"] { border-left-color: rgba(109, 40, 217, 0.9); }
+.values__tip[data-variant="identifier"] .doculink-hover-tip__label { color: rgba(76, 29, 149, 0.95); }
+.values__tip[data-variant="phone"] { border-left-color: rgba(194, 65, 12, 0.9); }
+.values__tip[data-variant="phone"] .doculink-hover-tip__label { color: rgba(154, 52, 18, 0.95); }
+.values__tip[data-variant="postal"] { border-left-color: rgba(133, 77, 14, 0.9); }
+.values__tip[data-variant="postal"] .doculink-hover-tip__label { color: rgba(113, 63, 18, 0.95); }
+.values__tip[data-variant="tax-id"] { border-left-color: rgba(190, 24, 93, 0.9); }
+.values__tip[data-variant="tax-id"] .doculink-hover-tip__label { color: rgba(157, 23, 77, 0.95); }
+.values__tip[data-variant="security-id"] { border-left-color: rgba(219, 39, 119, 0.9); }
+.values__tip[data-variant="security-id"] .doculink-hover-tip__label { color: rgba(157, 23, 77, 0.95); }
+.values__tip[data-variant="note"] { border-left-color: rgba(2, 132, 199, 0.9); }
+.values__tip[data-variant="note"] .doculink-hover-tip__label { color: rgba(3, 105, 161, 0.95); }
+.values__tip[data-variant="item"] { border-left-color: rgba(67, 56, 202, 0.9); }
+.values__tip[data-variant="item"] .doculink-hover-tip__label { color: rgba(55, 48, 163, 0.95); }
+.values__tip[data-variant="item-header"] { border-left-color: rgba(126, 34, 206, 0.9); }
+.values__tip[data-variant="item-header"] .doculink-hover-tip__label { color: rgba(107, 33, 168, 0.95); }
+.values__tip[data-variant="item-toc-entry"] { border-left-color: rgba(161, 98, 7, 0.9); }
+.values__tip[data-variant="item-toc-entry"] .doculink-hover-tip__label { color: rgba(133, 77, 14, 0.95); }

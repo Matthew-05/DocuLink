@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
@@ -727,35 +727,51 @@ namespace DocuLink.Addin.Modules.WebView
             }
         }
 
-        internal void SendFsValuesVisible(bool visible)
+        internal void SendValuesVisible(bool visible)
         {
             if (_disposed || !_webViewReady) return;
 
             try
             {
                 _webView.CoreWebView2.PostWebMessageAsString(
-                    HostMessageSerializer.BuildSetFsValuesVisible(visible));
+                    HostMessageSerializer.BuildSetValuesVisible(visible));
             }
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine(
-                    $"[DocuLink] SendFsValuesVisible failed: {ex.Message}");
+                    $"[DocuLink] SendValuesVisible failed: {ex.Message}");
             }
         }
 
-        internal void SendFsValueNoiseVisible(bool visible)
+        internal void SendReferencesVisible(bool visible)
         {
             if (_disposed || !_webViewReady) return;
 
             try
             {
                 _webView.CoreWebView2.PostWebMessageAsString(
-                    HostMessageSerializer.BuildSetFsValueNoiseVisible(visible));
+                    HostMessageSerializer.BuildSetReferencesVisible(visible));
             }
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine(
-                    $"[DocuLink] SendFsValueNoiseVisible failed: {ex.Message}");
+                    $"[DocuLink] SendReferencesVisible failed: {ex.Message}");
+            }
+        }
+
+        internal void SendValueNoiseVisible(bool visible)
+        {
+            if (_disposed || !_webViewReady) return;
+
+            try
+            {
+                _webView.CoreWebView2.PostWebMessageAsString(
+                    HostMessageSerializer.BuildSetValueNoiseVisible(visible));
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine(
+                    $"[DocuLink] SendValueNoiseVisible failed: {ex.Message}");
             }
         }
 
@@ -766,8 +782,9 @@ namespace DocuLink.Addin.Modules.WebView
         private void SendDevStateToWebView()
         {
             SendCharBboxesVisible(Infrastructure.DevSettings.ShowCharBoundingBoxes);
-            SendFsValuesVisible(Infrastructure.DevSettings.ShowFsValues);
-            SendFsValueNoiseVisible(Infrastructure.DevSettings.ShowFsValueNoise);
+            SendValuesVisible(Infrastructure.DevSettings.ShowValues);
+            SendReferencesVisible(Infrastructure.DevSettings.ShowReferences);
+            SendValueNoiseVisible(Infrastructure.DevSettings.ShowValueNoise);
         }
 
         private void FlushPendingSearchQuery()

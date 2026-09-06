@@ -21,9 +21,9 @@ import { createSearchNavigator } from "./search-navigator.js";
 import { TableCopyModal } from "../table-copy-modal/table-copy-modal.js";
 import { TextContentCache } from "../../services/text-content-cache.js";
 import { TableStructureCache } from "../../services/table-structure-cache.js";
-import { FsValuesCache } from "../../services/fs-values-cache.js";
-import { FsValuesOverlay } from "./fs-values-overlay.js";
-import { getFsValueLinkBounds } from "./fs-value-link-bounds.js";
+import { ValuesCache } from "../../services/values-cache.js";
+import { ValuesOverlay } from "./values-overlay.js";
+import { getValueLinkBounds } from "./span-link-bounds.js";
 import { extractText } from "@doculink/shared";
 import {
   detectCopiedTable,
@@ -69,12 +69,15 @@ interface DocuLinkDebugApi {
   toggleCharBboxes: () => boolean;
   showCharBboxes: () => void;
   hideCharBboxes: () => void;
-  toggleFsValues: () => boolean;
-  showFsValues: () => void;
-  hideFsValues: () => void;
-  toggleFsValueNoise: () => boolean;
-  showFsValueNoise: () => void;
-  hideFsValueNoise: () => void;
+  toggleValues: () => boolean;
+  showValues: () => void;
+  hideValues: () => void;
+  toggleReferences: () => boolean;
+  showReferences: () => void;
+  hideReferences: () => void;
+  toggleValueNoise: () => boolean;
+  showValueNoise: () => void;
+  hideValueNoise: () => void;
   toggleTableSuggestions: () => boolean;
   showTableSuggestions: () => void;
   hideTableSuggestions: () => void;
@@ -241,7 +244,7 @@ export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLEleme
 
   const cache           = new TextContentCache();
   const tableCache      = new TableStructureCache();
-  const fsValuesCache   = new FsValuesCache();
+  const valuesCache   = new ValuesCache();
   const renderer        = new RectRenderer(viewer);
   const contextMenu     = new RectContextMenu();
   const selectionPanel  = new LinkSelectionPanel();
@@ -265,11 +268,11 @@ export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLEleme
   const tableGridEditor = new TableGridEditor(viewer, cache, renderer);
   const tableCopyModal  = new TableCopyModal();
   const charBboxDebug   = new CharBboxOverlay(viewer, cache);
-  const fsValuesOverlay = new FsValuesOverlay(viewer, fsValuesCache);
+  const valuesOverlay = new ValuesOverlay(viewer, valuesCache);
   const tableSuggestions = new TableSuggestionOverlay(viewer, tableCache);
   const tableNotice     = new TableNotice();
   const matchRenderer   = new SearchMatchRenderer(viewer);
-  const searcher        = new PdfTextSearcher(cache, fsValuesCache);
+  const searcher        = new PdfTextSearcher(cache, valuesCache);
   const searchNavigator = createSearchNavigator(
     viewer, selector, matchRenderer, applyFitZoom, onNavigateToPage,
   );
@@ -645,10 +648,13 @@ export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLEleme
     });
   });
 
-  fsValuesOverlay.onValueClicked((pdfId, page, value) => {
+  valuesOverlay.onSpanClicked((pdfId, page, span) => {
     const selectedType = linkTypeSelector.getLinkType();
     const linkType = selectedType === "table" ? "auto" : selectedType;
-    const rect = getFsValueLinkBounds(value, page);
+    // A reference is one printed thing and links as it stands; only a value can
+    // wrap across lines and need its segments gathered back together.
+    const value = span.category === "value" ? span.value : span.reference;
+    const rect = span.category === "value" ? getValueLinkBounds(span.value, page) : span.reference.bounds;
     sendLinkRectangleCreated({
       pdfId,
       page,
@@ -731,13 +737,13 @@ export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLEleme
 
     const finish = (): void => {
       charBboxDebug.refresh();
-      fsValuesOverlay.refresh();
+      valuesOverlay.refresh();
       if (search.getQuery()) {
         applyActivePdfHighlights();
       }
     };
 
-    if (cache.has(pdfId) && fsValuesCache.has(pdfId)) {
+    if (cache.has(pdfId) && valuesCache.has(pdfId)) {
       finish();
       return;
     }
@@ -751,7 +757,7 @@ export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLEleme
       : cache.buildFromDoc(pdfId, doc);
 
     void buildPromise
-      .then(() => fsValuesCache.build(pdfId, entry?.fsValuesBase64))
+      .then(() => valuesCache.build(pdfId, entry?.documentValuesBase64, entry?.fsStructureBase64))
       .then(() => {
         if (gen !== cacheGeneration) return;
         finish();
@@ -766,12 +772,15 @@ export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLEleme
     toggleCharBboxes: () => charBboxDebug.toggle(),
     showCharBboxes:   () => charBboxDebug.show(),
     hideCharBboxes:   () => charBboxDebug.hide(),
-    toggleFsValues: () => fsValuesOverlay.toggle(),
-    showFsValues: () => fsValuesOverlay.show(),
-    hideFsValues: () => fsValuesOverlay.hide(),
-    toggleFsValueNoise: () => fsValuesOverlay.toggleNoise(),
-    showFsValueNoise: () => fsValuesOverlay.showNoise(),
-    hideFsValueNoise: () => fsValuesOverlay.hideNoise(),
+    toggleValues: () => valuesOverlay.toggle(),
+    showValues: () => valuesOverlay.show(),
+    hideValues: () => valuesOverlay.hide(),
+    toggleReferences: () => valuesOverlay.toggleReferences(),
+    showReferences: () => valuesOverlay.showReferences(),
+    hideReferences: () => valuesOverlay.hideReferences(),
+    toggleValueNoise: () => valuesOverlay.toggleNoise(),
+    showValueNoise: () => valuesOverlay.showNoise(),
+    hideValueNoise: () => valuesOverlay.hideNoise(),
     toggleTableSuggestions: () => { setTableModelEnabled(!_tableModelEnabled); return _tableModelEnabled; },
     showTableSuggestions: () => setTableModelEnabled(true),
     hideTableSuggestions: () => setTableModelEnabled(false),
@@ -794,7 +803,7 @@ export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLEleme
     folderFilter,
     cache,
     tableCache,
-    fsValuesCache,
+    valuesCache,
     (indexing) => {
       if (indexing) {
         search.disable();
@@ -808,7 +817,7 @@ export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLEleme
         }
       }
     },
-    () => { refreshTableMetadata(); fsValuesOverlay.refresh(); },
+    () => { refreshTableMetadata(); valuesOverlay.refresh(); },
     {
       onLinkedRectangles: (rects) => {
         contextMenu.hide();
@@ -837,13 +846,17 @@ export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLEleme
         if (visible) charBboxDebug.show();
         else charBboxDebug.hide();
       },
-      onSetFsValuesVisible: (visible) => {
-        if (visible) fsValuesOverlay.show();
-        else fsValuesOverlay.hide();
+      onSetValuesVisible: (visible) => {
+        if (visible) valuesOverlay.show();
+        else valuesOverlay.hide();
       },
-      onSetFsValueNoiseVisible: (visible) => {
-        if (visible) fsValuesOverlay.showNoise();
-        else fsValuesOverlay.hideNoise();
+      onSetReferencesVisible: (visible) => {
+        if (visible) valuesOverlay.showReferences();
+        else valuesOverlay.hideReferences();
+      },
+      onSetValueNoiseVisible: (visible) => {
+        if (visible) valuesOverlay.showNoise();
+        else valuesOverlay.hideNoise();
       },
       onClearRectangleHighlight: () => { renderer.clearHighlight(); },
       onHighlightRectangle: (id) => { renderer.highlightRectangle(id); },

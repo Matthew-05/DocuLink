@@ -1,14 +1,14 @@
-import type { FinancialValue, FsValueBounds } from "@doculink/shared";
+import type { DetectedValue, SpanBounds } from "@doculink/shared";
 
 /**
- * Returns the rectangle used when creating a link from an fs-value target.
+ * Returns the rectangle used when creating a link from a detected value.
  * Wrapped dates are linked as one visual block; other segmented values retain
  * the bounds of the segment the user clicked.
  */
-export function getFsValueLinkBounds(
-  value: FinancialValue,
+export function getValueLinkBounds(
+  value: DetectedValue,
   pageIndex: number,
-): FsValueBounds {
+): SpanBounds {
   const segments = value.segments;
   if (
     value.kind !== "date"

@@ -70,7 +70,8 @@
         "folderId":        { "type": "string", "description": "GUID of the owning folder, omitted when uncategorised." },
         "geometryBase64":  { "type": "string", "description": "Optional gzip-compressed text-geometry-v1 JSON, base64-encoded." },
         "tableStructureBase64": { "type": "string", "description": "Optional gzip-compressed table-structure-v1 JSON, base64-encoded." },
-        "fsValuesBase64": { "type": "string", "description": "Optional gzip-compressed fs-values-v1 JSON, base64-encoded." },
+        "documentValuesBase64": { "type": "string", "description": "Optional gzip-compressed document-values-v1 JSON, base64-encoded." },
+        "fsStructureBase64": { "type": "string", "description": "Optional gzip-compressed fs-structure-v1 JSON, base64-encoded. Present only for documents in the financial tier." },
         "pageRotations":   {
           "type": "object",
           "description": "Optional map of 0-based page index to clockwise rotation in degrees (0, 90, 180, 270). Omitted entries default to 0.",
@@ -886,33 +887,48 @@
       ]
     },
 
-    "SetFsValuesVisibleMessage": {
-      "description": "Sent by the C# host when the development financial-value overlay toggle changes and once after viewer-ready.",
+    "SetValuesVisibleMessage": {
+      "description": "Sent by the C# host when the detected-value overlay toggle changes and once after viewer-ready. Values measure, and their overlay is clickable.",
       "type": "object",
       "required": ["type", "visible"],
       "additionalProperties": false,
       "properties": {
-        "type": { "const": "set-fs-values-visible" },
+        "type": { "const": "set-values-visible" },
         "visible": { "type": "boolean" }
       },
       "examples": [
-        { "type": "set-fs-values-visible", "visible": true },
-        { "type": "set-fs-values-visible", "visible": false }
+        { "type": "set-values-visible", "visible": true },
+        { "type": "set-values-visible", "visible": false }
       ]
     },
 
-    "SetFsValueNoiseVisibleMessage": {
-      "description": "Sent by the C# host when the development financial-value noise toggle changes and once after viewer-ready. Noise is the set of spans the detector recognized and then refused; the overlay it drives is inert and draws nothing clickable.",
+    "SetReferencesVisibleMessage": {
+      "description": "Sent by the C# host when the reference overlay toggle changes and once after viewer-ready. References identify rather than measure -- an invoice number, an account number, a note citation -- and are click targets exactly as values are, on every document alike. Independent of the value layer so either can be drawn alone.",
       "type": "object",
       "required": ["type", "visible"],
       "additionalProperties": false,
       "properties": {
-        "type": { "const": "set-fs-value-noise-visible" },
+        "type": { "const": "set-references-visible" },
         "visible": { "type": "boolean" }
       },
       "examples": [
-        { "type": "set-fs-value-noise-visible", "visible": true },
-        { "type": "set-fs-value-noise-visible", "visible": false }
+        { "type": "set-references-visible", "visible": true },
+        { "type": "set-references-visible", "visible": false }
+      ]
+    },
+
+    "SetValueNoiseVisibleMessage": {
+      "description": "Sent by the C# host when the development noise toggle changes and once after viewer-ready. Noise is the set of spans the detector recognized and then refused as neither value nor reference; the overlay it drives is inert and draws nothing clickable.",
+      "type": "object",
+      "required": ["type", "visible"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "const": "set-value-noise-visible" },
+        "visible": { "type": "boolean" }
+      },
+      "examples": [
+        { "type": "set-value-noise-visible", "visible": true },
+        { "type": "set-value-noise-visible", "visible": false }
       ]
     },
 
@@ -1244,8 +1260,9 @@
     { "$ref": "#/definitions/LinkSelectionChangedMessage" },
     { "$ref": "#/definitions/SetSearchQueryMessage" },
     { "$ref": "#/definitions/SetCharBboxesVisibleMessage" },
-    { "$ref": "#/definitions/SetFsValuesVisibleMessage" },
-    { "$ref": "#/definitions/SetFsValueNoiseVisibleMessage" },
+    { "$ref": "#/definitions/SetValuesVisibleMessage" },
+    { "$ref": "#/definitions/SetReferencesVisibleMessage" },
+    { "$ref": "#/definitions/SetValueNoiseVisibleMessage" },
     { "$ref": "#/definitions/ResetUiMessage" },
     { "$ref": "#/definitions/CancelOcrMessage" },
     { "$ref": "#/definitions/OcrPdfsMessage" },

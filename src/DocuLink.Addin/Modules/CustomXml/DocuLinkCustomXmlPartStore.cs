@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.InteropServices;
@@ -106,7 +106,8 @@ namespace DocuLink.Addin.Modules.CustomXml
                 OcrStatus     = metadata.OcrStatus,
                 GeometryBase64 = parts.GeometryBase64,
                 TableStructureBase64 = parts.TableStructureBase64,
-                FsValuesBase64 = parts.FsValuesBase64,
+                DocumentValuesBase64 = parts.DocumentValuesBase64,
+                FsStructureBase64 = parts.FsStructureBase64,
                 PageRotations  = metadata.PageRotations,
             };
             return true;
@@ -125,7 +126,8 @@ namespace DocuLink.Addin.Modules.CustomXml
                     OcrStatus      = m.OcrStatus,
                     GeometryBase64 = parts.GeometryBase64,
                     TableStructureBase64 = parts.TableStructureBase64,
-                    FsValuesBase64 = parts.FsValuesBase64,
+                    DocumentValuesBase64 = parts.DocumentValuesBase64,
+                FsStructureBase64 = parts.FsStructureBase64,
                     PageRotations  = m.PageRotations,
                 });
             }
@@ -147,7 +149,8 @@ namespace DocuLink.Addin.Modules.CustomXml
                 Base64 = pdf.Base64,
                 GeometryBase64 = pdf.GeometryBase64,
                 TableStructureBase64 = pdf.TableStructureBase64,
-                FsValuesBase64 = pdf.FsValuesBase64,
+                DocumentValuesBase64 = pdf.DocumentValuesBase64,
+                FsStructureBase64 = pdf.FsStructureBase64,
             });
         }
 

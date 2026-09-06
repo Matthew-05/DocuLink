@@ -1,19 +1,19 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
-  describeFsItemHeader,
-  describeFsItemTocEntry,
-  describeFsNoteHeader,
-} from "../src/fs-values-describe.ts";
+  describeItemHeader,
+  describeItemTocEntry,
+  describeNoteHeader,
+} from "../src/span-describe.ts";
 
 const bounds = { x: 0.1, y: 0.2, width: 0.3, height: 0.04 };
 
 test("note-header tooltips list note metadata and continuation status", () => {
-  const content = describeFsNoteHeader(
+  const content = describeNoteHeader(
     {
-      id: "noise-note-7",
-      kind: "text",
-      text: "Note 7 — Income Taxes (continued)",
+      id: "noi-note-7",
+      kind: "number",
+      text: "7",
       bounds,
       reason: "note-header",
     },
@@ -35,12 +35,13 @@ test("note-header tooltips list note metadata and continuation status", () => {
   assert.deepEqual(content.fields, [
     { name: "note number", value: "7" },
     { name: "note description", value: "Income Taxes" },
+    { name: "heading", value: "Note 7 — Income Taxes (continued)" },
     { name: "continuation", value: "Yes" },
   ]);
 });
 
 test("note-header tooltips make absent descriptions and non-continuations explicit", () => {
-  const content = describeFsNoteHeader(
+  const content = describeNoteHeader(
     { id: "noise-note-iv", kind: "text", text: "Note IV", bounds, reason: "note-header" },
     { id: "note-iv", identifier: "IV", description: "", headers: [] },
     { id: "header-iv", pageIndex: 1, text: "Note IV", bounds, continuation: false },
@@ -49,12 +50,13 @@ test("note-header tooltips make absent descriptions and non-continuations explic
   assert.deepEqual(content.fields, [
     { name: "note number", value: "IV" },
     { name: "note description", value: "Not provided" },
+    { name: "heading", value: "Note IV" },
     { name: "continuation", value: "No" },
   ]);
 });
 
 test("item-header tooltips name the part and where the description came from", () => {
-  const content = describeFsItemHeader(
+  const content = describeItemHeader(
     { id: "noise-item-1a", kind: "text", text: "Item 1A. Risk Factors", bounds, reason: "item-header" },
     {
       id: "fs-item-1",
@@ -73,12 +75,13 @@ test("item-header tooltips name the part and where the description came from", (
     { name: "item description", value: "Risk Factors" },
     { name: "part", value: "I" },
     { name: "description from", value: "The table of contents" },
+    { name: "heading", value: "Item 1A. Risk Factors" },
     { name: "continuation", value: "No" },
   ]);
 });
 
 test("item-header tooltips omit the part when the document groups nothing", () => {
-  const content = describeFsItemHeader(
+  const content = describeItemHeader(
     { id: "noise-item-6", kind: "text", text: "Item 6. [Reserved]", bounds, reason: "item-header" },
     {
       id: "fs-item-6",
@@ -95,6 +98,7 @@ test("item-header tooltips omit the part when the document groups nothing", () =
     { name: "item number", value: "6" },
     { name: "item description", value: "[Reserved]" },
     { name: "description from", value: "A heading in the body" },
+    { name: "heading", value: "Item 6. [Reserved]" },
     { name: "continuation", value: "No" },
   ]);
 });
@@ -116,10 +120,10 @@ test("contents-row tooltips say which detector read the row", () => {
     reason: "item-toc-entry" as const,
   };
 
-  const fromTable = describeFsItemTocEntry(noise, item, {
+  const fromTable = describeItemTocEntry(noise, item, {
     id: "it0", pageIndex: 2, text: noise.text, bounds, corroborated: true, printedPage: "21",
   });
-  const fromText = describeFsItemTocEntry(noise, item, {
+  const fromText = describeItemTocEntry(noise, item, {
     id: "it1", pageIndex: 2, text: noise.text, bounds, corroborated: false,
   });
 

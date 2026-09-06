@@ -1,0 +1,155 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "http://doculink.dev/schemas/document-values/1",
+  "title": "DocuLink Document Values v1",
+  "description": "Numbers, percentages, dates and printed reference data detected from text geometry on any document, financial or not. Every span is classified into exactly one of three categories: a value measures, a reference identifies, and noise is an artifact of setting the page. Values and references are click targets on every document; noise never is. Financial-statement structure -- notes, filing items and their citations -- is published separately in fs-structure-v1. Coordinates use normalized displayed-page, top-left-origin 0-1 space.",
+  "type": "object",
+  "required": ["version", "coordinateSpace", "detectorVersion", "documentContext", "pages"],
+  "additionalProperties": false,
+  "properties": {
+    "version": { "const": 1 },
+    "coordinateSpace": { "const": "normalized" },
+    "detectorVersion": { "type": "string", "minLength": 1, "description": "Identifier of the detector that produced this model. Bumped whenever the published set changes materially, so a cached model built by an older detector can be recognized and rebuilt." },
+    "documentContext": { "$ref": "#/definitions/Context" },
+    "pages": { "type": "array", "items": { "$ref": "#/definitions/PageValues" } }
+  },
+  "definitions": {
+    "Bounds": {
+      "type": "object",
+      "required": ["x", "y", "width", "height"],
+      "additionalProperties": false,
+      "properties": {
+        "x": { "type": "number", "minimum": 0, "maximum": 1 },
+        "y": { "type": "number", "minimum": 0, "maximum": 1 },
+        "width": { "type": "number", "exclusiveMinimum": 0, "maximum": 1 },
+        "height": { "type": "number", "exclusiveMinimum": 0, "maximum": 1 }
+      }
+    },
+    "SpanId": {
+      "type": "string",
+      "pattern": "^(val|ref|noi)-[0-9a-f]{16}$",
+      "description": "Content-addressed span identity: a category prefix and a hash over the span's page index, normalized text and bounds rounded to three decimals. Stable across detector versions, which is what lets a workbook keep review state through a detector upgrade. NOT stable across a re-OCR that moves geometry -- a rebuilt geometry is a re-anchoring event, not an id-preserving one."
+    },
+    "Context": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "currency": { "type": "string", "enum": ["USD", "EUR", "GBP", "JPY", "CAD", "AUD", "CHF", "CNY", "INR", "KRW"] },
+        "scale": { "type": "integer", "enum": [1, 1000, 1000000, 1000000000] }
+      }
+    },
+    "ValueSegment": {
+      "type": "object",
+      "description": "One physical region of a span that wraps across lines or pages.",
+      "required": ["pageIndex", "text", "bounds"],
+      "additionalProperties": false,
+      "properties": {
+        "pageIndex": { "type": "integer", "minimum": 0 },
+        "text": { "type": "string", "minLength": 1 },
+        "bounds": { "$ref": "#/definitions/Bounds" }
+      }
+    },
+    "Value": {
+      "type": "object",
+      "description": "A span that measures: a quantity, a proportion or a point in time. Always a click target.",
+      "required": ["id", "kind", "text", "bounds", "confidence"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/definitions/SpanId" },
+        "kind": { "type": "string", "enum": ["number", "percent", "date"] },
+        "text": { "type": "string", "minLength": 1 },
+        "bounds": { "$ref": "#/definitions/Bounds" },
+        "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+        "normalizedValue": { "type": "string", "description": "Exact canonical decimal for numbers and percentages, or ISO-like value for unambiguous dates. Never a binary float." },
+        "magnitude": { "type": "integer", "enum": [1000, 1000000, 1000000000, 1000000000000], "description": "Multiplier expressed by a modifier attached directly to this number. normalizedValue already includes this multiplier." },
+        "segments": {
+          "type": "array",
+          "minItems": 2,
+          "description": "Physical click regions when a logical value wraps across lines or pages. bounds remains the first segment; each segment creates the full logical value while drawing only its own rectangle.",
+          "items": { "$ref": "#/definitions/ValueSegment" }
+        },
+        "currency": { "type": "string", "enum": ["USD", "EUR", "GBP", "JPY", "CAD", "AUD", "CHF", "CNY", "INR", "KRW"] },
+        "datePrecision": { "type": "string", "enum": ["day", "month", "quarter", "year"] },
+        "dateOrder": { "type": "string", "enum": ["mdy", "dmy", "ymd", "ambiguous"] }
+      }
+    },
+    "Reference": {
+      "type": "object",
+      "description": "A span that identifies rather than measures: an invoice or account number, a phone number, a citation naming a note or a filing item. Printed data a reader may want to capture, so it is a click target on every document -- an auditor sampling invoices captures the invoice number as readily as the amount. What a note or item citation resolves to is published in fs-structure-v1, keyed by this span's id.",
+      "required": ["id", "kind", "text", "bounds"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/definitions/SpanId" },
+        "kind": {
+          "type": "string",
+          "description": "What the reference identifies. A new kind is added here before it is implemented.",
+          "enum": [
+            "identifier",
+            "phone",
+            "postal",
+            "tax-id",
+            "security-id",
+            "note",
+            "item"
+          ]
+        },
+        "bounds": { "$ref": "#/definitions/Bounds" },
+        "text": { "type": "string", "minLength": 1 },
+        "segments": {
+          "type": "array",
+          "minItems": 2,
+          "description": "Physical click regions when a reference wraps across lines.",
+          "items": { "$ref": "#/definitions/ValueSegment" }
+        }
+      }
+    },
+    "Noise": {
+      "type": "object",
+      "description": "A span refused as neither a value nor a reference: an artifact of setting the page, or a token too damaged to read. Diagnostics only -- never a click target, and no consumer may treat one as data. A heading or contents row is not noise; it is structure, and is published in fs-structure-v1. What appears here for those is only the number inside one, refused so it cannot be mistaken for a value.",
+      "required": ["id", "kind", "text", "bounds", "reason"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/definitions/SpanId" },
+        "kind": { "type": "string", "enum": ["number", "percent", "date", "text"] },
+        "text": { "type": "string", "minLength": 1 },
+        "bounds": { "$ref": "#/definitions/Bounds" },
+        "reason": {
+          "type": "string",
+          "description": "Why the span was refused. A new reason is added here before it is implemented.",
+          "enum": [
+            "partial-token",
+            "page-furniture",
+            "note-header",
+            "item-header",
+            "item-toc-entry",
+            "list-marker",
+            "footnote-marker",
+            "footnote-reference",
+            "superscript",
+            "citation-year"
+          ]
+        }
+      }
+    },
+    "PageValues": {
+      "type": "object",
+      "required": ["pageIndex", "context", "values"],
+      "additionalProperties": false,
+      "properties": {
+        "pageIndex": { "type": "integer", "minimum": 0 },
+        "context": { "$ref": "#/definitions/Context" },
+        "values": { "type": "array", "items": { "$ref": "#/definitions/Value" } },
+        "references": {
+          "type": "array",
+          "description": "Reference spans on this page. Absent or empty when the page carries none.",
+          "items": { "$ref": "#/definitions/Reference" }
+        },
+        "noise": {
+          "type": "array",
+          "description": "Spans this page refused. Absent or empty when nothing was refused.",
+          "items": { "$ref": "#/definitions/Noise" }
+        }
+      }
+    }
+  }
+}

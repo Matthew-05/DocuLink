@@ -35,7 +35,9 @@ from engines.ocr_engine import (
     summarize_geometry_quality,
 )
 from engines.pdf_security import sanitize_pdf_bytes
-from engines.fs_values.detector import detect_fs_values, fs_values_to_base64
+from engines.fs.detector import detect_fs_structure, structure_to_base64 as fs_structure_to_base64
+from engines.values.detector import detect_values, values_to_base64
+from engines.values.lines import prepare as prepare_lines
 from engines.table.detector import detect_tables, structure_to_base64
 from engines.table_cell_engine import recover_table_geometry
 from schemas.models import ConvertJob, ConvertResult, OcrJob, OcrProgress, OcrResult
@@ -456,36 +458,71 @@ def _handle_job(job: OcrJob) -> None:
             on_progress("Table structure detection unavailable; keeping OCR geometry…")
         diagnostics["table_structure_ms"] = elapsed_ms(table_started)
 
-        fs_values_base64 = ""
-        values_started = time.perf_counter()
+        # The two tiers read one prepared document. The financial tier runs
+        # first because the value tier honours the claims it makes: a note
+        # heading fences the integer printed inside it, and a citation is
+        # published as a reference rather than read for values.
+        prepared = None
+        prepare_started = time.perf_counter()
         try:
-            on_progress("Detecting financial values…")
-            # Table structure is optional input, not a prerequisite: it
-            # corroborates the contents rows item detection reads, and item
-            # detection falls back to text geometry when it is absent.
-            fs_values = detect_fs_values(
-                geometry, tables=table_structure, diagnostics=diagnostics
-            )
-            fs_values_base64 = fs_values_to_base64(fs_values)
-            counts = {"number": 0, "percent": 0, "date": 0}
-            for page in fs_values["pages"]:
-                for value in page["values"]:
-                    counts[value["kind"]] += 1
-            diagnostics["fs_values_detected"] = sum(counts.values())
-            diagnostics["fs_value_numbers"] = counts["number"]
-            diagnostics["fs_value_percents"] = counts["percent"]
-            diagnostics["fs_value_dates"] = counts["date"]
-            diagnostics["fs_notes_detected"] = len(fs_values["notes"])
-            diagnostics["fs_note_references"] = len(fs_values["noteReferences"])
-            diagnostics["fs_items_detected"] = len(fs_values["items"])
-            diagnostics["fs_item_references"] = len(fs_values["itemReferences"])
-            diagnostics["fs_items_from_contents"] = sum(
-                1 for item in fs_values["items"] if item["tocEntries"]
-            )
+            prepared = prepare_lines(geometry)
         except Exception as exc:  # noqa: BLE001 — optional stage must preserve OCR
-            diagnostics["fs_values_error"] = str(exc)
-            on_progress("Financial value detection unavailable; keeping OCR geometry…")
-        diagnostics["fs_values_ms"] = elapsed_ms(values_started)
+            diagnostics["values_error"] = str(exc)
+        diagnostics["lines_ms"] = elapsed_ms(prepare_started)
+
+        fs_structure_base64 = ""
+        claims: tuple = ()
+        structure_started = time.perf_counter()
+        if prepared is not None:
+            try:
+                on_progress("Reading financial structure…")
+                # Table structure is optional input, not a prerequisite: it
+                # corroborates the contents rows item detection reads, and item
+                # detection falls back to text geometry when it is absent.
+                structure = detect_fs_structure(prepared, tables=table_structure)
+                claims = structure.spans
+                model = structure.model
+                diagnostics["fs_structure_detector_version"] = model["detectorVersion"]
+                diagnostics["fs_document_class"] = model["documentClass"]
+                diagnostics["fs_notes_found"] = model["apparatus"]["notes"]["found"]
+                diagnostics["fs_items_found"] = model["apparatus"]["items"]["found"]
+                diagnostics["fs_note_references"] = len(model["noteReferences"])
+                diagnostics["fs_item_references"] = len(model["itemReferences"])
+                diagnostics["fs_items_from_contents"] = sum(
+                    1 for item in model["items"] if item["tocEntries"]
+                )
+                # A document with no apparatus at all carries no artifact: there
+                # is nothing for the suite to read, and every scanned invoice
+                # would otherwise pay to carry an empty one.
+                if model["documentClass"] != "neither":
+                    fs_structure_base64 = fs_structure_to_base64(model)
+            except Exception as exc:  # noqa: BLE001 — optional stage must preserve OCR
+                diagnostics["fs_structure_error"] = str(exc)
+                on_progress("Financial structure detection unavailable; keeping OCR geometry…")
+        diagnostics["fs_structure_ms"] = elapsed_ms(structure_started)
+
+        document_values_base64 = ""
+        values_started = time.perf_counter()
+        if prepared is not None:
+            try:
+                on_progress("Detecting values…")
+                values = detect_values(prepared, claims=claims, diagnostics=diagnostics)
+                document_values_base64 = values_to_base64(values)
+                counts = {"number": 0, "percent": 0, "date": 0}
+                for page in values["pages"]:
+                    for value in page["values"]:
+                        counts[value["kind"]] += 1
+                diagnostics["value_detector_version"] = values["detectorVersion"]
+                diagnostics["values_detected"] = sum(counts.values())
+                diagnostics["value_numbers"] = counts["number"]
+                diagnostics["value_percents"] = counts["percent"]
+                diagnostics["value_dates"] = counts["date"]
+                diagnostics.setdefault("value_references", 0)
+                diagnostics.setdefault("value_noise", 0)
+            except Exception as exc:  # noqa: BLE001 — optional stage must preserve OCR
+                diagnostics["values_error"] = str(exc)
+                on_progress("Value detection unavailable; keeping OCR geometry…")
+        diagnostics["values_ms"] = elapsed_ms(values_started)
 
         geometry_encode_started = time.perf_counter()
         geometry_base64 = geometry_to_base64(geometry)
@@ -514,7 +551,8 @@ def _handle_job(job: OcrJob) -> None:
                 pdf_base64=pdf_base64,
                 geometry_base64=geometry_base64,
                 table_structure_base64=table_structure_base64,
-                fs_values_base64=fs_values_base64,
+                document_values_base64=document_values_base64,
+                fs_structure_base64=fs_structure_base64,
                 diagnostics=diagnostics,
             ).to_dict()
         )

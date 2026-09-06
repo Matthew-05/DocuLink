@@ -1034,14 +1034,14 @@ namespace DocuLink.Addin
             }
         }
 
-        private void OnFsValuesChanged(object sender, bool visible)
+        private void OnValuesChanged(object sender, bool visible)
         {
             foreach (WorkbookPaneEntry entry in _workbookPanes.ToArray())
             {
-                try { entry.Host?.SendFsValuesVisible(visible); }
+                try { entry.Host?.SendValuesVisible(visible); }
                 catch (Exception ex)
                 {
-                    Modules.DocuLinkLog.Trace($"OnFsValuesChanged skipping pane: {ex.Message}");
+                    Modules.DocuLinkLog.Trace($"OnValuesChanged skipping pane: {ex.Message}");
                 }
             }
 
@@ -1050,23 +1050,23 @@ namespace DocuLink.Addin
                 try
                 {
                     if (entry.Window != null && !entry.Window.IsDisposed)
-                        entry.Window.SendFsValuesVisible(visible);
+                        entry.Window.SendValuesVisible(visible);
                 }
                 catch (Exception ex)
                 {
-                    Modules.DocuLinkLog.Trace($"OnFsValuesChanged skipping viewer window: {ex.Message}");
+                    Modules.DocuLinkLog.Trace($"OnValuesChanged skipping viewer window: {ex.Message}");
                 }
             }
         }
 
-        private void OnFsValueNoiseChanged(object sender, bool visible)
+        private void OnReferencesChanged(object sender, bool visible)
         {
             foreach (WorkbookPaneEntry entry in _workbookPanes.ToArray())
             {
-                try { entry.Host?.SendFsValueNoiseVisible(visible); }
+                try { entry.Host?.SendReferencesVisible(visible); }
                 catch (Exception ex)
                 {
-                    Modules.DocuLinkLog.Trace($"OnFsValueNoiseChanged skipping pane: {ex.Message}");
+                    Modules.DocuLinkLog.Trace($"OnReferencesChanged skipping pane: {ex.Message}");
                 }
             }
 
@@ -1075,11 +1075,36 @@ namespace DocuLink.Addin
                 try
                 {
                     if (entry.Window != null && !entry.Window.IsDisposed)
-                        entry.Window.SendFsValueNoiseVisible(visible);
+                        entry.Window.SendReferencesVisible(visible);
                 }
                 catch (Exception ex)
                 {
-                    Modules.DocuLinkLog.Trace($"OnFsValueNoiseChanged skipping viewer window: {ex.Message}");
+                    Modules.DocuLinkLog.Trace($"OnReferencesChanged skipping viewer window: {ex.Message}");
+                }
+            }
+        }
+
+        private void OnValueNoiseChanged(object sender, bool visible)
+        {
+            foreach (WorkbookPaneEntry entry in _workbookPanes.ToArray())
+            {
+                try { entry.Host?.SendValueNoiseVisible(visible); }
+                catch (Exception ex)
+                {
+                    Modules.DocuLinkLog.Trace($"OnValueNoiseChanged skipping pane: {ex.Message}");
+                }
+            }
+
+            foreach (WorkbookViewerEntry entry in _workbookViewers.ToArray())
+            {
+                try
+                {
+                    if (entry.Window != null && !entry.Window.IsDisposed)
+                        entry.Window.SendValueNoiseVisible(visible);
+                }
+                catch (Exception ex)
+                {
+                    Modules.DocuLinkLog.Trace($"OnValueNoiseChanged skipping viewer window: {ex.Message}");
                 }
             }
         }
@@ -1191,8 +1216,9 @@ namespace DocuLink.Addin
 
             Modules.Infrastructure.DevSettings.CharBoundingBoxesChanged +=
                 OnCharBoundingBoxesChanged;
-            Modules.Infrastructure.DevSettings.FsValuesChanged += OnFsValuesChanged;
-            Modules.Infrastructure.DevSettings.FsValueNoiseChanged += OnFsValueNoiseChanged;
+            Modules.Infrastructure.DevSettings.ValuesChanged += OnValuesChanged;
+            Modules.Infrastructure.DevSettings.ReferencesChanged += OnReferencesChanged;
+            Modules.Infrastructure.DevSettings.ValueNoiseChanged += OnValueNoiseChanged;
 
             _ = CheckForUpdateOnOpenAsync();
 
@@ -1214,8 +1240,9 @@ namespace DocuLink.Addin
 
             Modules.Infrastructure.DevSettings.CharBoundingBoxesChanged -=
                 OnCharBoundingBoxesChanged;
-            Modules.Infrastructure.DevSettings.FsValuesChanged -= OnFsValuesChanged;
-            Modules.Infrastructure.DevSettings.FsValueNoiseChanged -= OnFsValueNoiseChanged;
+            Modules.Infrastructure.DevSettings.ValuesChanged -= OnValuesChanged;
+            Modules.Infrastructure.DevSettings.ReferencesChanged -= OnReferencesChanged;
+            Modules.Infrastructure.DevSettings.ValueNoiseChanged -= OnValueNoiseChanged;
 
             Application.SheetSelectionChange -= Application_SheetSelectionChange;
 

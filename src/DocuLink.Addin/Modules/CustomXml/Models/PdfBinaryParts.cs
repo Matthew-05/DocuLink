@@ -1,4 +1,4 @@
-namespace DocuLink.Addin.Modules.CustomXml.Models
+﻿namespace DocuLink.Addin.Modules.CustomXml.Models
 {
     /// <summary>
     /// Payloads stored together in a per-PDF Custom XML part. Keeping the cache
@@ -13,6 +13,8 @@ namespace DocuLink.Addin.Modules.CustomXml.Models
 
         public string TableStructureBase64 { get; set; }
 
-        public string FsValuesBase64 { get; set; }
+        public string DocumentValuesBase64 { get; set; }
+
+        public string FsStructureBase64 { get; set; }
     }
 }

@@ -14,31 +14,48 @@ export type {
 } from "./table-structure-decoder.js";
 export { decodeTableStructure, parseTableStructure } from "./table-structure-decoder.js";
 export type {
-  FinancialValue,
-  FsNoiseKind,
-  FsNoiseReason,
-  FsNoiseValue,
+  DetectedReference,
+  DetectedValue,
+  DocumentValues,
+  NoiseKind,
+  NoiseReason,
+  NoiseSpan,
+  PageValues,
+  ReferenceKind,
+  SpanBounds,
+  SpanSegment,
+  ValueContext,
+  ValueKind,
+} from "./document-values-decoder.js";
+export {
+  NOISE_REASONS,
+  REFERENCE_KINDS,
+  decodeDocumentValues,
+  parseDocumentValues,
+} from "./document-values-decoder.js";
+export type {
+  FsApparatus,
+  FsDocumentClass,
   FsHeading,
   FsItem,
   FsItemReference,
   FsItemTocEntry,
   FsNote,
   FsNoteReference,
-  FsValueSegment,
-  FsValueBounds,
-  FsValueContext,
-  FsValueKind,
-  FsValues,
-  PageFsValues,
-} from "./fs-values-decoder.js";
-export { decodeFsValues, parseFsValues } from "./fs-values-decoder.js";
+  FsPresence,
+  FsStructure,
+} from "./fs-structure-decoder.js";
+export { decodeFsStructure, parseFsStructure } from "./fs-structure-decoder.js";
 export {
-  describeFsItemHeader,
-  describeFsItemTocEntry,
-  describeFsNoise,
-  describeFsNoteHeader,
-  describeFsValue,
-} from "./fs-values-describe.js";
+  describeItemHeader,
+  describeItemReference,
+  describeItemTocEntry,
+  describeNoise,
+  describeNoteHeader,
+  describeNoteReference,
+  describeReference,
+  describeValue,
+} from "./span-describe.js";
 export type { HoverTipContent, HoverTipOptions } from "./hover-tip.js";
 export { HoverTip } from "./hover-tip.js";
 export type { CharacterEntry } from "./char-entries.js";

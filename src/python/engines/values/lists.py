@@ -35,7 +35,7 @@ Nothing here is decided by position on the page: a footnote block sits wherever
 the text above it ended, and the exhibit column of a 10-K is a body column.
 
 This module classifies text and line geometry only. The detector owns the
-conversion to bounds and the fs-values-v1 envelope.
+conversion to bounds and the document-values-v1 envelope.
 """
 from __future__ import annotations
 
@@ -43,8 +43,8 @@ import re
 from dataclasses import dataclass
 from statistics import median
 
-from .headings import Fragment, HeadingLine
-from .reasons import FOOTNOTE_MARKER, FOOTNOTE_REFERENCE, LIST_MARKER
+from .lines import Fragment, TextLine
+from .categories import FOOTNOTE_MARKER, FOOTNOTE_REFERENCE, LIST_MARKER
 
 
 # ``3.1``, ``10.15``, ``1.``, ``(7)``, ``10.5†``. Roman and alphabetic markers
@@ -137,7 +137,7 @@ class _Candidate:
 
 
 def _parse(
-    line_index: int, line: HeadingLine, at: int
+    line_index: int, line: TextLine, at: int
 ) -> _Candidate | None:
     """The marker beginning at `at`, or None when nothing there is one."""
     match = _MARKER.match(line.text, at)
@@ -161,7 +161,7 @@ def _parse(
     )
 
 
-def _typical_heights(lines: list[HeadingLine]) -> dict[int, float]:
+def _typical_heights(lines: list[TextLine]) -> dict[int, float]:
     """How tall ordinary text stands on each page.
 
     A page too sparse to have an ordinary height borrows the document's, for the
@@ -185,7 +185,7 @@ def _is_prose(text: str) -> bool:
     return len(_WORD.findall(text)) >= MIN_PROSE_WORDS
 
 
-def _leads_prose(lines: list[HeadingLine], index: int, rest: str) -> bool:
+def _leads_prose(lines: list[TextLine], index: int, rest: str) -> bool:
     """Whether the marker at the head of this line introduces text.
 
     A marker either keeps its item on the same line, or sits alone in a narrow
@@ -210,7 +210,7 @@ def _leads_prose(lines: list[HeadingLine], index: int, rest: str) -> bool:
 
 
 def _candidates(
-    lines: list[HeadingLine],
+    lines: list[TextLine],
 ) -> tuple[list[_Candidate], list[_Candidate], list[_Candidate], list[_Candidate]]:
     """Every ordinal marker, split by where in its line it sits.
 
@@ -303,7 +303,7 @@ def _chains(
     return found
 
 
-def detect_lists(lines: list[HeadingLine]) -> ListDetection:
+def detect_lists(lines: list[TextLine]) -> ListDetection:
     """Find the ordinals that number a list, a footnote, or a reference to one."""
     leading, inline, trailing, raised = _candidates(lines)
     indicators = trailing + raised

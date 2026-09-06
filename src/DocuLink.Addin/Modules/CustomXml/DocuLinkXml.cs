@@ -1,4 +1,4 @@
-using System.Xml.Linq;
+﻿using System.Xml.Linq;
 
 namespace DocuLink.Addin.Modules.CustomXml
 {
@@ -59,7 +59,9 @@ namespace DocuLink.Addin.Modules.CustomXml
 
         public const string TableStructureBase64ElementName = "TableStructureBase64";
 
-        public const string FsValuesBase64ElementName = "FsValuesBase64";
+        public const string DocumentValuesBase64ElementName = "DocumentValuesBase64";
+
+        public const string FsStructureBase64ElementName = "FsStructureBase64";
 
         // Page rotation storage
         public const string PageRotationsElementName = "PageRotations";

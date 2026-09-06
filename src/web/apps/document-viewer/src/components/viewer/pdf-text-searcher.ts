@@ -1,6 +1,6 @@
 import { normalizeSearchQuery, searchPageWithIndex } from "@doculink/shared";
 import type { TextContentCache } from "../../services/text-content-cache.js";
-import type { FsValuesCache } from "../../services/fs-values-cache.js";
+import type { ValuesCache } from "../../services/values-cache.js";
 import type { PdfEntry, SearchMatch } from "../../types/index.js";
 
 export { normalizeSearchQuery } from "@doculink/shared";
@@ -18,14 +18,14 @@ export interface SearchBatch {
 
 export class PdfTextSearcher {
   private readonly _cache: TextContentCache;
-  private readonly _fsValues: FsValuesCache | undefined;
+  private readonly _valuesCache: ValuesCache | undefined;
 
   constructor(
     cache: TextContentCache,
-    fsValues?: FsValuesCache,
+    valuesCache?: ValuesCache,
   ) {
     this._cache = cache;
-    this._fsValues = fsValues;
+    this._valuesCache = valuesCache;
   }
 
   search(rawQuery: string, pdfEntries: PdfEntry[]): SearchMatch[] {
@@ -43,7 +43,7 @@ export class PdfTextSearcher {
         if (!entries || entries.length === 0 || !searchIndex) continue;
 
         results.push(...searchPageIncludingMagnitudeAliases(
-          this._cache, this._fsValues, entry, pageIndex, normalizedQuery,
+          this._cache, this._valuesCache, entry, pageIndex, normalizedQuery,
         ));
       }
     }
@@ -52,7 +52,7 @@ export class PdfTextSearcher {
   }
 
   createSession(rawQuery: string, pdfEntries: PdfEntry[]): PdfTextSearchSession {
-    return new PdfTextSearchSession(this._cache, this._fsValues, normalizeSearchQuery(rawQuery), pdfEntries);
+    return new PdfTextSearchSession(this._cache, this._valuesCache, normalizeSearchQuery(rawQuery), pdfEntries);
   }
 
   searchPage(rawQuery: string, entry: PdfEntry, pageIndex: number): SearchMatch[] {
@@ -63,7 +63,7 @@ export class PdfTextSearcher {
     const searchIndex = this._cache.getSearchIndex(entry.id, pageIndex);
     if (!entries || entries.length === 0 || !searchIndex) return [];
 
-    return searchPageIncludingMagnitudeAliases(this._cache, this._fsValues, entry, pageIndex, normalizedQuery);
+    return searchPageIncludingMagnitudeAliases(this._cache, this._valuesCache, entry, pageIndex, normalizedQuery);
   }
 }
 
@@ -78,12 +78,12 @@ export class PdfTextSearchSession {
 
   constructor(
     cache: TextContentCache,
-    fsValues: FsValuesCache | undefined,
+    valuesCache: ValuesCache | undefined,
     normalizedQuery: string,
     pdfEntries: PdfEntry[],
   ) {
     this._cache = cache;
-    this._fsValues = fsValues;
+    this._valuesCache = valuesCache;
     this._normalizedQuery = normalizedQuery;
     this._pages = [];
 
@@ -101,7 +101,7 @@ export class PdfTextSearchSession {
     }
   }
 
-  private readonly _fsValues: FsValuesCache | undefined;
+  private readonly _valuesCache: ValuesCache | undefined;
 
   nextBatch(limit: number, pageBudget = 12): SearchBatch {
     if (this._complete || limit <= 0) {
@@ -137,7 +137,7 @@ export class PdfTextSearchSession {
 
       const pageMatches = searchPageIncludingMagnitudeAliases(
         this._cache,
-        this._fsValues,
+        this._valuesCache,
         page.entry,
         page.pageIndex,
         this._normalizedQuery,
@@ -165,7 +165,7 @@ export class PdfTextSearchSession {
 
 function searchPageIncludingMagnitudeAliases(
   cache: TextContentCache,
-  fsValues: FsValuesCache | undefined,
+  valuesCache: ValuesCache | undefined,
   entry: PdfEntry,
   pageIndex: number,
   normalizedQuery: string,
@@ -177,10 +177,10 @@ function searchPageIncludingMagnitudeAliases(
   const textMatches = searchPageWithIndex(
     entry.id, entry.name, pageIndex, entries, searchIndex, normalizedQuery,
   );
-  if (!fsValues) return textMatches;
+  if (!valuesCache) return textMatches;
 
   const aliases: SearchMatch[] = [];
-  for (const value of fsValues.logicalValuesOnPage(entry.id, pageIndex)) {
+  for (const value of valuesCache.logicalValuesOnPage(entry.id, pageIndex)) {
     if (!value.magnitude || !value.normalizedValue) continue;
 
     const displayForms = [value.text, value.text.replace(

@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { getFsValueLinkBounds } from "../src/components/viewer/fs-value-link-bounds.ts";
+import { getValueLinkBounds } from "../src/components/viewer/span-link-bounds.ts";
 
 test("uses the union of every segment for a wrapped date on one page", () => {
   const clickedBounds = { x: 0.2, y: 0.1, width: 0.3, height: 0.04 };
-  const bounds = getFsValueLinkBounds({
+  const bounds = getValueLinkBounds({
     id: "date-1",
     kind: "date",
     text: "September 27, 2025",
@@ -22,7 +22,7 @@ test("uses the union of every segment for a wrapped date on one page", () => {
 
 test("keeps the clicked segment bounds for a wrapped number modifier", () => {
   const clickedBounds = { x: 0.1, y: 0.1, width: 0.15, height: 0.03 };
-  const bounds = getFsValueLinkBounds({
+  const bounds = getValueLinkBounds({
     id: "number-1",
     kind: "number",
     text: "$1 million",
@@ -39,7 +39,7 @@ test("keeps the clicked segment bounds for a wrapped number modifier", () => {
 
 test("keeps the clicked bounds when date segments do not share a page", () => {
   const clickedBounds = { x: 0.7, y: 0.9, width: 0.2, height: 0.03 };
-  const bounds = getFsValueLinkBounds({
+  const bounds = getValueLinkBounds({
     id: "date-2",
     kind: "date",
     text: "September 27, 2025",

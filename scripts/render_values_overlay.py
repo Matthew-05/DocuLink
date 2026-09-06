@@ -1,9 +1,9 @@
-"""Render detected fs-values as colored rectangles over a diagnostic PDF.
+"""Render detected values as colored rectangles over a diagnostic PDF.
 
-Published values are drawn in their kind's color. Pass --show-rejected to also
-draw the candidates that were recognized and then ruled out, each labelled with
-the reason it lost -- the only way to inspect a suppressed value, since nothing
-in the production path carries one.
+Published values are drawn in their kind's color and references in their own,
+so the two click layers can be told apart at a glance. Pass --show-rejected to
+also draw what was recognized and then refused, each labelled with the reason it
+lost.
 """
 from __future__ import annotations
 
@@ -20,7 +20,9 @@ if str(SCRIPT_ROOT) not in sys.path:
 
 from table_corpus import geometry_for
 
-from engines.fs_values.detector import detect_fs_values  # noqa: E402
+from engines.fs.detector import detect_fs_structure  # noqa: E402
+from engines.values.detector import detect_values  # noqa: E402
+from engines.values.lines import prepare  # noqa: E402
 
 
 COLORS = {
@@ -28,6 +30,7 @@ COLORS = {
     "percent": (0.71, 0.33, 0.04),
     "date": (0.08, 0.50, 0.24),
 }
+REFERENCE_COLOR = (0.42, 0.29, 0.62)
 REJECTED_COLOR = (0.80, 0.15, 0.15)
 
 
@@ -73,8 +76,10 @@ def render(
 ) -> Path:
     pdf_bytes = source.read_bytes()
     diagnostics: dict = {}
-    model = detect_fs_values(geometry_for(pdf_bytes), diagnostics=diagnostics)
-    document = pymupdf.open(stream=pdf_bytes, filetype="pdf")
+    document = prepare(geometry_for(pdf_bytes))
+    structure = detect_fs_structure(document)
+    model = detect_values(document, claims=structure.spans, diagnostics=diagnostics)
+    document_pdf = pymupdf.open(stream=pdf_bytes, filetype="pdf")
     try:
         for page_values in model["pages"]:
             for value in page_values["values"]:
@@ -86,25 +91,40 @@ def render(
                     page_index = region["pageIndex"]
                     if pages is not None and page_index + 1 not in pages:
                         continue
-                    _draw(document[page_index], region["bounds"], COLORS[value["kind"]])
+                    _draw(document_pdf[page_index], region["bounds"], COLORS[value["kind"]])
+        for page_values in model["pages"]:
+            page_index = page_values["pageIndex"]
+            if pages is not None and page_index + 1 not in pages:
+                continue
+            for reference in page_values.get("references", []):
+                _draw(
+                    document_pdf[page_index],
+                    reference["bounds"],
+                    REFERENCE_COLOR,
+                    reference["kind"],
+                )
         for page_values in model["pages"] if show_rejected else []:
             page_index = page_values["pageIndex"]
             if pages is not None and page_index + 1 not in pages:
                 continue
             for candidate in page_values.get("noise", []):
                 _draw(
-                    document[page_index],
+                    document_pdf[page_index],
                     candidate["bounds"],
                     REJECTED_COLOR,
                     candidate["reason"],
                 )
         output.parent.mkdir(parents=True, exist_ok=True)
-        document.save(output)
+        document_pdf.save(output)
     finally:
-        document.close()
+        document_pdf.close()
     if report is not None:
         report.parent.mkdir(parents=True, exist_ok=True)
-        payload = {"model": model, "diagnostics": diagnostics}
+        payload = {
+            "values": model,
+            "structure": structure.model,
+            "diagnostics": diagnostics,
+        }
         report.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
     return output
 

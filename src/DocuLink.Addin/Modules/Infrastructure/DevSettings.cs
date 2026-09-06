@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using DocuLink.Addin.Properties;
 
 namespace DocuLink.Addin.Modules.Infrastructure
@@ -14,10 +14,14 @@ namespace DocuLink.Addin.Modules.Infrastructure
         /// <summary>Raised after <see cref="ShowCharBoundingBoxes"/> changes.</summary>
         internal static event EventHandler<bool> CharBoundingBoxesChanged;
 
-        internal static event EventHandler<bool> FsValuesChanged;
+        /// <summary>Raised after <see cref="ShowValues"/> changes.</summary>
+        internal static event EventHandler<bool> ValuesChanged;
 
-        /// <summary>Raised after <see cref="ShowFsValueNoise"/> changes.</summary>
-        internal static event EventHandler<bool> FsValueNoiseChanged;
+        /// <summary>Raised after <see cref="ShowReferences"/> changes.</summary>
+        internal static event EventHandler<bool> ReferencesChanged;
+
+        /// <summary>Raised after <see cref="ShowValueNoise"/> changes.</summary>
+        internal static event EventHandler<bool> ValueNoiseChanged;
 
         /// <summary>
         /// Whether the document viewer draws the per-character bounding-box debug
@@ -55,63 +59,97 @@ namespace DocuLink.Addin.Modules.Infrastructure
             }
         }
 
-        internal static bool ShowFsValues
+        internal static bool ShowValues
         {
             get
             {
-                try { return Settings.Default.ShowFsValues; }
+                try { return Settings.Default.ShowValues; }
                 catch (Exception ex)
                 {
-                    DocuLinkLog.Trace($"Could not read ShowFsValues: {ex.Message}");
+                    DocuLinkLog.Trace($"Could not read ShowValues: {ex.Message}");
                     return false;
                 }
             }
             set
             {
-                if (ShowFsValues == value) return;
+                if (ShowValues == value) return;
                 try
                 {
-                    Settings.Default.ShowFsValues = value;
+                    Settings.Default.ShowValues = value;
                     Settings.Default.Save();
                 }
                 catch (Exception ex)
                 {
-                    DocuLinkLog.Trace($"Could not persist ShowFsValues: {ex.Message}");
+                    DocuLinkLog.Trace($"Could not persist ShowValues: {ex.Message}");
                 }
-                FsValuesChanged?.Invoke(null, value);
+                ValuesChanged?.Invoke(null, value);
             }
         }
 
         /// <summary>
-        /// Whether the document viewer draws the spans the financial-value detector
-        /// recognized and then refused, each labelled with the rule that refused it.
-        /// Independent of <see cref="ShowFsValues"/>: the noise overlay is inert, so
-        /// it can be left on while linking values.
+        /// Whether the document viewer draws the reference layer: spans that identify
+        /// rather than measure -- an invoice number, an area code, a citation naming a
+        /// note. References are click targets whether or not this is on, exactly as
+        /// values are, and on every document alike; this decides only whether their
+        /// boxes are visible.
         /// </summary>
-        internal static bool ShowFsValueNoise
+        internal static bool ShowReferences
         {
             get
             {
-                try { return Settings.Default.ShowFsValueNoise; }
+                try { return Settings.Default.ShowReferences; }
                 catch (Exception ex)
                 {
-                    DocuLinkLog.Trace($"Could not read ShowFsValueNoise: {ex.Message}");
+                    DocuLinkLog.Trace($"Could not read ShowReferences: {ex.Message}");
                     return false;
                 }
             }
             set
             {
-                if (ShowFsValueNoise == value) return;
+                if (ShowReferences == value) return;
                 try
                 {
-                    Settings.Default.ShowFsValueNoise = value;
+                    Settings.Default.ShowReferences = value;
                     Settings.Default.Save();
                 }
                 catch (Exception ex)
                 {
-                    DocuLinkLog.Trace($"Could not persist ShowFsValueNoise: {ex.Message}");
+                    DocuLinkLog.Trace($"Could not persist ShowReferences: {ex.Message}");
                 }
-                FsValueNoiseChanged?.Invoke(null, value);
+                ReferencesChanged?.Invoke(null, value);
+            }
+        }
+
+        /// <summary>
+        /// Whether the document viewer draws the spans the value detector
+        /// recognized and then refused, each labelled with the rule that refused it.
+        /// Independent of <see cref="ShowValues"/>: the noise overlay is inert, so
+        /// it can be left on while linking values.
+        /// </summary>
+        internal static bool ShowValueNoise
+        {
+            get
+            {
+                try { return Settings.Default.ShowValueNoise; }
+                catch (Exception ex)
+                {
+                    DocuLinkLog.Trace($"Could not read ShowValueNoise: {ex.Message}");
+                    return false;
+                }
+            }
+            set
+            {
+                if (ShowValueNoise == value) return;
+                try
+                {
+                    Settings.Default.ShowValueNoise = value;
+                    Settings.Default.Save();
+                }
+                catch (Exception ex)
+                {
+                    DocuLinkLog.Trace($"Could not persist ShowValueNoise: {ex.Message}");
+                }
+                ValueNoiseChanged?.Invoke(null, value);
             }
         }
     }

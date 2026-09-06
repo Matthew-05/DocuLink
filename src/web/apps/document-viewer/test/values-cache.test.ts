@@ -1,20 +1,20 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { FsValuesCache } from "../src/services/fs-values-cache.ts";
+import { ValuesCache } from "../src/services/values-cache.ts";
 
 test("indexes a stored model by document and page", async () => {
   const model = {
     version: 1, coordinateSpace: "normalized", detectorVersion: "test", documentContext: {},
     pages: [{ pageIndex: 2, context: {}, values: [{ id: "n", kind: "number", text: "100", bounds: { x: 0.1, y: 0.1, width: 0.1, height: 0.02 }, confidence: 0.9 }] }],
   };
-  const cache = new FsValuesCache(async () => model as never);
+  const cache = new ValuesCache(async () => model as never);
   await cache.build("pdf", "encoded");
   assert.equal(cache.valuesOnPage("pdf", 2)[0]?.text, "100");
   assert.equal(cache.valueCount("pdf"), 1);
 });
 
 test("does not synthesize values for a document with no analyzed artifact", async () => {
-  const cache = new FsValuesCache();
+  const cache = new ValuesCache();
   await cache.build("native-pdf", undefined);
   assert.equal(cache.has("native-pdf"), true);
   assert.equal(cache.valueCount("native-pdf"), 0);
@@ -32,7 +32,7 @@ test("indexes every segment of one wrapped logical value", async () => {
       ],
     }] }],
   };
-  const cache = new FsValuesCache(async () => model as never);
+  const cache = new ValuesCache(async () => model as never);
   await cache.build("pdf", "encoded");
   assert.equal(cache.valuesOnPage("pdf", 0)[0]?.bounds.x, 0.8);
   assert.equal(cache.valuesOnPage("pdf", 1)[0]?.bounds.x, 0.1);
@@ -47,10 +47,10 @@ test("keeps refused spans separate from the values they were kept from", async (
       pageIndex: 0,
       context: {},
       values: [{ id: "v", kind: "number", text: "1,234", bounds: { x: 0.1, y: 0.1, width: 0.1, height: 0.02 }, confidence: 0.94 }],
-      noise: [{ id: "n", kind: "number", text: "10", bounds: { x: 0.5, y: 0.1, width: 0.02, height: 0.02 }, reason: "identifier" }],
+      noise: [{ id: "n", kind: "number", text: "10", bounds: { x: 0.5, y: 0.1, width: 0.02, height: 0.02 }, reason: "page-furniture" }],
     }],
   };
-  const cache = new FsValuesCache(async () => model as never);
+  const cache = new ValuesCache(async () => model as never);
   await cache.build("pdf", "encoded");
   assert.deepEqual(cache.valuesOnPage("pdf", 0).map((value) => value.text), ["1,234"]);
   assert.deepEqual(cache.noiseOnPage("pdf", 0).map((entry) => entry.text), ["10"]);
@@ -59,61 +59,101 @@ test("keeps refused spans separate from the values they were kept from", async (
 });
 
 test("reports no noise for a document with no analyzed artifact", async () => {
-  const cache = new FsValuesCache();
+  const cache = new ValuesCache();
   await cache.build("native-pdf", undefined);
   assert.equal(cache.noiseCount("native-pdf"), 0);
   assert.deepEqual(cache.noiseOnPage("native-pdf", 0), []);
 });
 
-test("retains the canonical note catalogue and its resolved references", async () => {
+test("keeps references clickable and joins them to the structure by span id", async () => {
   const bounds = { x: 0.1, y: 0.1, width: 0.2, height: 0.02 };
-  const model = {
+  const values = {
     version: 1, coordinateSpace: "normalized", detectorVersion: "test", documentContext: {},
+    pages: [{
+      pageIndex: 1,
+      context: {},
+      values: [],
+      references: [
+        { id: "ref-aaaaaaaaaaaaaaaa", kind: "note", text: "Note 3.1", bounds },
+        { id: "ref-bbbbbbbbbbbbbbbb", kind: "identifier", text: "BPXINV-00550", bounds },
+      ],
+    }],
+  };
+  const structure = {
+    version: 1, coordinateSpace: "normalized", detectorVersion: "test",
+    documentClass: "statement",
+    apparatus: {
+      notes: { searched: true, found: 1 },
+      items: { searched: true, found: 0 },
+      contents: { searched: true, found: 0 },
+      parts: { searched: true, found: 0 },
+    },
     notes: [{
-      id: "fs-note-0", identifier: "3.1", description: "Revenue Recognition",
-      headers: [{ id: "h0", pageIndex: 2, text: "Note 3.1 — Revenue Recognition", bounds, continuation: false }],
+      id: "note-3.1", identifier: "3.1", description: "Revenue Recognition",
+      headers: [{ id: "note-3.1-h0", pageIndex: 2, text: "Note 3.1 — Revenue Recognition", bounds, continuation: false }],
     }],
     noteReferences: [{
-      id: "r0", noteId: "fs-note-0", identifier: "3.1", description: "Revenue Recognition",
-      pageIndex: 1, text: "Note 3.1", bounds, descriptionPresent: false,
+      id: "noteref-0-0", spanId: "ref-aaaaaaaaaaaaaaaa", noteId: "note-3.1", identifier: "3.1",
+      description: "Revenue Recognition", pageIndex: 1, descriptionPresent: false,
     }],
-    pages: [{ pageIndex: 1, context: {}, values: [] }],
+    items: [],
+    itemReferences: [],
   };
-  const cache = new FsValuesCache(async () => model as never);
-  await cache.build("pdf", "encoded");
+  const cache = new ValuesCache(async () => values as never, async () => structure as never);
+  await cache.build("pdf", "values", "structure");
 
+  assert.equal(cache.referenceCount("pdf"), 2);
+  assert.deepEqual(cache.referencesOnPage("pdf", 1).map((entry) => entry.kind), ["note", "identifier"]);
+  assert.equal(cache.documentClass("pdf"), "statement");
   assert.equal(cache.notes("pdf")[0]?.description, "Revenue Recognition");
-  assert.equal(cache.noteReferences("pdf")[0]?.noteId, "fs-note-0");
+  const citation = cache.referencesOnPage("pdf", 1)[0];
+  assert.equal(
+    cache.noteReferences("pdf").find((entry) => entry.spanId === citation?.id)?.noteId,
+    "note-3.1",
+  );
 });
 
 test("retains the canonical item catalogue and its resolved references", async () => {
   const bounds = { x: 0.1, y: 0.1, width: 0.2, height: 0.02 };
-  const model = {
-    version: 1, coordinateSpace: "normalized", detectorVersion: "test", documentContext: {},
+  const structure = {
+    version: 1, coordinateSpace: "normalized", detectorVersion: "test",
+    documentClass: "filing",
+    apparatus: {
+      notes: { searched: true, found: 0 },
+      items: { searched: true, found: 1 },
+      contents: { searched: true, found: 1 },
+      parts: { searched: true, found: 1 },
+    },
+    notes: [],
+    noteReferences: [],
     items: [{
-      id: "fs-item-0", identifier: "7A", part: "II",
+      id: "item-II-7A", identifier: "7A", part: "II",
       description: "Quantitative and Qualitative Disclosures About Market Risk",
       descriptionSource: "toc",
       headers: [{ id: "ih0", pageIndex: 29, text: "Item 7A. Quantitative and Qualitative Disclosures About Market Risk", bounds, continuation: false }],
       tocEntries: [{ id: "it0", pageIndex: 2, text: "Item 7A. Quantitative and Qualitative Disclosures About Market Risk 27", bounds, corroborated: true, printedPage: "27" }],
     }],
     itemReferences: [{
-      id: "ir0", itemId: "fs-item-0", identifier: "7A", description: "Quantitative and Qualitative Disclosures About Market Risk",
-      pageIndex: 26, text: "Item 7A", bounds, descriptionPresent: false,
+      id: "itemref-0", spanId: "ref-cccccccccccccccc", itemId: "item-II-7A", identifier: "7A",
+      description: "Quantitative and Qualitative Disclosures About Market Risk",
+      pageIndex: 26, descriptionPresent: false,
     }],
-    pages: [{ pageIndex: 2, context: {}, values: [] }],
   };
-  const cache = new FsValuesCache(async () => model as never);
-  await cache.build("pdf", "encoded");
+  const cache = new ValuesCache(undefined, async () => structure as never);
+  await cache.build("pdf", undefined, "structure");
 
   assert.equal(cache.items("pdf")[0]?.part, "II");
   assert.equal(cache.items("pdf")[0]?.tocEntries[0]?.printedPage, "27");
-  assert.equal(cache.itemReferences("pdf")[0]?.itemId, "fs-item-0");
+  assert.equal(cache.itemReferences("pdf")[0]?.itemId, "item-II-7A");
 });
 
-test("reports no items for a document with no analyzed artifact", async () => {
-  const cache = new FsValuesCache();
-  await cache.build("native-pdf", undefined);
-  assert.deepEqual(cache.items("native-pdf"), []);
-  assert.deepEqual(cache.itemReferences("native-pdf"), []);
+test("a document outside the financial tier carries no structure, and says so", async () => {
+  const cache = new ValuesCache();
+  await cache.build("invoice", undefined, undefined);
+  assert.deepEqual(cache.items("invoice"), []);
+  assert.deepEqual(cache.itemReferences("invoice"), []);
+  assert.equal(cache.documentClass("invoice"), "neither");
+  // Unsearched, not "searched and found nothing" — the distinction a check
+  // needs before it can report not applicable.
+  assert.equal(cache.apparatus("invoice").notes.searched, false);
 });

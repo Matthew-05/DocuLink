@@ -1,37 +1,41 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "http://doculink.dev/schemas/fs-values/1",
-  "title": "DocuLink Financial Statement Values v1",
-  "description": "Financial numbers, percentages, dates, and structured financial-statement notes and filing items detected from text geometry. Coordinates use normalized displayed-page, top-left-origin 0–1 space.",
+  "$id": "http://doculink.dev/schemas/fs-structure/1",
+  "title": "DocuLink Financial Statement Structure v1",
+  "description": "The apparatus a financial document indexes itself by: its footnote catalogue, its filing-item catalogue, and the citations pointing at both. Published only for documents in the financial tier -- audited GAAP statements, compilations, reviews, CAFRs and SEC filings alike, which are one tier because the difference between them is what a document happens to contain, not what code runs on it. Citation spans and their geometry live in document-values-v1 as references; this model holds what they resolve to, keyed by span id. Coordinates use normalized displayed-page, top-left-origin 0-1 space.",
   "type": "object",
-  "required": ["version", "coordinateSpace", "detectorVersion", "documentContext", "notes", "noteReferences", "items", "itemReferences", "pages"],
+  "required": ["version", "coordinateSpace", "detectorVersion", "documentClass", "apparatus", "notes", "noteReferences", "items", "itemReferences"],
   "additionalProperties": false,
   "properties": {
     "version": { "const": 1 },
     "coordinateSpace": { "const": "normalized" },
     "detectorVersion": { "type": "string", "minLength": 1 },
-    "documentContext": { "$ref": "#/definitions/Context" },
+    "documentClass": {
+      "type": "string",
+      "enum": ["filing", "statement", "neither"],
+      "description": "What the document appears to be. Published as metadata and never branched on: every apparatus anchors itself and finds nothing where there is nothing to find. Its consumers are the suite window, which says what it thinks it is looking at, and the scorer, which breaks the corpus out by document family."
+    },
+    "apparatus": { "$ref": "#/definitions/Apparatus" },
     "notes": {
       "type": "array",
-      "description": "Canonical document-level footnote catalogue. One item is emitted per normalized note identifier; continuation headings are occurrences of the same note, never duplicate catalogue entries.",
+      "description": "Canonical document-level footnote catalogue. One entry per normalized note identifier; continuation headings are occurrences of the same note, never duplicate entries.",
       "items": { "$ref": "#/definitions/Note" }
     },
     "noteReferences": {
       "type": "array",
-      "description": "Narrative citations linked to the canonical note catalogue. A citation naming several notes produces one reference per identifier, sharing the source text and bounds.",
+      "description": "Narrative citations resolved to the note catalogue. A citation naming several notes produces one reference per identifier, sharing a span id.",
       "items": { "$ref": "#/definitions/NoteReference" }
     },
     "items": {
       "type": "array",
-      "description": "Canonical document-level catalogue of filing items (\"Item 1A. Risk Factors\"). One entry per item, built from the table of contents and from the headings in the body, whichever the document supplies.",
+      "description": "Canonical catalogue of filing items (\"Item 1A. Risk Factors\"), built from the table of contents and from the headings in the body, whichever the document supplies. Empty on a document with no items, which is the correct answer and not a failure -- apparatus.items records that it was looked for.",
       "items": { "$ref": "#/definitions/Item" }
     },
     "itemReferences": {
       "type": "array",
-      "description": "Narrative citations linked to the canonical item catalogue. An identifier absent from the catalogue is never published, which is what keeps \"Item 601 of Regulation S-K\" out of this array.",
+      "description": "Narrative citations resolved to the item catalogue. An identifier absent from the catalogue is never published, which is what keeps \"Item 601 of Regulation S-K\" out of this array.",
       "items": { "$ref": "#/definitions/ItemReference" }
-    },
-    "pages": { "type": "array", "items": { "$ref": "#/definitions/PageValues" } }
+    }
   },
   "definitions": {
     "Bounds": {
@@ -45,38 +49,12 @@
         "height": { "type": "number", "exclusiveMinimum": 0, "maximum": 1 }
       }
     },
-    "Context": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "currency": { "type": "string", "enum": ["USD", "EUR", "GBP", "JPY", "CAD", "AUD", "CHF", "CNY", "INR", "KRW"] },
-        "scale": { "type": "integer", "enum": [1, 1000, 1000000, 1000000000] }
-      }
+    "SpanRef": {
+      "type": "string",
+      "pattern": "^ref-[0-9a-f]{16}$",
+      "description": "The id of a Reference span in the companion document-values-v1 model, which owns the citation's text and geometry. The two artifacts are produced by one cache build and are always loaded together."
     },
-    "FinancialValue": {
-      "type": "object",
-      "required": ["id", "kind", "text", "bounds", "confidence"],
-      "additionalProperties": false,
-      "properties": {
-        "id": { "type": "string", "minLength": 1 },
-        "kind": { "type": "string", "enum": ["number", "percent", "date"] },
-        "text": { "type": "string", "minLength": 1 },
-        "bounds": { "$ref": "#/definitions/Bounds" },
-        "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
-        "normalizedValue": { "type": "string", "description": "Exact canonical decimal for numbers/percentages, or ISO-like value for unambiguous dates. Never a binary float." },
-        "magnitude": { "type": "integer", "enum": [1000, 1000000, 1000000000, 1000000000000], "description": "Multiplier expressed by a modifier attached directly to this number. normalizedValue already includes this multiplier." },
-        "segments": {
-          "type": "array",
-          "minItems": 2,
-          "description": "Physical click regions when a logical value wraps across lines or pages. bounds remains the first segment; each segment creates the full logical value while drawing only its own rectangle.",
-          "items": { "$ref": "#/definitions/ValueSegment" }
-        },
-        "currency": { "type": "string", "enum": ["USD", "EUR", "GBP", "JPY", "CAD", "AUD", "CHF", "CNY", "INR", "KRW"] },
-        "datePrecision": { "type": "string", "enum": ["day", "month", "quarter", "year"] },
-        "dateOrder": { "type": "string", "enum": ["mdy", "dmy", "ymd", "ambiguous"] }
-      }
-    },
-    "ValueSegment": {
+    "Segment": {
       "type": "object",
       "required": ["pageIndex", "text", "bounds"],
       "additionalProperties": false,
@@ -86,9 +64,30 @@
         "bounds": { "$ref": "#/definitions/Bounds" }
       }
     },
+    "Presence": {
+      "type": "object",
+      "description": "What one apparatus was looked for and what it yielded. This is the record that lets a check distinguish absent from missed: a compilation has no contents page and no items, and a check whose subject a document does not contain must report not applicable rather than failed.",
+      "required": ["searched", "found"],
+      "additionalProperties": false,
+      "properties": {
+        "searched": { "type": "boolean", "description": "False only when a stage was skipped or failed, which is what separates \"the document has none\" from \"we did not look\"." },
+        "found": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "Apparatus": {
+      "type": "object",
+      "required": ["notes", "items", "contents", "parts"],
+      "additionalProperties": false,
+      "properties": {
+        "notes": { "$ref": "#/definitions/Presence" },
+        "items": { "$ref": "#/definitions/Presence" },
+        "contents": { "$ref": "#/definitions/Presence", "description": "Contents rows naming filing items." },
+        "parts": { "$ref": "#/definitions/Presence", "description": "PART divisions grouping items." }
+      }
+    },
     "Heading": {
       "type": "object",
-      "description": "One physical occurrence of a complete heading, for a note or for a filing item. A continuation occurrence remains attached to its canonical catalogue entry rather than creating a second one.",
+      "description": "One physical occurrence of a complete heading, for a note or for an item. A continuation occurrence stays attached to its catalogue entry rather than creating a second one. Headings are structure, not noise: their text and geometry live here, and document-values-v1 carries only the refused number inside one.",
       "required": ["id", "pageIndex", "text", "bounds", "continuation"],
       "additionalProperties": false,
       "properties": {
@@ -101,7 +100,7 @@
           "type": "array",
           "minItems": 2,
           "description": "Physical lines of a wrapped heading, in reading order. bounds encloses all segments on the page.",
-          "items": { "$ref": "#/definitions/ValueSegment" }
+          "items": { "$ref": "#/definitions/Segment" }
         }
       }
     },
@@ -111,7 +110,7 @@
       "required": ["id", "identifier", "description", "headers"],
       "additionalProperties": false,
       "properties": {
-        "id": { "type": "string", "minLength": 1 },
+        "id": { "type": "string", "minLength": 1, "description": "Keyed by the normalized identifier -- \"note-7\", \"note-3.1\", \"note-iv\" -- so it is stable by construction across detector versions." },
         "identifier": { "type": "string", "minLength": 1 },
         "description": { "type": "string", "description": "Canonical heading description without the Note identifier or continuation marker. Empty only when no heading supplies one." },
         "headers": {
@@ -123,24 +122,23 @@
     },
     "NoteReference": {
       "type": "object",
-      "description": "One note identifier cited by narrative text and linked to its canonical catalogue entry.",
-      "required": ["id", "noteId", "identifier", "description", "pageIndex", "text", "bounds", "descriptionPresent"],
+      "description": "One note identifier cited by narrative text and resolved to the catalogue. The citation's printed text and geometry belong to the Reference span named by spanId.",
+      "required": ["id", "spanId", "noteId", "identifier", "description", "pageIndex", "descriptionPresent"],
       "additionalProperties": false,
       "properties": {
         "id": { "type": "string", "minLength": 1 },
+        "spanId": { "$ref": "#/definitions/SpanRef" },
         "noteId": { "type": "string", "minLength": 1 },
         "identifier": { "type": "string", "minLength": 1 },
         "description": { "type": "string", "description": "Canonical description resolved from the note catalogue." },
-        "pageIndex": { "type": "integer", "minimum": 0 },
-        "text": { "type": "string", "minLength": 1, "description": "The complete citation as printed, including an explicit description when present." },
-        "bounds": { "$ref": "#/definitions/Bounds" },
+        "pageIndex": { "type": "integer", "minimum": 0, "description": "Duplicated from the span so the catalogue can be filtered by page without joining. The span remains the authority on where the citation is." },
         "descriptionPresent": { "type": "boolean", "description": "True when the printed citation supplied a description; false when description was resolved only from the catalogue." },
         "sourceDescription": { "type": "string", "minLength": 1, "description": "Description printed in the citation. Present only when descriptionPresent is true." }
       }
     },
     "ItemTocEntry": {
       "type": "object",
-      "description": "One row of a table of contents naming a filing item. The row is assembled from the lines sharing its band, so its cells are the segments: the identifier, the description, and the page number the document prints for it.",
+      "description": "One row of a table of contents naming a filing item, assembled from the lines sharing its band: the identifier, the description, and the page number the document prints for it.",
       "required": ["id", "pageIndex", "text", "bounds", "corroborated"],
       "additionalProperties": false,
       "properties": {
@@ -154,13 +152,13 @@
           "type": "array",
           "minItems": 2,
           "description": "The row's cells, in reading order. bounds encloses all of them.",
-          "items": { "$ref": "#/definitions/ValueSegment" }
+          "items": { "$ref": "#/definitions/Segment" }
         }
       }
     },
     "Item": {
       "type": "object",
-      "description": "One canonical filing item, keyed by its normalized identifier -- \"7\", \"1A\", \"2.02\". The key includes the part only when the same identifier appears under more than one part, which is what keeps a 10-Q's Part I Item 1 distinct from its Part II Item 1. At least one of headers or tocEntries is non-empty.",
+      "description": "One canonical filing item, keyed by its normalized identifier -- \"item-7\", \"item-1A\", \"item-2.02\". The key includes the part only where the same identifier appears under more than one, which is what keeps a 10-Q's Part I Item 1 distinct from its Part II Item 1. At least one of headers or tocEntries is non-empty.",
       "required": ["id", "identifier", "description", "descriptionSource", "headers", "tocEntries"],
       "additionalProperties": false,
       "properties": {
@@ -183,69 +181,19 @@
     },
     "ItemReference": {
       "type": "object",
-      "description": "One item identifier cited by narrative text and linked to its canonical catalogue entry.",
-      "required": ["id", "itemId", "identifier", "description", "pageIndex", "text", "bounds", "descriptionPresent"],
+      "description": "One item identifier cited by narrative text and resolved to the catalogue.",
+      "required": ["id", "spanId", "itemId", "identifier", "description", "pageIndex", "descriptionPresent"],
       "additionalProperties": false,
       "properties": {
         "id": { "type": "string", "minLength": 1 },
+        "spanId": { "$ref": "#/definitions/SpanRef" },
         "itemId": { "type": "string", "minLength": 1 },
         "identifier": { "type": "string", "minLength": 1 },
         "part": { "type": "string", "minLength": 1, "description": "The part named by the citation itself, as in \"Part II, Item 7\". Absent when the citation names no part." },
         "description": { "type": "string", "description": "Canonical description resolved from the item catalogue." },
         "pageIndex": { "type": "integer", "minimum": 0 },
-        "text": { "type": "string", "minLength": 1, "description": "The complete citation as printed, including an explicit description when present." },
-        "bounds": { "$ref": "#/definitions/Bounds" },
         "descriptionPresent": { "type": "boolean", "description": "True when the printed citation supplied a description; false when description was resolved only from the catalogue. A citation may name a subsection rather than the item's own title, so sourceDescription is not expected to match description." },
         "sourceDescription": { "type": "string", "minLength": 1, "description": "Description printed in the citation. Present only when descriptionPresent is true." }
-      }
-    },
-    "NoiseValue": {
-      "type": "object",
-      "description": "A text span classified as non-linkable diagnostic noise. Most entries are recognized values later refused by evidence, while structured headings, contents rows and references are captured as complete text spans. Noise is never a click target.",
-      "required": ["id", "kind", "text", "bounds", "reason"],
-      "additionalProperties": false,
-      "properties": {
-        "id": { "type": "string", "minLength": 1 },
-        "kind": { "type": "string", "enum": ["number", "percent", "date", "text"] },
-        "text": { "type": "string", "minLength": 1 },
-        "bounds": { "$ref": "#/definitions/Bounds" },
-        "reason": {
-          "type": "string",
-          "description": "The classification group for this noise span. A new group is added here before it is implemented.",
-          "enum": [
-            "identifier",
-            "alphanumeric",
-            "partial-token",
-            "page-furniture",
-            "note-header",
-            "note-reference",
-            "item-header",
-            "item-reference",
-            "item-toc-entry",
-            "list-marker",
-            "footnote-marker",
-            "footnote-reference",
-            "phone-context",
-            "identifier-context",
-            "superscript",
-            "citation-year"
-          ]
-        }
-      }
-    },
-    "PageValues": {
-      "type": "object",
-      "required": ["pageIndex", "context", "values"],
-      "additionalProperties": false,
-      "properties": {
-        "pageIndex": { "type": "integer", "minimum": 0 },
-        "context": { "$ref": "#/definitions/Context" },
-        "values": { "type": "array", "items": { "$ref": "#/definitions/FinancialValue" } },
-        "noise": {
-          "type": "array",
-          "description": "Text spans this page classified as noise. Absent or empty when nothing was refused or classified. These are diagnostics, not values — no consumer may treat them as linkable.",
-          "items": { "$ref": "#/definitions/NoiseValue" }
-        }
       }
     }
   }

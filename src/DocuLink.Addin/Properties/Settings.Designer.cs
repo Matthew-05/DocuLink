@@ -50,24 +50,36 @@ namespace DocuLink.Addin.Properties {
         [global::System.Configuration.UserScopedSettingAttribute()]
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
         [global::System.Configuration.DefaultSettingValueAttribute("False")]
-        public bool ShowFsValues {
+        public bool ShowValues {
             get {
-                return ((bool)(this["ShowFsValues"]));
+                return ((bool)(this["ShowValues"]));
             }
             set {
-                this["ShowFsValues"] = value;
+                this["ShowValues"] = value;
             }
         }
         
         [global::System.Configuration.UserScopedSettingAttribute()]
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
         [global::System.Configuration.DefaultSettingValueAttribute("False")]
-        public bool ShowFsValueNoise {
+        public bool ShowReferences {
             get {
-                return ((bool)(this["ShowFsValueNoise"]));
+                return ((bool)(this["ShowReferences"]));
             }
             set {
-                this["ShowFsValueNoise"] = value;
+                this["ShowReferences"] = value;
+            }
+        }
+        
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("False")]
+        public bool ShowValueNoise {
+            get {
+                return ((bool)(this["ShowValueNoise"]));
+            }
+            set {
+                this["ShowValueNoise"] = value;
             }
         }
     }

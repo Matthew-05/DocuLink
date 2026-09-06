@@ -8,13 +8,15 @@ catalogue. This module owns that machinery so the two cannot drift apart.
 A caller supplies the grammar -- what an identifier looks like, which keyword
 introduces it -- and the policy deciding which candidate headings survive.
 This module classifies text only; the detector owns geometry conversion and the
-fs-values-v1 envelope.
+fs-structure-v1 envelope.
 """
 from __future__ import annotations
 
 import re
 from collections import Counter
 from dataclasses import dataclass
+
+from engines.values.lines import Fragment, TextLine
 
 
 ROMAN = re.compile(
@@ -38,29 +40,6 @@ QUOTE_PAIRS = {
     "�": "�",
 }
 TRIM_CHARACTERS = " \t“”‘’\"'"
-
-
-@dataclass(frozen=True)
-class HeadingLine:
-    """One source line in document reading order."""
-
-    page_index: int
-    text: str
-    left: float
-    right: float
-    top: float
-    bottom: float
-    median_width: float
-    median_height: float
-
-
-@dataclass(frozen=True)
-class Fragment:
-    """A half-open text range within one HeadingLine."""
-
-    line_index: int
-    start: int
-    end: int
 
 
 @dataclass(frozen=True)
@@ -139,8 +118,8 @@ def looks_like_title(text: str, *, separator: bool = False) -> bool:
 
 
 def can_extend_heading(
-    current: HeadingLine,
-    following: HeadingLine,
+    current: TextLine,
+    following: TextLine,
     title_left: float,
     *,
     following_is_header: bool,
@@ -172,7 +151,7 @@ def can_extend_heading(
 
 
 def extend_heading(
-    lines: list[HeadingLine],
+    lines: list[TextLine],
     line_index: int,
     description: str,
     *,

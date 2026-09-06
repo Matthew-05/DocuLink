@@ -14,7 +14,7 @@ filings it sometimes does not -- the same rows are still assembled from the
 text alone.
 
 This module classifies text only. The detector owns geometry conversion and the
-fs-values-v1 envelope.
+fs-structure-v1 envelope.
 """
 from __future__ import annotations
 
@@ -22,7 +22,7 @@ import re
 from dataclasses import dataclass, field
 from .headings import (
     Fragment,
-    HeadingLine,
+    TextLine,
     canonical_description,
     clean_heading_description,
     description_after_reference,
@@ -192,7 +192,7 @@ class _Band:
     cells: list[int] = field(default_factory=list)
 
 
-def _bands(lines: list[HeadingLine], indexes: list[int]) -> list[_Band]:
+def _bands(lines: list[TextLine], indexes: list[int]) -> list[_Band]:
     """Group a page's lines into the rows they visually share."""
     ordered = sorted(indexes, key=lambda index: (lines[index].top, lines[index].left))
     bands: list[_Band] = []
@@ -215,7 +215,7 @@ def _bands(lines: list[HeadingLine], indexes: list[int]) -> list[_Band]:
     return bands
 
 
-def _page_number_cell(lines: list[HeadingLine], cells: list[int]) -> int | None:
+def _page_number_cell(lines: list[TextLine], cells: list[int]) -> int | None:
     """The trailing cell holding this row's page number, if it has one."""
     if len(cells) < 2:
         return None
@@ -240,7 +240,7 @@ def _columns_for(tables: list[dict], band: _Band) -> list[dict] | None:
     return None
 
 
-def _column_of(line: HeadingLine, columns: list[dict]) -> int:
+def _column_of(line: TextLine, columns: list[dict]) -> int:
     center = (line.left + line.right) / 2
     for index, column in enumerate(columns):
         if float(column["x0"]) - 0.002 <= center <= float(column["x1"]) + 0.002:
@@ -249,7 +249,7 @@ def _column_of(line: HeadingLine, columns: list[dict]) -> int:
 
 
 def _contents_rows(
-    lines: list[HeadingLine],
+    lines: list[TextLine],
     tables_by_page: dict[int, list[dict]],
 ) -> tuple[list[ItemTocRow], set[int]]:
     """Assemble the contents rows naming items, and the lines they consumed."""
@@ -287,7 +287,7 @@ def _contents_rows(
 
 
 def _contents_page_rows(
-    lines: list[HeadingLine],
+    lines: list[TextLine],
     bands: list[_Band],
     tables: list[dict],
     carried_part: str,
@@ -341,7 +341,7 @@ def _contents_page_rows(
 
 
 def _row_from_band(
-    lines: list[HeadingLine],
+    lines: list[TextLine],
     band: _Band,
     tables: list[dict],
     part: str,
@@ -382,7 +382,7 @@ def _row_from_band(
 
 
 def _extend_row(
-    lines: list[HeadingLine],
+    lines: list[TextLine],
     band: _Band,
     pending: ItemTocRow,
     pending_cells: list[int],
@@ -438,7 +438,7 @@ def _extend_row(
     )
 
 
-def _fragment(lines: list[HeadingLine], index: int) -> Fragment:
+def _fragment(lines: list[TextLine], index: int) -> Fragment:
     start, end = trimmed_range(lines[index].text)
     return Fragment(index, start, end)
 
@@ -448,7 +448,7 @@ def _fragment(lines: list[HeadingLine], index: int) -> Fragment:
 # --------------------------------------------------------------------------
 
 
-def _headers(lines: list[HeadingLine], skip: set[int]) -> list[ItemHeader]:
+def _headers(lines: list[TextLine], skip: set[int]) -> list[ItemHeader]:
     headers: list[ItemHeader] = []
     consumed: set[int] = set()
 
@@ -576,7 +576,7 @@ def _resolve(
 
 
 def _references(
-    lines: list[HeadingLine],
+    lines: list[TextLine],
     occupied: set[int],
     catalog: list[CatalogItem],
     by_identifier: dict[str, list[int]],
@@ -616,7 +616,7 @@ def _references(
 
 
 def detect_items(
-    lines: list[HeadingLine],
+    lines: list[TextLine],
     tables_by_page: dict[int, list[dict]] | None = None,
 ) -> ItemDetection:
     """Build the canonical item catalogue and its resolved narrative citations."""

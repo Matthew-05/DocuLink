@@ -344,7 +344,8 @@ namespace DocuLink.Addin.Modules.Services
                                             workbook, job.PdfId,
                                             parsed.GeometryBase64 ?? string.Empty,
                                             parsed.TableStructureBase64 ?? string.Empty,
-                                            parsed.FsValuesBase64 ?? string.Empty);
+                                            parsed.DocumentValuesBase64 ?? string.Empty,
+                                            parsed.FsStructureBase64 ?? string.Empty);
                                     }
                                     else
                                     {
@@ -354,7 +355,8 @@ namespace DocuLink.Addin.Modules.Services
                                             parsed.PdfBase64 ?? string.Empty,
                                             parsed.GeometryBase64 ?? string.Empty,
                                             parsed.TableStructureBase64 ?? string.Empty,
-                                            parsed.FsValuesBase64 ?? string.Empty);
+                                            parsed.DocumentValuesBase64 ?? string.Empty,
+                                            parsed.FsStructureBase64 ?? string.Empty);
                                     }
                                     storageClock.Stop();
                                     storageMs = storageClock.ElapsedMilliseconds;
@@ -404,7 +406,8 @@ namespace DocuLink.Addin.Modules.Services
                             parsed.PdfBase64,
                             parsed.GeometryBase64,
                             parsed.TableStructureBase64,
-                            parsed.FsValuesBase64);
+                            parsed.DocumentValuesBase64,
+                            parsed.FsStructureBase64);
                     }
                 }
                 finally
@@ -436,7 +439,8 @@ namespace DocuLink.Addin.Modules.Services
             string outputPdfBase64 = null,
             string geometryBase64 = null,
             string tableStructureBase64 = null,
-            string fsValuesBase64 = null)
+            string documentValuesBase64 = null,
+            string fsStructureBase64 = null)
         {
             var record = new Dictionary<string, object>
             {
@@ -452,7 +456,8 @@ namespace DocuLink.Addin.Modules.Services
                 ["output_pdf_bytes"] = Base64DecodedLength(outputPdfBase64),
                 ["geometry_bytes"] = Base64DecodedLength(geometryBase64),
                 ["table_structure_bytes"] = Base64DecodedLength(tableStructureBase64),
-                ["fs_values_bytes"] = Base64DecodedLength(fsValuesBase64),
+                ["document_values_bytes"] = Base64DecodedLength(documentValuesBase64),
+                ["fs_structure_bytes"] = Base64DecodedLength(fsStructureBase64),
                 ["workbook_binary_load_ms"] = job.LoadMs,
                 ["host"] = new Dictionary<string, object>
                 {
@@ -579,7 +584,8 @@ namespace DocuLink.Addin.Modules.Services
                         PdfBase64 = PythonWorkerSession.GetString(obj, "pdf_base64"),
                         GeometryBase64 = PythonWorkerSession.GetString(obj, "geometry_base64"),
                         TableStructureBase64 = PythonWorkerSession.GetString(obj, "table_structure_base64"),
-                        FsValuesBase64 = PythonWorkerSession.GetString(obj, "fs_values_base64"),
+                        DocumentValuesBase64 = PythonWorkerSession.GetString(obj, "document_values_base64"),
+                        FsStructureBase64 = PythonWorkerSession.GetString(obj, "fs_structure_base64"),
                         Diagnostics = PythonWorkerSession.GetDictionary(obj, "diagnostics"),
                     };
                 }
@@ -694,7 +700,9 @@ namespace DocuLink.Addin.Modules.Services
             public string PdfBase64 { get; set; }
             public string GeometryBase64 { get; set; }
             public string TableStructureBase64 { get; set; }
-            public string FsValuesBase64 { get; set; }
+            public string DocumentValuesBase64 { get; set; }
+
+            public string FsStructureBase64 { get; set; }
             public string Error { get; set; }
 
             /// <summary>

@@ -21,7 +21,7 @@ interface DragState {
   selectionDiv: HTMLDivElement;
 }
 
-const LINK_SELECTOR = ".rect-draw__link, .table-suggestions__region, .fs-values__value";
+const LINK_SELECTOR = ".rect-draw__link, .table-suggestions__region, .values__value, .values-references__value";
 
 /**
  * Attaches always-on click-drag rectangle selection to the PDF viewer.

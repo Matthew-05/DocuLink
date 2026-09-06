@@ -6,7 +6,7 @@ import re
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 
-from .reasons import ALPHANUMERIC, IDENTIFIER, PARTIAL_TOKEN
+from .categories import ALPHANUMERIC, IDENTIFIER, PARTIAL_TOKEN
 
 
 @dataclass(frozen=True)

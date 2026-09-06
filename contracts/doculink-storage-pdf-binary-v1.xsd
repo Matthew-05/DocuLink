@@ -14,7 +14,9 @@
     Base64: required — base64-encoded PDF bytes.
     GeometryBase64: optional — gzip-compressed text-geometry-v1 JSON, base64-encoded.
     TableStructureBase64: optional — gzip-compressed table-structure-v1 JSON, base64-encoded.
-    FsValuesBase64: optional — gzip-compressed fs-values-v1 JSON, base64-encoded.
+    DocumentValuesBase64: optional — gzip-compressed document-values-v1 JSON, base64-encoded.
+    FsStructureBase64: optional — gzip-compressed fs-structure-v1 JSON, base64-encoded.
+      Financial documents only; absent means the tier did not run.
   -->
   <xs:element name="PdfData">
     <xs:complexType>
@@ -22,7 +24,8 @@
         <xs:element name="Base64"         type="xs:string" />
         <xs:element name="GeometryBase64"      type="xs:string" minOccurs="0" />
         <xs:element name="TableStructureBase64" type="xs:string" minOccurs="0" />
-        <xs:element name="FsValuesBase64"      type="xs:string" minOccurs="0" />
+        <xs:element name="DocumentValuesBase64" type="xs:string" minOccurs="0" />
+        <xs:element name="FsStructureBase64"   type="xs:string" minOccurs="0" />
       </xs:sequence>
     </xs:complexType>
   </xs:element>

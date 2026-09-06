@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Windows.Forms;
 using DocuLink.Addin.Modules;
 using Excel = Microsoft.Office.Interop.Excel;
@@ -48,11 +48,14 @@ namespace DocuLink.Addin.Modules.WebView
         public void SendCharBboxesVisible(bool visible) =>
             _controller.SendCharBboxesVisible(visible);
 
-        public void SendFsValuesVisible(bool visible) =>
-            _controller.SendFsValuesVisible(visible);
+        public void SendValuesVisible(bool visible) =>
+            _controller.SendValuesVisible(visible);
 
-        public void SendFsValueNoiseVisible(bool visible) =>
-            _controller.SendFsValueNoiseVisible(visible);
+        public void SendReferencesVisible(bool visible) =>
+            _controller.SendReferencesVisible(visible);
+
+        public void SendValueNoiseVisible(bool visible) =>
+            _controller.SendValueNoiseVisible(visible);
 
         public void NotifyViewerShown() => _controller.NotifyViewerShown();
 

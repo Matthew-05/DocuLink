@@ -26,7 +26,7 @@ from collections import defaultdict
 from dataclasses import dataclass
 from statistics import median
 
-from .reasons import PAGE_FURNITURE
+from .categories import PAGE_FURNITURE
 from .spans import MONTHS
 
 

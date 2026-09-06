@@ -14,7 +14,7 @@ from dataclasses import dataclass, field
 
 from .headings import (
     Fragment,
-    HeadingLine,
+    TextLine,
     canonical_description,
     clean_heading_description,
     description_after_reference,
@@ -28,7 +28,7 @@ from .headings import (
 
 
 # Retained so callers naming the note vocabulary keep reading naturally.
-NoteLine = HeadingLine
+NoteLine = TextLine
 NoteFragment = Fragment
 
 _IDENTIFIER = r"(?:\d+(?:\.\d+)*|[IVXLCDM]+)"

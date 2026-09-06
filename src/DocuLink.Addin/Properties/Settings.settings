@@ -10,10 +10,13 @@
     <Setting Name="ShowCharBoundingBoxes" Type="System.Boolean" Scope="User">
       <Value Profile="(Default)">False</Value>
     </Setting>
-    <Setting Name="ShowFsValues" Type="System.Boolean" Scope="User">
+    <Setting Name="ShowValues" Type="System.Boolean" Scope="User">
       <Value Profile="(Default)">False</Value>
     </Setting>
-    <Setting Name="ShowFsValueNoise" Type="System.Boolean" Scope="User">
+    <Setting Name="ShowReferences" Type="System.Boolean" Scope="User">
+      <Value Profile="(Default)">False</Value>
+    </Setting>
+    <Setting Name="ShowValueNoise" Type="System.Boolean" Scope="User">
       <Value Profile="(Default)">False</Value>
     </Setting>
   </Settings>

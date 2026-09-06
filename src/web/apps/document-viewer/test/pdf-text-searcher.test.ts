@@ -79,7 +79,7 @@ test("magnitude aliases match both calculated and displayed values", () => {
     get: () => entries,
     getSearchIndex: () => buildSearchPageIndexFromEntries(entries),
   };
-  const fsValues = {
+  const valuesCache = {
     logicalValuesOnPage: () => [{
         id: "wrapped",
         kind: "number",
@@ -90,7 +90,7 @@ test("magnitude aliases match both calculated and displayed values", () => {
         confidence: 0.9,
     }],
   };
-  const searcher = new PdfTextSearcher(cache as never, fsValues as never);
+  const searcher = new PdfTextSearcher(cache as never, valuesCache as never);
   const pdf = { id: "pdf-1", name: "Statement", folderId: null } as never;
 
   assert.equal(searcher.searchPage("1000000", pdf, 0)[0]?.contextText, "$1 million");
@@ -102,7 +102,7 @@ test("magnitude aliases match both calculated and displayed values", () => {
     get: () => sameLineEntries,
     getSearchIndex: () => buildSearchPageIndexFromEntries(sameLineEntries),
   };
-  const literalMatches = new PdfTextSearcher(sameLineCache as never, fsValues as never)
+  const literalMatches = new PdfTextSearcher(sameLineCache as never, valuesCache as never)
     .searchPage("1 million", pdf, 0);
   assert.equal(literalMatches.length, 1, "the semantic alias must not duplicate the literal hit");
 });

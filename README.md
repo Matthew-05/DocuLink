@@ -60,7 +60,7 @@ Cross-boundary messages and storage formats are defined in `contracts/`:
 
 Before adding or changing a cross-boundary message or storage field, update the matching contract first, then update the implementation.
 
-The financial-value recognizer is intentionally a sidecar stage over text geometry: it never performs another OCR pass and failure does not discard an otherwise successful OCR result. Its span oracle can be run with `python scripts/score_fs_values.py`, and `python scripts/render_fs_values_overlay.py input.pdf --out overlay.pdf --write-report values.json` draws a corpus diagnostic. Python tests live in `src/python/tests/test_fs_values.py`, and the viewer uses a TypeScript fallback when an older workbook has no stored `fs-values-v1` artifact.
+The value recognizer is intentionally a sidecar stage over text geometry: it never performs another OCR pass and failure does not discard an otherwise successful OCR result. Its span oracle can be run with `python scripts/score_values.py`, and `python scripts/render_values_overlay.py input.pdf --out overlay.pdf --write-report values.json` draws a corpus diagnostic. Python tests live in `src/python/tests/test_values.py` and `test_fs_structure.py`, and the viewer tolerates a workbook whose stored `document-values-v1` artifact is missing or malformed by rendering no boxes rather than failing the load.
 
 ### Prerequisites
 
