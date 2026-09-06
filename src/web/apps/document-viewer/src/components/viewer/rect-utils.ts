@@ -81,6 +81,22 @@ export function getLinkResizeCorner(
   return null;
 }
 
+/**
+ * Class that holds a resize cursor on the whole document for the length of a
+ * drag. A hover cursor set on the rectangle stops applying the moment the
+ * pointer leaves it, which a shrinking rectangle causes constantly.
+ */
+export function resizeDragCursorClass(corner: ResizeHandle): string {
+  switch (corner) {
+    case "nw":
+    case "se":
+      return "rect-draw--resizing-nwse";
+    case "ne":
+    case "sw":
+      return "rect-draw--resizing-nesw";
+  }
+}
+
 export function cursorForResizeCorner(corner: ResizeHandle | null): string {
   if (corner === null) return "pointer";
   switch (corner) {

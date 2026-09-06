@@ -12,6 +12,7 @@ import {
   cursorForResizeCorner,
   getLinkResizeCorner,
   MIN_DRAG_PX,
+  resizeDragCursorClass,
   resizeHandleFromDrag,
   resizeRectFromHandle,
   type ResizeHandle,
@@ -45,6 +46,8 @@ export class RectEditOverlay {
   /** Set after a committed drag so the subsequent click is suppressed. */
   private _suppressNextClick = false;
   private _hoveredLink: HTMLDivElement | null = null;
+  /** Document-wide cursor class held for the length of a resize drag. */
+  private _dragCursorClass: string | null = null;
   private readonly _onRectUpdatedCallbacks: RectUpdatedCallback[] = [];
 
   private readonly _boundMouseDown: (e: MouseEvent) => void;
@@ -98,6 +101,10 @@ export class RectEditOverlay {
   private _onHoverMove(e: MouseEvent): void {
     if (this._dragState) return;
 
+    // A mouse released outside the window can leave the drag cursor behind;
+    // the first hover afterwards is a reliable place to drop it.
+    this._clearDragCursor();
+
     if (e.target instanceof Element && e.target.closest(INNER_GRID_CONTROL_SELECTOR)) {
       if (this._hoveredLink) this._resetLinkCursor(this._hoveredLink);
       this._hoveredLink = null;
@@ -134,6 +141,20 @@ export class RectEditOverlay {
     linkEl.style.cursor = "";
   }
 
+  private _applyDragCursor(handle: ResizeHandle): void {
+    const cls = resizeDragCursorClass(handle);
+    if (cls === this._dragCursorClass) return;
+    this._clearDragCursor();
+    document.body.classList.add(cls);
+    this._dragCursorClass = cls;
+  }
+
+  private _clearDragCursor(): void {
+    if (!this._dragCursorClass) return;
+    document.body.classList.remove(this._dragCursorClass);
+    this._dragCursorClass = null;
+  }
+
   private _onMouseDown(e: MouseEvent): void {
     if (e.button !== 0) return;
     if (e.target instanceof Element && e.target.closest(INNER_GRID_CONTROL_SELECTOR)) return;
@@ -165,6 +186,7 @@ export class RectEditOverlay {
 
     linkEl.classList.add("rect-draw__link--editing");
     linkEl.style.cursor = cursorForResizeCorner(handle);
+    this._applyDragCursor(handle);
 
     this._dragState = {
       id,
@@ -206,9 +228,11 @@ export class RectEditOverlay {
     // the pointer is on changes with it.
     const liveHandle = resizeHandleFromDrag(pageWrapper, startRect, handle, curXPx, curYPx);
     linkEl.style.cursor = cursorForResizeCorner(liveHandle);
+    this._applyDragCursor(liveHandle);
   }
 
   private _onMouseUp(e: MouseEvent): void {
+    this._clearDragCursor();
     this._autoScroller.stop();
     document.removeEventListener("mousemove", this._boundMouseMove);
     document.removeEventListener("mouseup",   this._boundMouseUp);

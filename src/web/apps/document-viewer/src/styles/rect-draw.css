@@ -2,6 +2,21 @@
   cursor: crosshair;
 }
 
+/*
+ * A resize drag owns the cursor until it ends. The rectangle's edge moves away
+ * from the pointer as it shrinks, and the page underneath is a crosshair, so
+ * without this the cursor flickers off the resize diagonal mid-drag.
+ */
+.rect-draw--resizing-nwse,
+.rect-draw--resizing-nwse * {
+  cursor: nwse-resize !important;
+}
+
+.rect-draw--resizing-nesw,
+.rect-draw--resizing-nesw * {
+  cursor: nesw-resize !important;
+}
+
 .rect-draw__selection {
   position: absolute;
   background: rgba(37, 99, 235, 0.1);
