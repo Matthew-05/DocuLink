@@ -22,6 +22,15 @@ of the chain is what tells the two apparatuses apart:
 * A `footnote-reference` is the indicator the definition answers: the same
   printed form again, trailing the text it annotates, near the definitions.
 
+A footnote does not have to arrive with siblings. One note often serves several
+rows -- Apple's `China ⁽¹⁾` appears in a net-sales table and again in a
+long-lived-assets table below it, both answered by a single
+`(1) China includes Hong Kong and Taiwan.` A lone definition forms no chain, so
+it is established the other way round: by the indicators pointing at it. A mark
+of the same form standing above it on the page is the evidence a chain would
+otherwise give, read from the other end, and any number of marks may share the
+one definition they point at.
+
 Nothing here is decided by position on the page: a footnote block sits wherever
 the text above it ended, and the exhibit column of a 10-K is a body column.
 
@@ -32,6 +41,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from statistics import median
 
 from .headings import Fragment, HeadingLine
 from .reasons import FOOTNOTE_MARKER, FOOTNOTE_REFERENCE, LIST_MARKER
@@ -71,6 +81,21 @@ INLINE_REACH = 8
 # How far ahead of its definitions an indicator may be printed. A table's
 # footnotes follow it immediately; an exhibit index carries its notes at the end.
 REFERENCE_REACH = 4
+# How many indicators must point at a definition that has no siblings to form a
+# chain with. One is enough because of what an indicator has to be to count: a
+# mark raised out of the text, or one attached to the end of a word. Neither is
+# something a figure in a table can be, so counting them adds no safety the
+# classes do not already carry -- and requiring two loses every note printed
+# against a single row.
+MIN_INDICATORS = 1
+# An indicator set in its own cell is recognized by being raised out of the text,
+# at the ratio `profile.py` uses for the same observation. Holding the two to one
+# convention is deliberate: a full-size bracketed number alone in a cell is what
+# a negative figure in a table column looks like, and it must stay a value.
+INDICATOR_RATIO = 0.72
+# A page needs this many lines before its own median says what "ordinary text"
+# measures there; below it the document's median is the better answer.
+REPRESENTATIVE_LINES = 20
 # What a marker has to be leading before it counts as leading anything.
 MIN_PROSE_WORDS = 2
 # How many lines either side of a marker cell its item may be delivered in. The
@@ -104,6 +129,7 @@ class _Candidate:
     text: str
     ordinal: tuple[int, ...]
     left: float
+    top: float
     parenthesised: bool
 
     def fragment(self) -> Fragment:
@@ -130,8 +156,28 @@ def _parse(
         text=match.group(0),
         ordinal=tuple(int(part) for part in match.group("ordinal").split(".")),
         left=line.left,
+        top=line.top,
         parenthesised=bool(match.group("open")),
     )
+
+
+def _typical_heights(lines: list[HeadingLine]) -> dict[int, float]:
+    """How tall ordinary text stands on each page.
+
+    A page too sparse to have an ordinary height borrows the document's, for the
+    reason `profile.py` gives: a title page of two dozen words in two sizes puts
+    its median on the heading, and everything under it then reads as raised.
+    """
+    by_page: dict[int, list[float]] = {}
+    for line in lines:
+        if line.median_height > 0:
+            by_page.setdefault(line.page_index, []).append(line.median_height)
+    everything = [height for heights in by_page.values() for height in heights]
+    document = median(everything) if everything else 0.0
+    return {
+        page: median(heights) if len(heights) >= REPRESENTATIVE_LINES else document
+        for page, heights in by_page.items()
+    }
 
 
 def _is_prose(text: str) -> bool:
@@ -165,24 +211,39 @@ def _leads_prose(lines: list[HeadingLine], index: int, rest: str) -> bool:
 
 def _candidates(
     lines: list[HeadingLine],
-) -> tuple[list[_Candidate], list[_Candidate], list[_Candidate]]:
+) -> tuple[list[_Candidate], list[_Candidate], list[_Candidate], list[_Candidate]]:
     """Every ordinal marker, split by where in its line it sits.
 
     Leading markers open a list item, inline ones enumerate through a sentence,
-    and trailing ones annotate what comes before them. The three are exclusive,
+    and trailing ones annotate what comes before them. Those three are exclusive,
     and what decides between the last two is what follows the marker: an
-    enumerator is followed by the item it introduces, an indicator by nothing
-    but the next indicator.
+    enumerator is followed by the item it introduces, an indicator by nothing but
+    the next indicator.
+
+    Raised marks are the fourth: a marker alone in a cell, leading nothing, set
+    smaller than the text around it. Geometry delivers a superscript that way, so
+    this is how `China ⁽¹⁾` arrives -- the mark in one cell, the word in another.
+    Being raised is what the class rests on, because a full-size marker alone in
+    a cell is a bracketed negative in a table column and has to stay a value.
     """
     leading: list[_Candidate] = []
     inline: list[_Candidate] = []
     trailing: list[_Candidate] = []
+    raised: list[_Candidate] = []
+    typical = _typical_heights(lines)
     for index, line in enumerate(lines):
         text = line.text
         head = len(text) - len(text.lstrip())
         candidate = _parse(index, line, head)
-        if candidate is not None and _leads_prose(lines, index, text[candidate.end:]):
-            leading.append(candidate)
+        if candidate is not None:
+            if _leads_prose(lines, index, text[candidate.end:]):
+                leading.append(candidate)
+            elif (
+                not text[candidate.end:].strip()
+                and 0 < line.median_height
+                < typical.get(line.page_index, 0.0) * INDICATOR_RATIO
+            ):
+                raised.append(candidate)
         for opening in re.finditer(r"(?<=\S)\s?(?=\(?\d)", text):
             at = opening.end()
             if at <= head:
@@ -202,7 +263,7 @@ def _candidates(
                 trailing.append(candidate)
             elif _is_prose(rest) and (before.isalpha() or before in _ENUMERATOR_AFTER):
                 inline.append(candidate)
-    return leading, inline, trailing
+    return leading, inline, trailing, raised
 
 
 def _follows(first: tuple[int, ...], second: tuple[int, ...]) -> bool:
@@ -244,7 +305,8 @@ def _chains(
 
 def detect_lists(lines: list[HeadingLine]) -> ListDetection:
     """Find the ordinals that number a list, a footnote, or a reference to one."""
-    leading, inline, trailing = _candidates(lines)
+    leading, inline, trailing, raised = _candidates(lines)
+    indicators = trailing + raised
     markers: list[Marker] = []
     footnotes: list[tuple[frozenset[str], int, int]] = []
 
@@ -261,6 +323,7 @@ def detect_lists(lines: list[HeadingLine]) -> ListDetection:
             and second.line_index - first.line_index <= INLINE_REACH
         )
 
+    chained: set[tuple[int, int]] = set()
     for parenthesised in (False, True):
         column = [item for item in leading if item.parenthesised == parenthesised]
         for chain in _chains(column, same_column):
@@ -268,6 +331,7 @@ def detect_lists(lines: list[HeadingLine]) -> ListDetection:
             markers.extend(
                 Marker(item.fragment(), item.text, reason) for item in chain
             )
+            chained.update((item.line_index, item.start) for item in chain)
             if parenthesised:
                 footnotes.append(
                     (
@@ -277,11 +341,37 @@ def detect_lists(lines: list[HeadingLine]) -> ListDetection:
                     )
                 )
 
+    # A note with no siblings, established by the marks pointing at it instead.
+    # Scoped to its own page and to what stands above it, because that is all a
+    # single definition can be sure of: a footnote answers the table it follows.
+    for definition in leading:
+        if not definition.parenthesised:
+            continue
+        if (definition.line_index, definition.start) in chained:
+            continue
+        pointing = sum(
+            1
+            for indicator in indicators
+            if indicator.text == definition.text
+            and indicator.page_index == definition.page_index
+            and indicator.top < definition.top
+        )
+        if pointing < MIN_INDICATORS:
+            continue
+        markers.append(Marker(definition.fragment(), definition.text, FOOTNOTE_MARKER))
+        footnotes.append(
+            (
+                frozenset({definition.text}),
+                definition.page_index,
+                definition.page_index,
+            )
+        )
+
     for chain in _chains(inline, same_passage):
         markers.extend(Marker(item.fragment(), item.text, LIST_MARKER) for item in chain)
 
     claimed = {(marker.fragment.line_index, marker.fragment.start) for marker in markers}
-    for candidate in trailing:
+    for candidate in indicators:
         if (candidate.line_index, candidate.start) in claimed:
             continue
         if any(

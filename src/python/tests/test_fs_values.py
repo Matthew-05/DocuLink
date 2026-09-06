@@ -866,3 +866,82 @@ class FootnoteTests(unittest.TestCase):
             *_line("Operating margin changed by (5)% over the year", y=0.24, line_index=8),
         ]])
         self.assertEqual(published, ["(5)%"])
+
+
+def _annotated_row(
+    label: str,
+    figure: str,
+    *,
+    y: float,
+    line_index: int,
+    mark: str = "(1)",
+    mark_height: float = 0.007,
+) -> list[dict]:
+    """A table row whose label carries a footnote mark in a cell of its own.
+
+    `mark_height` is the whole test: a raised mark is an indicator, and the same
+    mark at body size is a bracketed negative sitting in a column.
+    """
+    return [
+        *_cell(label, y=y, line_index=line_index, x=0.03),
+        *_cell(mark, y=y, line_index=line_index + 1, x=0.10, height=mark_height),
+        *_cell(figure, y=y, line_index=line_index + 2, x=0.60),
+    ]
+
+
+class SharedFootnoteTests(unittest.TestCase):
+    """One note may answer several rows, and then it has no chain to belong to."""
+
+    @staticmethod
+    def _page(*, mark_height: float = 0.007, rows: int = 2) -> list[dict]:
+        characters: list[dict] = []
+        for index in range(rows):
+            characters.extend(
+                _annotated_row(
+                    "China",
+                    "64,377",
+                    y=0.10 + index * 0.15,
+                    line_index=index * 3,
+                    mark_height=mark_height,
+                )
+            )
+        characters.extend(
+            _marked_row(
+                "(1)",
+                "China includes Hong Kong and Taiwan",
+                y=0.60,
+                line_index=rows * 3,
+            )
+        )
+        return characters
+
+    def test_one_note_answers_every_mark_pointing_at_it(self) -> None:
+        published, noise, _ = _detect([self._page()])
+        self.assertEqual(published, ["64,377", "64,377"])
+        self.assertEqual(
+            sorted(item["reason"] for item in noise),
+            ["footnote-marker", "footnote-reference", "footnote-reference"],
+        )
+
+    def test_a_single_mark_is_enough(self) -> None:
+        _published, noise, _ = _detect([self._page(rows=1)])
+        self.assertEqual(
+            sorted(item["reason"] for item in noise),
+            ["footnote-marker", "footnote-reference"],
+        )
+
+    def test_a_full_size_bracketed_figure_is_not_a_mark(self) -> None:
+        """The guard: without a raised mark there is no note, and no note here
+        means the column keeps its negatives and the paragraph keeps its number."""
+        published, noise, _ = _detect([self._page(mark_height=0.012)])
+        self.assertEqual(
+            sorted(published), ["(1)", "(1)", "(1)", "64,377", "64,377"]
+        )
+        self.assertEqual(noise, [])
+
+    def test_a_note_nothing_points_at_stays_published(self) -> None:
+        published, noise, _ = _detect([_marked_row(
+            "(1)", "China includes Hong Kong and Taiwan", y=0.60, line_index=0
+        )])
+        self.assertEqual(published, ["(1)"])
+        self.assertEqual(noise, [])
