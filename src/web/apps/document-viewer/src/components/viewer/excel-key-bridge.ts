@@ -1,4 +1,5 @@
 import { sendExcelNavigate, sendUndoLinkCreation } from "../../host-bridge.js";
+import { isTextEntryTarget } from "@doculink/shared";
 
 /**
  * Forwards Excel's cell-navigation and undo keystrokes from the viewer to the host.
@@ -13,24 +14,6 @@ import { sendExcelNavigate, sendUndoLinkCreation } from "../../host-bridge.js";
  * move-after-return setting, tracks the Tab-run anchor and cycles inside multi-cell
  * selections, because only it can see the Excel application state.
  */
-/** Elements whose own key handling must win over Excel navigation. */
-function isTextEntryTarget(target: EventTarget | null): boolean {
-  if (!(target instanceof HTMLElement)) return false;
-
-  if (target.isContentEditable) return true;
-
-  const tag = target.tagName;
-  if (tag === "TEXTAREA" || tag === "SELECT") return true;
-
-  if (tag === "INPUT") {
-    // Buttons and checkboxes render as INPUT but hold no text, so Tab and Enter
-    // over them should still reach Excel.
-    const type = (target as HTMLInputElement).type.toLowerCase();
-    return type !== "button" && type !== "submit" && type !== "reset" && type !== "checkbox" && type !== "radio";
-  }
-
-  return false;
-}
 
 /**
  * Installs the capture-phase key listener. Returns a disposer that removes it.

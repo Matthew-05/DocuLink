@@ -78,6 +78,7 @@ export {
 } from "./text-searcher.js";
 export { extractText } from "./text-extractor.js";
 export { normalizeExtractedZeroPlaceholder } from "./zero-placeholder.js";
+export { isTextEntryTarget } from "./text-entry-target.js";
 export type { ModalAction, ModalActionVariant, ModalOptions } from "./modal.js";
 export { Modal } from "./modal.js";
 export {

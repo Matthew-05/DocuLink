@@ -1,6 +1,10 @@
 import type { FileEntry, FolderEntry } from "../../types/index.js";
 import { sendRenameFile, sendRemoveFile, sendSelectFile } from "../../host-bridge.js";
 import type { OcrProgress } from "../../host-bridge.js";
+// Imported as its own entry point rather than through the package barrel:
+// the barrel re-exports the pdf.js geometry module, whose top-level worker
+// setup is a side effect that keeps all of pdf.js in whatever bundles it.
+import { isTextEntryTarget } from "@doculink/shared/text-entry-target.js";
 
 export interface FileTableOptions {
   onSelectionChange(selectedIds: string[]): void;
@@ -94,6 +98,8 @@ export class FileTable {
     // Hide context menu on outside click
     document.addEventListener("click", () => this._hideContextMenu());
 
+    document.addEventListener("keydown", (e) => this._onDocumentKeyDown(e));
+
     container.appendChild(this._root);
   }
 
@@ -115,7 +121,7 @@ export class FileTable {
     const selectAll = document.createElement("input");
     selectAll.type = "checkbox";
     selectAll.className = "select-all-cb";
-    selectAll.title = "Select all";
+    selectAll.title = "Select all (Ctrl+A)";
     checkboxHeader.appendChild(selectAll);
     row.appendChild(checkboxHeader);
 
@@ -405,6 +411,25 @@ export class FileTable {
   private _folderName(file: FileEntry): string {
     if (!file.folderId) return "";
     return this._folders.find((folder) => folder.id === file.folderId)?.name ?? "";
+  }
+
+  /**
+   * Ctrl+A (Cmd+A) selects every file the table is currently showing, which is
+   * the header checkbox's job, so it goes through the same path rather than
+   * touching the selection set itself — the folder and the filter narrow both
+   * of them identically.
+   *
+   * It stands down inside a text field, where Ctrl+A belongs to the field, and
+   * while OCR holds the table locked. Without preventDefault the browser would
+   * also select the pane's text, leaving a blue wash over the rows.
+   */
+  private _onDocumentKeyDown(e: KeyboardEvent): void {
+    if (e.key.toLowerCase() !== "a") return;
+    if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey) return;
+    if (this._locked || isTextEntryTarget(e.target)) return;
+
+    e.preventDefault();
+    this._onSelectAll(true);
   }
 
   private _onSelectAll(checked: boolean): void {

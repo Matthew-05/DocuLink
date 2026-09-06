@@ -13,7 +13,8 @@
   "main": "./src/index.ts",
   "exports": {
     ".": "./src/index.ts",
-    "./base.css": "./base.css"
+    "./base.css": "./base.css",
+    "./text-entry-target.js": "./src/text-entry-target.ts"
   },
   "devDependencies": {
     "@types/node": "^24.13.3",
