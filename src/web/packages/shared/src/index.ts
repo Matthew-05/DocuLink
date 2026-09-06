@@ -15,6 +15,7 @@ export type {
 export { decodeTableStructure, parseTableStructure } from "./table-structure-decoder.js";
 export type {
   DetectedReference,
+  DetectedStructure,
   DetectedValue,
   DocumentValues,
   NoiseKind,
@@ -23,6 +24,7 @@ export type {
   PageValues,
   ReferenceKind,
   SpanBounds,
+  StructureKind,
   SpanSegment,
   ValueContext,
   ValueKind,
@@ -30,6 +32,7 @@ export type {
 export {
   NOISE_REASONS,
   REFERENCE_KINDS,
+  STRUCTURE_KINDS,
   decodeDocumentValues,
   parseDocumentValues,
 } from "./document-values-decoder.js";
@@ -46,6 +49,7 @@ export type {
   FsStructure,
 } from "./fs-structure-decoder.js";
 export { decodeFsStructure, parseFsStructure } from "./fs-structure-decoder.js";
+export type { SpanTipContext } from "./span-describe.js";
 export {
   describeItemHeader,
   describeItemReference,
@@ -54,6 +58,7 @@ export {
   describeNoteHeader,
   describeNoteReference,
   describeReference,
+  describeStructure,
   describeValue,
 } from "./span-describe.js";
 export type { HoverTipContent, HoverTipOptions } from "./hover-tip.js";

@@ -1,4 +1,18 @@
-import type { DetectedValue, SpanBounds } from "@doculink/shared";
+import type {
+  DetectedReference,
+  DetectedStructure,
+  DetectedValue,
+  SpanBounds,
+} from "@doculink/shared";
+
+/**
+ * A span the user clicked to create a link. Discriminated rather than widened
+ * because only a value carries the segments a wrapped date needs.
+ */
+export type ClickableSpan =
+  | { category: "value"; value: DetectedValue }
+  | { category: "reference"; reference: DetectedReference }
+  | { category: "structure"; structure: DetectedStructure };
 
 /**
  * Returns the rectangle used when creating a link from a detected value.
@@ -34,4 +48,26 @@ export function getValueLinkBounds(
     width: right - left,
     height: bottom - top,
   };
+}
+
+/**
+ * The rectangle and text a clicked span contributes to a link.
+ *
+ * One place decides this for all three categories, so a category added later
+ * fails to compile here rather than silently linking the wrong rectangle.
+ */
+export function getSpanLinkTarget(
+  span: ClickableSpan,
+  pageIndex: number,
+): { rect: SpanBounds; text: string } {
+  switch (span.category) {
+    case "value":
+      // Only a value can wrap across lines, so only a value needs its segments
+      // gathered back into one block.
+      return { rect: getValueLinkBounds(span.value, pageIndex), text: span.value.text };
+    case "reference":
+      return { rect: span.reference.bounds, text: span.reference.text };
+    case "structure":
+      return { rect: span.structure.bounds, text: span.structure.text };
+  }
 }

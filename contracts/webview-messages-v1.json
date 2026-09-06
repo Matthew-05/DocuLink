@@ -917,6 +917,21 @@
       ]
     },
 
+    "SetStructureVisibleMessage": {
+      "description": "Sent by the C# host when the structure overlay toggle changes and once after viewer-ready. Structure is the document indexing itself -- the number in a note heading, the ordinal opening a footnote. Nothing in it is a click target today, but that is each span's own `clickable` field to state; this flag decides only whether the boxes are drawn.",
+      "type": "object",
+      "required": ["type", "visible"],
+      "additionalProperties": false,
+      "properties": {
+        "type": { "const": "set-structure-visible" },
+        "visible": { "type": "boolean" }
+      },
+      "examples": [
+        { "type": "set-structure-visible", "visible": true },
+        { "type": "set-structure-visible", "visible": false }
+      ]
+    },
+
     "SetValueNoiseVisibleMessage": {
       "description": "Sent by the C# host when the development noise toggle changes and once after viewer-ready. Noise is the set of spans the detector recognized and then refused as neither value nor reference; the overlay it drives is inert and draws nothing clickable.",
       "type": "object",
@@ -1262,6 +1277,7 @@
     { "$ref": "#/definitions/SetCharBboxesVisibleMessage" },
     { "$ref": "#/definitions/SetValuesVisibleMessage" },
     { "$ref": "#/definitions/SetReferencesVisibleMessage" },
+    { "$ref": "#/definitions/SetStructureVisibleMessage" },
     { "$ref": "#/definitions/SetValueNoiseVisibleMessage" },
     { "$ref": "#/definitions/ResetUiMessage" },
     { "$ref": "#/definitions/CancelOcrMessage" },

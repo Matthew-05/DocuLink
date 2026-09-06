@@ -28,6 +28,7 @@ export interface HostMessageHandlers {
   onSetCharBboxesVisible?: (visible: boolean) => void;
   onSetValuesVisible?: (visible: boolean) => void;
   onSetReferencesVisible?: (visible: boolean) => void;
+  onSetStructureVisible?: (visible: boolean) => void;
   onSetValueNoiseVisible?: (visible: boolean) => void;
   onPdfUpdated?: (entry: PdfEntry) => void;
   onLinkRectanglesRemoved?: (ids: string[]) => void;
@@ -235,6 +236,11 @@ interface SetReferencesVisibleMessage {
   visible?: boolean;
 }
 
+interface SetStructureVisibleMessage {
+  type: "set-structure-visible";
+  visible?: boolean;
+}
+
 interface SetValueNoiseVisibleMessage {
   type: "set-value-noise-visible";
   visible: boolean;
@@ -265,6 +271,7 @@ function handleMessage(raw: unknown, handlers: HostMessageHandlers): void {
     onSetCharBboxesVisible,
     onSetValuesVisible,
     onSetReferencesVisible,
+    onSetStructureVisible,
     onSetValueNoiseVisible,
     onPdfUpdated,
     onLinkRectanglesRemoved,
@@ -385,6 +392,13 @@ function handleMessage(raw: unknown, handlers: HostMessageHandlers): void {
       if (!onSetReferencesVisible) return;
       const msg = parsed as SetReferencesVisibleMessage;
       onSetReferencesVisible(msg.visible === true);
+      return;
+    }
+
+    if (type === "set-structure-visible") {
+      if (!onSetStructureVisible) return;
+      const msg = parsed as SetStructureVisibleMessage;
+      onSetStructureVisible(msg.visible === true);
       return;
     }
 

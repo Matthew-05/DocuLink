@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "http://doculink.dev/schemas/document-values/1",
   "title": "DocuLink Document Values v1",
-  "description": "Numbers, percentages, dates and printed reference data detected from text geometry on any document, financial or not. Every span is classified into exactly one of three categories: a value measures, a reference identifies, and noise is an artifact of setting the page. Values and references are click targets on every document; noise never is. Financial-statement structure -- notes, filing items and their citations -- is published separately in fs-structure-v1. Coordinates use normalized displayed-page, top-left-origin 0-1 space.",
+  "description": "Numbers, percentages, dates and other printed spans detected from text geometry on any document, financial or not. Every span is classified into exactly one of four categories: a value measures, a reference identifies something outside the document, structure is the document indexing itself, and noise is damage. Whether a span is a click target is carried by its own required `clickable` field rather than inferred from its category, so the policy is stated once in the model and read once in the viewer. The catalogues that structure spans belong to -- notes, filing items and their citations -- are published in fs-structure-v1. Coordinates use normalized displayed-page, top-left-origin 0-1 space.",
   "type": "object",
   "required": ["version", "coordinateSpace", "detectorVersion", "documentContext", "pages"],
   "additionalProperties": false,
@@ -27,8 +27,8 @@
     },
     "SpanId": {
       "type": "string",
-      "pattern": "^(val|ref|noi)-[0-9a-f]{16}$",
-      "description": "Content-addressed span identity: a category prefix and a hash over the span's page index, normalized text and bounds rounded to three decimals. Stable across detector versions, which is what lets a workbook keep review state through a detector upgrade. NOT stable across a re-OCR that moves geometry -- a rebuilt geometry is a re-anchoring event, not an id-preserving one."
+      "pattern": "^(val|ref|str|noi)-[0-9a-f]{16}$",
+      "description": "Content-addressed span identity: a category prefix (val, ref, str, noi) and a hash over the span's page index, normalized text and bounds rounded to three decimals. Stable across detector versions, which is what lets a workbook keep review state through a detector upgrade. NOT stable across a re-OCR that moves geometry -- a rebuilt geometry is a re-anchoring event, not an id-preserving one."
     },
     "Context": {
       "type": "object",
@@ -52,11 +52,12 @@
     "Value": {
       "type": "object",
       "description": "A span that measures: a quantity, a proportion or a point in time. Always a click target.",
-      "required": ["id", "kind", "text", "bounds", "confidence"],
+      "required": ["id", "kind", "text", "bounds", "clickable", "confidence"],
       "additionalProperties": false,
       "properties": {
         "id": { "$ref": "#/definitions/SpanId" },
         "kind": { "type": "string", "enum": ["number", "percent", "date"] },
+        "clickable": { "type": "boolean", "description": "Whether the viewer creates a click target for this span. Read directly: a consumer must never re-derive clickability from the category, because the two are deliberately separable -- that is what lets one kind of span become capturable without a contract change." },
         "text": { "type": "string", "minLength": 1 },
         "bounds": { "$ref": "#/definitions/Bounds" },
         "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
@@ -76,10 +77,11 @@
     "Reference": {
       "type": "object",
       "description": "A span that identifies rather than measures: an invoice or account number, a phone number, a citation naming a note or a filing item. Printed data a reader may want to capture, so it is a click target on every document -- an auditor sampling invoices captures the invoice number as readily as the amount. What a note or item citation resolves to is published in fs-structure-v1, keyed by this span's id.",
-      "required": ["id", "kind", "text", "bounds"],
+      "required": ["id", "kind", "text", "bounds", "clickable"],
       "additionalProperties": false,
       "properties": {
         "id": { "$ref": "#/definitions/SpanId" },
+        "clickable": { "type": "boolean", "description": "Whether the viewer creates a click target for this span. Read directly: a consumer must never re-derive clickability from the category, because the two are deliberately separable -- that is what lets one kind of span become capturable without a contract change." },
         "kind": {
           "type": "string",
           "description": "What the reference identifies. A new kind is added here before it is implemented.",
@@ -105,12 +107,13 @@
     },
     "Noise": {
       "type": "object",
-      "description": "A span refused as neither a value nor a reference: an artifact of setting the page, or a token too damaged to read. Diagnostics only -- never a click target, and no consumer may treat one as data. A heading or contents row is not noise; it is structure, and is published in fs-structure-v1. What appears here for those is only the number inside one, refused so it cannot be mistaken for a value.",
-      "required": ["id", "kind", "text", "bounds", "reason"],
+      "description": "A span refused as none of the other three: damage, or something the detector could not identify well enough to say anything about. Diagnostics only. Noise is the residue after values, references and structure have been taken, so it is the category that should shrink as detection improves.",
+      "required": ["id", "kind", "text", "bounds", "clickable", "reason"],
       "additionalProperties": false,
       "properties": {
         "id": { "$ref": "#/definitions/SpanId" },
         "kind": { "type": "string", "enum": ["number", "percent", "date", "text"] },
+        "clickable": { "const": false, "description": "Always false. A clickable span the detector could not identify is a contradiction: there would be nothing to tell the user they had captured." },
         "text": { "type": "string", "minLength": 1 },
         "bounds": { "$ref": "#/definitions/Bounds" },
         "reason": {
@@ -119,15 +122,40 @@
           "enum": [
             "partial-token",
             "page-furniture",
+            "superscript",
+            "citation-year"
+          ]
+        }
+      }
+    },
+
+    "Structure": {
+      "type": "object",
+      "description": "A span that is the document indexing itself: the number in a note or item heading, a figure printed in a contents row, the ordinal that opens a list item or a footnote, the indicator pointing at one. Structure is printed text with meaning, which is what separates it from noise, and it measures nothing, which is what separates it from a value. The catalogue entry a structure span belongs to is published in fs-structure-v1; here it carries only its place and its role.",
+      "required": ["id", "kind", "text", "bounds", "clickable"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/definitions/SpanId" },
+        "clickable": { "type": "boolean", "description": "Whether the viewer creates a click target for this span. Read directly: a consumer must never re-derive clickability from the category, because the two are deliberately separable -- that is what lets one kind of span become capturable without a contract change." },
+        "kind": {
+          "type": "string",
+          "description": "The structural role this span plays. A new kind is added here before it is implemented.",
+          "enum": [
             "note-header",
             "item-header",
             "item-toc-entry",
             "list-marker",
             "footnote-marker",
-            "footnote-reference",
-            "superscript",
-            "citation-year"
+            "footnote-reference"
           ]
+        },
+        "text": { "type": "string", "minLength": 1 },
+        "bounds": { "$ref": "#/definitions/Bounds" },
+        "segments": {
+          "type": "array",
+          "minItems": 2,
+          "description": "Physical regions when a structure span wraps across lines.",
+          "items": { "$ref": "#/definitions/ValueSegment" }
         }
       }
     },
@@ -143,6 +171,11 @@
           "type": "array",
           "description": "Reference spans on this page. Absent or empty when the page carries none.",
           "items": { "$ref": "#/definitions/Reference" }
+        },
+        "structure": {
+          "type": "array",
+          "description": "Structure spans on this page. Absent or empty when the page carries none.",
+          "items": { "$ref": "#/definitions/Structure" }
         },
         "noise": {
           "type": "array",

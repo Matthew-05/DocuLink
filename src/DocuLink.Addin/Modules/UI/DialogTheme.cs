@@ -1,4 +1,4 @@
-using System.Drawing;
+﻿using System.Drawing;
 using System.Windows.Forms;
 
 namespace DocuLink.Addin.Modules.UI
@@ -44,9 +44,15 @@ namespace DocuLink.Addin.Modules.UI
         }
 
         /// <summary>Secondary line under a title, or a hint under a control.</summary>
-        internal static Label CreateCaption(string text, Point location)
+        /// <param name="maxWidth">
+        /// Width the text wraps at. Zero leaves it on one line, which is right only
+        /// for a caption short enough that no window can clip it; anything
+        /// sentence-length should pass the width it has to live in, because an
+        /// AutoSize label with no ceiling grows sideways until it is cut off.
+        /// </param>
+        internal static Label CreateCaption(string text, Point location, int maxWidth = 0)
         {
-            return new Label
+            var label = new Label
             {
                 Text = text,
                 AutoSize = true,
@@ -54,6 +60,20 @@ namespace DocuLink.Addin.Modules.UI
                 Font = CaptionFont,
                 ForeColor = MutedText
             };
+            if (maxWidth > 0) WrapAt(label, maxWidth);
+            return label;
+        }
+
+        /// <summary>
+        /// Make an AutoSize control wrap at <paramref name="maxWidth"/> and grow
+        /// downwards instead of running past its container.
+        /// </summary>
+        internal static void WrapAt(Control control, int maxWidth)
+        {
+            if (control == null || maxWidth <= 0) return;
+            // AutoSize measures against MaximumSize, so a zero height means
+            // "as tall as the wrapped text needs".
+            control.MaximumSize = new Size(maxWidth, 0);
         }
 
         /// <summary>Heading for a card, e.g. "Updates".</summary>

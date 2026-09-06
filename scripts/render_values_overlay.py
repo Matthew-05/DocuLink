@@ -1,9 +1,8 @@
-"""Render detected values as colored rectangles over a diagnostic PDF.
+"""Render detected spans as category-colored rectangles over a diagnostic PDF.
 
-Published values are drawn in their kind's color and references in their own,
-so the two click layers can be told apart at a glance. Pass --show-rejected to
-also draw what was recognized and then refused, each labelled with the reason it
-lost.
+Values, references, structure, and noise each use one color, regardless of
+their specific type, so the categories can be told apart at a glance. Pass
+--show-rejected to also draw noise, labelled with the reason it was refused.
 """
 from __future__ import annotations
 
@@ -25,13 +24,12 @@ from engines.values.detector import detect_values  # noqa: E402
 from engines.values.lines import prepare  # noqa: E402
 
 
-COLORS = {
-    "number": (0.04, 0.45, 0.56),
-    "percent": (0.71, 0.33, 0.04),
-    "date": (0.08, 0.50, 0.24),
+CATEGORY_COLORS = {
+    "value": (0.04, 0.45, 0.56),
+    "reference": (0.42, 0.29, 0.62),
+    "structure": (0.26, 0.22, 0.79),
+    "noise": (0.80, 0.15, 0.15),
 }
-REFERENCE_COLOR = (0.42, 0.29, 0.62)
-REJECTED_COLOR = (0.80, 0.15, 0.15)
 
 
 def _page_set(value: str | None) -> set[int] | None:
@@ -91,7 +89,7 @@ def render(
                     page_index = region["pageIndex"]
                     if pages is not None and page_index + 1 not in pages:
                         continue
-                    _draw(document_pdf[page_index], region["bounds"], COLORS[value["kind"]])
+                    _draw(document_pdf[page_index], region["bounds"], CATEGORY_COLORS["value"])
         for page_values in model["pages"]:
             page_index = page_values["pageIndex"]
             if pages is not None and page_index + 1 not in pages:
@@ -100,8 +98,15 @@ def render(
                 _draw(
                     document_pdf[page_index],
                     reference["bounds"],
-                    REFERENCE_COLOR,
+                    CATEGORY_COLORS["reference"],
                     reference["kind"],
+                )
+            for span in page_values.get("structure", []):
+                _draw(
+                    document_pdf[page_index],
+                    span["bounds"],
+                    CATEGORY_COLORS["structure"],
+                    span["kind"],
                 )
         for page_values in model["pages"] if show_rejected else []:
             page_index = page_values["pageIndex"]
@@ -111,7 +116,7 @@ def render(
                 _draw(
                     document_pdf[page_index],
                     candidate["bounds"],
-                    REJECTED_COLOR,
+                    CATEGORY_COLORS["noise"],
                     candidate["reason"],
                 )
         output.parent.mkdir(parents=True, exist_ok=True)

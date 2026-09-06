@@ -1,5 +1,6 @@
 import type {
   DetectedReference,
+  DetectedStructure,
   DetectedValue,
   DocumentValues,
   FsApparatus,
@@ -10,6 +11,7 @@ import type {
   FsNoteReference,
   FsStructure,
   NoiseSpan,
+  ValueContext,
 } from "@doculink/shared";
 
 const EMPTY_APPARATUS: FsApparatus = {
@@ -32,8 +34,11 @@ export class ValuesCache {
   private readonly _values = new Map<string, Map<number, DetectedValue[]>>();
   private readonly _logicalValues = new Map<string, Map<number, DetectedValue[]>>();
   private readonly _references = new Map<string, Map<number, DetectedReference[]>>();
+  private readonly _structure = new Map<string, Map<number, DetectedStructure[]>>();
   private readonly _noise = new Map<string, Map<number, NoiseSpan[]>>();
-  private readonly _structure = new Map<string, FsStructure | null>();
+  private readonly _pageContexts = new Map<string, Map<number, ValueContext>>();
+  private readonly _documentContexts = new Map<string, ValueContext>();
+  private readonly _fsStructure = new Map<string, FsStructure | null>();
   private readonly _valuesDecoder: ((base64: string) => Promise<DocumentValues>) | undefined;
   private readonly _structureDecoder: ((base64: string) => Promise<FsStructure>) | undefined;
 
@@ -60,9 +65,9 @@ export class ValuesCache {
     if (fsStructureBase64) {
       try {
         const decode = this._structureDecoder ?? (await import("@doculink/shared")).decodeFsStructure;
-        this._structure.set(pdfId, await decode(fsStructureBase64));
+        this._fsStructure.set(pdfId, await decode(fsStructureBase64));
       } catch {
-        this._structure.set(pdfId, null);
+        this._fsStructure.set(pdfId, null);
       }
     }
   }
@@ -71,16 +76,22 @@ export class ValuesCache {
     this._values.set(pdfId, new Map());
     this._logicalValues.set(pdfId, new Map());
     this._references.set(pdfId, new Map());
+    this._structure.set(pdfId, new Map());
     this._noise.set(pdfId, new Map());
-    this._structure.set(pdfId, null);
+    this._pageContexts.set(pdfId, new Map());
+    this._documentContexts.set(pdfId, {});
+    this._fsStructure.set(pdfId, null);
   }
 
   private _ingestValues(pdfId: string, model: DocumentValues): void {
     const byPage = new Map<number, DetectedValue[]>();
     const logicalValues = new Map<number, DetectedValue[]>();
     const references = new Map<number, DetectedReference[]>();
+    const structure = new Map<number, DetectedStructure[]>();
     const noise = new Map<number, NoiseSpan[]>();
+    const pageContexts = new Map<number, ValueContext>();
     for (const page of model.pages) {
+      pageContexts.set(page.pageIndex, page.context);
       // Tolerated rather than required: a decoder seam may omit an empty array.
       const pageNoise = page.noise ?? [];
       if (pageNoise.length > 0) noise.set(page.pageIndex, pageNoise);
@@ -104,11 +115,23 @@ export class ValuesCache {
           references.set(segment.pageIndex, pageReferences);
         }
       }
+      for (const span of page.structure ?? []) {
+        const segments = span.segments
+          ?? [{ pageIndex: page.pageIndex, text: span.text, bounds: span.bounds }];
+        for (const segment of segments) {
+          const pageStructure = structure.get(segment.pageIndex) ?? [];
+          pageStructure.push({ ...span, bounds: segment.bounds });
+          structure.set(segment.pageIndex, pageStructure);
+        }
+      }
     }
     this._values.set(pdfId, byPage);
     this._logicalValues.set(pdfId, logicalValues);
     this._references.set(pdfId, references);
+    this._structure.set(pdfId, structure);
     this._noise.set(pdfId, noise);
+    this._pageContexts.set(pdfId, pageContexts);
+    this._documentContexts.set(pdfId, model.documentContext);
   }
 
   valuesOnPage(pdfId: string, pageIndex: number): DetectedValue[] {
@@ -120,9 +143,24 @@ export class ValuesCache {
     return this._references.get(pdfId)?.get(pageIndex) ?? [];
   }
 
+  /** Spans that are the document indexing itself: heading numbers, list ordinals. */
+  structureOnPage(pdfId: string, pageIndex: number): DetectedStructure[] {
+    return this._structure.get(pdfId)?.get(pageIndex) ?? [];
+  }
+
   /** Spans the detector refused on this page. Diagnostics — never click targets. */
   noiseOnPage(pdfId: string, pageIndex: number): NoiseSpan[] {
     return this._noise.get(pdfId)?.get(pageIndex) ?? [];
+  }
+
+  /** What this page's captions say its figures are denominated in. */
+  pageContext(pdfId: string, pageIndex: number): ValueContext {
+    return this._pageContexts.get(pdfId)?.get(pageIndex) ?? {};
+  }
+
+  /** The same, read across the whole document. */
+  documentContext(pdfId: string): ValueContext {
+    return this._documentContexts.get(pdfId) ?? {};
   }
 
   has(pdfId: string): boolean { return this._values.has(pdfId); }
@@ -139,6 +177,12 @@ export class ValuesCache {
     return total;
   }
 
+  structureCount(pdfId: string): number {
+    let total = 0;
+    for (const entries of this._structure.get(pdfId)?.values() ?? []) total += entries.length;
+    return total;
+  }
+
   noiseCount(pdfId: string): number {
     let total = 0;
     for (const entries of this._noise.get(pdfId)?.values() ?? []) total += entries.length;
@@ -151,7 +195,7 @@ export class ValuesCache {
 
   /** What the document appears to be. "neither" also when no structure was published. */
   documentClass(pdfId: string): FsDocumentClass {
-    return this._structure.get(pdfId)?.documentClass ?? "neither";
+    return this._fsStructure.get(pdfId)?.documentClass ?? "neither";
   }
 
   /**
@@ -160,42 +204,48 @@ export class ValuesCache {
    * distinguishes "not a financial document" from "a statement with no notes".
    */
   apparatus(pdfId: string): FsApparatus {
-    return this._structure.get(pdfId)?.apparatus ?? EMPTY_APPARATUS;
+    return this._fsStructure.get(pdfId)?.apparatus ?? EMPTY_APPARATUS;
   }
 
   /** Canonical financial-statement notes detected across the document. */
   notes(pdfId: string): FsNote[] {
-    return this._structure.get(pdfId)?.notes ?? [];
+    return this._fsStructure.get(pdfId)?.notes ?? [];
   }
 
   /** Citations resolved to entries in the canonical note catalogue. */
   noteReferences(pdfId: string): FsNoteReference[] {
-    return this._structure.get(pdfId)?.noteReferences ?? [];
+    return this._fsStructure.get(pdfId)?.noteReferences ?? [];
   }
 
   /** Canonical filing items detected across the document. */
   items(pdfId: string): FsItem[] {
-    return this._structure.get(pdfId)?.items ?? [];
+    return this._fsStructure.get(pdfId)?.items ?? [];
   }
 
   /** Citations resolved to entries in the canonical item catalogue. */
   itemReferences(pdfId: string): FsItemReference[] {
-    return this._structure.get(pdfId)?.itemReferences ?? [];
+    return this._fsStructure.get(pdfId)?.itemReferences ?? [];
   }
 
   clearPdf(pdfId: string): void {
     this._values.delete(pdfId);
     this._logicalValues.delete(pdfId);
     this._references.delete(pdfId);
-    this._noise.delete(pdfId);
     this._structure.delete(pdfId);
+    this._noise.delete(pdfId);
+    this._pageContexts.delete(pdfId);
+    this._documentContexts.delete(pdfId);
+    this._fsStructure.delete(pdfId);
   }
 
   clear(): void {
     this._values.clear();
     this._logicalValues.clear();
     this._references.clear();
-    this._noise.clear();
     this._structure.clear();
+    this._noise.clear();
+    this._pageContexts.clear();
+    this._documentContexts.clear();
+    this._fsStructure.clear();
   }
 }

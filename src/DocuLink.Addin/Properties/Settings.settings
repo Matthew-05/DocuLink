@@ -16,6 +16,9 @@
     <Setting Name="ShowReferences" Type="System.Boolean" Scope="User">
       <Value Profile="(Default)">False</Value>
     </Setting>
+    <Setting Name="ShowStructure" Type="System.Boolean" Scope="User">
+      <Value Profile="(Default)">False</Value>
+    </Setting>
     <Setting Name="ShowValueNoise" Type="System.Boolean" Scope="User">
       <Value Profile="(Default)">False</Value>
     </Setting>

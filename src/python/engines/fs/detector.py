@@ -24,10 +24,10 @@ from engines.values.categories import (
     ITEM,
     ITEM_HEADER,
     ITEM_TOC_ENTRY,
-    NOISE,
     NOTE,
     NOTE_HEADER,
     REFERENCE,
+    STRUCTURE,
 )
 from engines.values.claims import ClaimedSpan
 from engines.values.ids import span_id
@@ -106,7 +106,7 @@ def detect_fs_structure(
                 line_index=fragment.line_index,
                 start=fragment.start,
                 end=fragment.end,
-                category=NOISE,
+                category=STRUCTURE,
                 label=label,
                 text=fragment_text(fragment, document).strip(),
                 bounds=fragment_bounds(fragment, document) or {},

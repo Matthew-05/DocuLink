@@ -1084,6 +1084,31 @@ namespace DocuLink.Addin
             }
         }
 
+        private void OnStructureChanged(object sender, bool visible)
+        {
+            foreach (WorkbookPaneEntry entry in _workbookPanes.ToArray())
+            {
+                try { entry.Host?.SendStructureVisible(visible); }
+                catch (Exception ex)
+                {
+                    Modules.DocuLinkLog.Trace($"OnStructureChanged skipping pane: {ex.Message}");
+                }
+            }
+
+            foreach (WorkbookViewerEntry entry in _workbookViewers.ToArray())
+            {
+                try
+                {
+                    if (entry.Window != null && !entry.Window.IsDisposed)
+                        entry.Window.SendStructureVisible(visible);
+                }
+                catch (Exception ex)
+                {
+                    Modules.DocuLinkLog.Trace($"OnStructureChanged skipping viewer window: {ex.Message}");
+                }
+            }
+        }
+
         private void OnValueNoiseChanged(object sender, bool visible)
         {
             foreach (WorkbookPaneEntry entry in _workbookPanes.ToArray())
@@ -1218,6 +1243,7 @@ namespace DocuLink.Addin
                 OnCharBoundingBoxesChanged;
             Modules.Infrastructure.DevSettings.ValuesChanged += OnValuesChanged;
             Modules.Infrastructure.DevSettings.ReferencesChanged += OnReferencesChanged;
+            Modules.Infrastructure.DevSettings.StructureChanged += OnStructureChanged;
             Modules.Infrastructure.DevSettings.ValueNoiseChanged += OnValueNoiseChanged;
 
             _ = CheckForUpdateOnOpenAsync();
@@ -1242,6 +1268,7 @@ namespace DocuLink.Addin
                 OnCharBoundingBoxesChanged;
             Modules.Infrastructure.DevSettings.ValuesChanged -= OnValuesChanged;
             Modules.Infrastructure.DevSettings.ReferencesChanged -= OnReferencesChanged;
+            Modules.Infrastructure.DevSettings.StructureChanged -= OnStructureChanged;
             Modules.Infrastructure.DevSettings.ValueNoiseChanged -= OnValueNoiseChanged;
 
             Application.SheetSelectionChange -= Application_SheetSelectionChange;

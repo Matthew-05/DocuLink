@@ -518,6 +518,7 @@ def _handle_job(job: OcrJob) -> None:
                 diagnostics["value_percents"] = counts["percent"]
                 diagnostics["value_dates"] = counts["date"]
                 diagnostics.setdefault("value_references", 0)
+                diagnostics.setdefault("value_structure", 0)
                 diagnostics.setdefault("value_noise", 0)
             except Exception as exc:  # noqa: BLE001 — optional stage must preserve OCR
                 diagnostics["values_error"] = str(exc)

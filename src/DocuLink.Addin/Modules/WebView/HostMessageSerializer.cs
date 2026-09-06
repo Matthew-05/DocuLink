@@ -283,6 +283,13 @@ namespace DocuLink.Addin.Modules.WebView
                 : "{\"type\":\"set-references-visible\",\"visible\":false}";
         }
 
+        public static string BuildSetStructureVisible(bool visible)
+        {
+            return visible
+                ? "{\"type\":\"set-structure-visible\",\"visible\":true}"
+                : "{\"type\":\"set-structure-visible\",\"visible\":false}";
+        }
+
         public static string BuildSetValueNoiseVisible(bool visible)
         {
             return visible

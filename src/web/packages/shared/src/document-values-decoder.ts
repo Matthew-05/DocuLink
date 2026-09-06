@@ -14,12 +14,18 @@ export interface SpanSegment {
   bounds: SpanBounds;
 }
 
-/** A span that measures. Always a click target. */
+/** A span that measures. */
 export interface DetectedValue {
   id: string;
   kind: ValueKind;
   text: string;
   bounds: SpanBounds;
+  /**
+   * Whether the viewer creates a click target for this span. Read it; never
+   * re-derive it from the category. The two are deliberately separable, which
+   * is what lets a kind of span become capturable without a contract change.
+   */
+  clickable: boolean;
   confidence: number;
   normalizedValue?: string;
   magnitude?: 1000 | 1000000 | 1000000000 | 1000000000000;
@@ -56,6 +62,37 @@ export interface DetectedReference {
   kind: ReferenceKind;
   text: string;
   bounds: SpanBounds;
+  clickable: boolean;
+  segments?: SpanSegment[];
+}
+
+/**
+ * Every structural role the detector may publish, mirroring the closed enum in
+ * `contracts/document-values-v1.json`.
+ */
+export const STRUCTURE_KINDS = [
+  "note-header",
+  "item-header",
+  "item-toc-entry",
+  "list-marker",
+  "footnote-marker",
+  "footnote-reference",
+] as const;
+
+export type StructureKind = (typeof STRUCTURE_KINDS)[number];
+
+/**
+ * A span that is the document indexing itself — the number in a note heading,
+ * a figure printed in a contents row, the ordinal opening a footnote. Printed
+ * text with meaning, which is what separates it from noise; measuring nothing,
+ * which is what separates it from a value.
+ */
+export interface DetectedStructure {
+  id: string;
+  kind: StructureKind;
+  text: string;
+  bounds: SpanBounds;
+  clickable: boolean;
   segments?: SpanSegment[];
 }
 
@@ -76,12 +113,6 @@ export interface ValueContext {
 export const NOISE_REASONS = [
   "partial-token",
   "page-furniture",
-  "note-header",
-  "item-header",
-  "item-toc-entry",
-  "list-marker",
-  "footnote-marker",
-  "footnote-reference",
   "superscript",
   "citation-year",
 ] as const;
@@ -89,15 +120,16 @@ export const NOISE_REASONS = [
 export type NoiseReason = (typeof NOISE_REASONS)[number];
 
 /**
- * A span refused as neither value nor reference, with the rule that refused it.
- * Diagnostics only — noise is never a click target and must not be treated as
- * data.
+ * A span refused as none of the other three, with the rule that refused it.
+ * Diagnostics only — `clickable` is always false, because a span the detector
+ * could not identify has nothing to tell the user they captured.
  */
 export interface NoiseSpan {
   id: string;
   kind: NoiseKind;
   text: string;
   bounds: SpanBounds;
+  clickable: false;
   reason: NoiseReason;
 }
 
@@ -106,6 +138,7 @@ export interface PageValues {
   context: ValueContext;
   values: DetectedValue[];
   references: DetectedReference[];
+  structure: DetectedStructure[];
   noise: NoiseSpan[];
 }
 
@@ -119,6 +152,7 @@ export interface DocumentValues {
 
 const NOISE_REASON_SET = new Set<string>(NOISE_REASONS);
 const REFERENCE_KIND_SET = new Set<string>(REFERENCE_KINDS);
+const STRUCTURE_KIND_SET = new Set<string>(STRUCTURE_KINDS);
 const CURRENCIES = new Set(["USD", "EUR", "GBP", "JPY", "CAD", "AUD", "CHF", "CNY", "INR", "KRW"]);
 const PRECISIONS = new Set(["day", "month", "quarter", "year"]);
 const DATE_ORDERS = new Set(["mdy", "dmy", "ymd", "ambiguous"]);
@@ -172,11 +206,13 @@ function parseValue(value: unknown): DetectedValue | null {
   if (typeof value.confidence !== "number" || !unit(value.confidence)) return null;
   const bounds = parseBounds(value.bounds);
   if (!bounds) return null;
+  if (typeof value.clickable !== "boolean") return null;
   const parsed: DetectedValue = {
     id: value.id,
     kind: value.kind,
     text: value.text,
     bounds,
+    clickable: value.clickable,
     confidence: value.confidence,
   };
   if (typeof value.normalizedValue === "string") parsed.normalizedValue = value.normalizedValue;
@@ -200,6 +236,7 @@ function parseReference(value: unknown): DetectedReference | null {
   if (typeof value.id !== "string" || value.id.length === 0) return null;
   if (typeof value.kind !== "string" || !REFERENCE_KIND_SET.has(value.kind)) return null;
   if (typeof value.text !== "string" || value.text.length === 0) return null;
+  if (typeof value.clickable !== "boolean") return null;
   const bounds = parseBounds(value.bounds);
   if (!bounds) return null;
   const parsed: DetectedReference = {
@@ -207,6 +244,27 @@ function parseReference(value: unknown): DetectedReference | null {
     kind: value.kind as ReferenceKind,
     text: value.text,
     bounds,
+    clickable: value.clickable,
+  };
+  const segments = parseSegments(value.segments);
+  if (segments) parsed.segments = segments;
+  return parsed;
+}
+
+function parseStructure(value: unknown): DetectedStructure | null {
+  if (!isRecord(value)) return null;
+  if (typeof value.id !== "string" || value.id.length === 0) return null;
+  if (typeof value.kind !== "string" || !STRUCTURE_KIND_SET.has(value.kind)) return null;
+  if (typeof value.text !== "string" || value.text.length === 0) return null;
+  if (typeof value.clickable !== "boolean") return null;
+  const bounds = parseBounds(value.bounds);
+  if (!bounds) return null;
+  const parsed: DetectedStructure = {
+    id: value.id,
+    kind: value.kind as StructureKind,
+    text: value.text,
+    bounds,
+    clickable: value.clickable,
   };
   const segments = parseSegments(value.segments);
   if (segments) parsed.segments = segments;
@@ -219,6 +277,9 @@ function parseNoise(value: unknown): NoiseSpan | null {
   if (value.kind !== "number" && value.kind !== "percent" && value.kind !== "date" && value.kind !== "text") return null;
   if (typeof value.text !== "string" || value.text.length === 0) return null;
   if (typeof value.reason !== "string" || !NOISE_REASON_SET.has(value.reason)) return null;
+  // Pinned false in the contract, and re-checked here: a clickable span nothing
+  // could identify would be a button with nothing behind it.
+  if (value.clickable !== false) return null;
   const bounds = parseBounds(value.bounds);
   if (!bounds) return null;
   return {
@@ -226,6 +287,7 @@ function parseNoise(value: unknown): NoiseSpan | null {
     kind: value.kind as NoiseKind,
     text: value.text,
     bounds,
+    clickable: false,
     reason: value.reason as NoiseReason,
   };
 }
@@ -246,6 +308,9 @@ export function parseDocumentValues(value: unknown): DocumentValues {
       values: page.values.map(parseValue).filter((entry): entry is DetectedValue => entry !== null),
       references: Array.isArray(page.references)
         ? page.references.map(parseReference).filter((entry): entry is DetectedReference => entry !== null)
+        : [],
+      structure: Array.isArray(page.structure)
+        ? page.structure.map(parseStructure).filter((entry): entry is DetectedStructure => entry !== null)
         : [],
       noise: Array.isArray(page.noise)
         ? page.noise.map(parseNoise).filter((entry): entry is NoiseSpan => entry !== null)

@@ -21,10 +21,10 @@ from __future__ import annotations
 
 import hashlib
 
-from .categories import NOISE, REFERENCE, VALUE
+from .categories import NOISE, REFERENCE, STRUCTURE, VALUE
 
 
-_PREFIX = {VALUE: "val", REFERENCE: "ref", NOISE: "noi"}
+_PREFIX = {VALUE: "val", REFERENCE: "ref", STRUCTURE: "str", NOISE: "noi"}
 
 
 def span_id(category: str, page_index: int, text: str, bounds: dict, occurrence: int = 0) -> str:

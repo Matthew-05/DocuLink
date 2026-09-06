@@ -759,6 +759,22 @@ namespace DocuLink.Addin.Modules.WebView
             }
         }
 
+        internal void SendStructureVisible(bool visible)
+        {
+            if (_disposed || !_webViewReady) return;
+
+            try
+            {
+                _webView.CoreWebView2.PostWebMessageAsString(
+                    HostMessageSerializer.BuildSetStructureVisible(visible));
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine(
+                    $"[DocuLink] SendStructureVisible failed: {ex.Message}");
+            }
+        }
+
         internal void SendValueNoiseVisible(bool visible)
         {
             if (_disposed || !_webViewReady) return;
@@ -784,6 +800,7 @@ namespace DocuLink.Addin.Modules.WebView
             SendCharBboxesVisible(Infrastructure.DevSettings.ShowCharBoundingBoxes);
             SendValuesVisible(Infrastructure.DevSettings.ShowValues);
             SendReferencesVisible(Infrastructure.DevSettings.ShowReferences);
+            SendStructureVisible(Infrastructure.DevSettings.ShowStructure);
             SendValueNoiseVisible(Infrastructure.DevSettings.ShowValueNoise);
         }
 

@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import unittest
 
-from documents import detect, detect_pages, geometry as _geometry, cell as _cell, line as _line, noise as _noise, published as _published
+from documents import detect, detect_pages, geometry as _geometry, cell as _cell, line as _line, label as _label, noise as _noise, published as _published, refused as _refused
 
 
 def detect_model(model, *, tables=None, diagnostics=None):
@@ -23,11 +23,12 @@ def _span_text(model, span_id: str) -> str:
 
 
 def _detect(pages):
+    """Published texts, everything refused, and the diagnostics."""
     result = detect_pages(pages)
-    return _published(result), _noise(result), result.diagnostics
+    return _published(result), _refused(result), result.diagnostics
 
 class NoteDetectionTests(unittest.TestCase):
-    def test_full_note_headers_build_a_catalog_and_are_noise(self) -> None:
+    def test_full_note_headers_build_a_catalog_and_leave_structure(self) -> None:
         model = detect_model(_geometry([
             _line("Note 12 — Income Taxes", y=0.10, line_index=0),
             _line("NOTE IV. Fair Value Measurements", y=0.10, line_index=0),
@@ -54,10 +55,12 @@ class NoteDetectionTests(unittest.TestCase):
             ],
         )
         # A Roman identifier leaves nothing value-shaped behind, so its page
-        # publishes no noise at all.
-        refused = [item for page in model["pages"] for item in page.get("noise", [])]
-        self.assertEqual([item["text"] for item in refused], ["12", "3.1"])
-        self.assertEqual({item["reason"] for item in refused}, {"note-header"})
+        # publishes no structure span at all.
+        spans = [item for page in model["pages"] for item in page.get("structure", [])]
+        self.assertEqual([item["text"] for item in spans], ["12", "3.1"])
+        self.assertEqual({item["kind"] for item in spans}, {"note-header"})
+        # Structure is drawn as a diagnostic, not captured.
+        self.assertTrue(all(item["clickable"] is False for item in spans))
         self.assertTrue(all(not page["values"] for page in model["pages"]))
 
     def test_numbered_headers_without_note_are_scoped_to_a_notes_section(self) -> None:
@@ -236,7 +239,7 @@ def _contents_page(rows: list[tuple[str, str, str]], *, title: str = "TABLE OF C
 
 
 class ItemDetectionTests(unittest.TestCase):
-    def test_contents_rows_build_the_catalog_and_are_noise(self) -> None:
+    def test_contents_rows_build_the_catalog_and_leave_structure(self) -> None:
         model = detect_model(_geometry([_contents_page([
             ("Item 1.", "Business", "1"),
             ("Item 1A.", "Risk Factors", "5"),
@@ -257,7 +260,7 @@ class ItemDetectionTests(unittest.TestCase):
         )
         self.assertTrue(all(item["descriptionSource"] == "toc" for item in model["items"]))
         self.assertEqual(
-            {entry["reason"] for entry in model["pages"][0]["noise"]},
+            {entry["kind"] for entry in model["pages"][0]["structure"]},
             {"item-toc-entry"},
         )
 

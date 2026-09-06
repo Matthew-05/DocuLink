@@ -19,11 +19,23 @@ namespace DocuLink.Addin.Modules.UI
         /// <summary>Vertical gap between stacked cards.</summary>
         private const int CardGap = 16;
 
-        /// <summary>Height of the Development card, which has a fixed set of controls.</summary>
-        private const int DevelopmentCardHeight = 266;
+        /// <summary>Where the Development card's flowed rows start, below its heading.</summary>
+        private const int DevelopmentRowsTop = 82;
+
+        /// <summary>How far a caption is indented under the switch it explains.</summary>
+        private const int CaptionIndent = 18;
+
+        /// <summary>Gap between a switch and its caption.</summary>
+        private const int CaptionGap = 2;
+
+        /// <summary>Gap between one switch-and-caption row and the next.</summary>
+        private const int RowGap = 12;
 
         /// <summary>Height of the action bar holding the Close button.</summary>
         private const int FooterHeight = 56;
+
+        /// <summary>Least room the release history is worth showing in.</summary>
+        private const int MinimumUpdatesHeight = 140;
 
         private readonly ReleaseNotesControl _updateHistory;
         private bool _updateHistoryRequested;
@@ -52,22 +64,56 @@ namespace DocuLink.Addin.Modules.UI
 
             int nextCardTop = 82;
 
+            CardPanel developmentCard = null;
             if (showDevelopmentSection)
             {
-                Controls.Add(BuildDevelopmentCard(
-                    new Point(ContentMargin, nextCardTop), cardWidth));
-                nextCardTop += DevelopmentCardHeight + CardGap;
+                developmentCard = BuildDevelopmentCard(
+                    new Point(ContentMargin, nextCardTop), cardWidth);
+                Controls.Add(developmentCard);
+                nextCardTop += developmentCard.Height + CardGap;
             }
+
+            // The development card is as tall as its wrapped captions need, so the
+            // window's floor is computed from it rather than assumed. Without this a
+            // narrow window would wrap the captions into more lines than the fixed
+            // minimum height was ever sized for, and the updates card would slide
+            // under the footer.
+            int requiredClientHeight =
+                nextCardTop + MinimumUpdatesHeight + FooterHeight + ContentMargin;
+            if (requiredClientHeight > ClientSize.Height)
+            {
+                ClientSize = new Size(ClientSize.Width, requiredClientHeight);
+            }
+            int chromeHeight = Size.Height - ClientSize.Height;
+            MinimumSize = new Size(
+                MinimumSize.Width,
+                Math.Max(MinimumSize.Height, requiredClientHeight + chromeHeight));
 
             // The updates card takes the remaining height so the release history
             // grows with the window instead of leaving dead space below it.
-            int updatesHeight =
-                ClientSize.Height - FooterHeight - ContentMargin - nextCardTop;
+            int updatesHeight = Math.Max(
+                MinimumUpdatesHeight,
+                ClientSize.Height - FooterHeight - ContentMargin - nextCardTop);
 
-            Controls.Add(BuildUpdatesCard(
+            CardPanel updatesCard = BuildUpdatesCard(
                 new Point(ContentMargin, nextCardTop),
                 new Size(cardWidth, updatesHeight),
-                out _updateHistory));
+                out _updateHistory);
+            Controls.Add(updatesCard);
+
+            if (developmentCard != null)
+            {
+                // Wrapping makes the development card's height depend on the dialog's
+                // width, so the updates card below it cannot keep a fixed top.
+                developmentCard.SizeChanged += (sender, args) =>
+                {
+                    int top = developmentCard.Bottom + CardGap;
+                    updatesCard.Location = new Point(ContentMargin, top);
+                    updatesCard.Height = Math.Max(
+                        MinimumUpdatesHeight,
+                        ClientSize.Height - FooterHeight - ContentMargin - top);
+                };
+            }
 
             Button closeBtn;
             Panel footer = BuildFooter(out closeBtn);
@@ -82,12 +128,19 @@ namespace DocuLink.Addin.Modules.UI
         }
 
         /// <summary>Developer-only card; shown in development and beta builds.</summary>
+        /// <remarks>
+        /// The rows are laid out by flowing rather than by fixed coordinates. Every
+        /// caption wraps at the card's width, so its height depends on how wide the
+        /// dialog is, and a hard-coded Y for the row beneath it would overlap as soon
+        /// as one line became two. <see cref="LayoutDevelopmentRows"/> re-runs on
+        /// every width change and gives the card the height its content needs.
+        /// </remarks>
         private CardPanel BuildDevelopmentCard(Point location, int width)
         {
             var card = new CardPanel
             {
                 Location = location,
-                Size = new Size(width, DevelopmentCardHeight),
+                Size = new Size(width, DevelopmentRowsTop),
                 Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right
             };
 
@@ -100,93 +153,132 @@ namespace DocuLink.Addin.Modules.UI
             card.Controls.Add(DialogTheme.CreateSubHeading(
                 "Debugging tools", new Point(CardPadding + 2, 60)));
 
-            var bboxToggle = new CheckBox
-            {
-                Text = "Show character bounding boxes",
-                AutoSize = true,
-                Location = new Point(CardPadding, 82),
-                Font = DialogTheme.BodyFont,
-                ForeColor = DialogTheme.Text,
-                Cursor = Cursors.Hand,
-                Checked = DevSettings.ShowCharBoundingBoxes
-            };
-            bboxToggle.CheckedChanged += (s, e) =>
-                DevSettings.ShowCharBoundingBoxes = bboxToggle.Checked;
-            card.Controls.Add(bboxToggle);
-
-            card.Controls.Add(DialogTheme.CreateCaption(
+            AddDebugToggle(
+                card,
+                "Show character bounding boxes",
                 "Draws the per-character text boxes over every page in the document viewer.",
-                new Point(CardPadding + 18, 104)));
+                DevSettings.ShowCharBoundingBoxes,
+                value => DevSettings.ShowCharBoundingBoxes = value);
 
-            var valuesToggle = new CheckBox
-            {
-                Text = "Show detected-value debug boxes",
-                AutoSize = true,
-                Location = new Point(CardPadding, 126),
-                Font = DialogTheme.BodyFont,
-                ForeColor = DialogTheme.Text,
-                Cursor = Cursors.Hand,
-                Checked = DevSettings.ShowValues
-            };
-            valuesToggle.CheckedChanged += (s, e) =>
-                DevSettings.ShowValues = valuesToggle.Checked;
-            card.Controls.Add(valuesToggle);
+            AddDebugToggle(
+                card,
+                "Show detected-value debug boxes",
+                "Values measure something. Click targets are always active; this draws "
+                + "every detected target box.",
+                DevSettings.ShowValues,
+                value => DevSettings.ShowValues = value);
 
-            card.Controls.Add(DialogTheme.CreateCaption(
-                "Click targets are always active; this draws every detected target box.",
-                new Point(CardPadding + 18, 148)));
+            AddDebugToggle(
+                card,
+                "Show reference boxes",
+                "References identify something outside the document — an invoice number, "
+                + "a phone number, a note citation. They are click targets either way; "
+                + "this draws their boxes.",
+                DevSettings.ShowReferences,
+                value => DevSettings.ShowReferences = value);
 
-            var referencesToggle = new CheckBox
-            {
-                Text = "Show reference boxes",
-                AutoSize = true,
-                Location = new Point(CardPadding, 170),
-                Font = DialogTheme.BodyFont,
-                ForeColor = DialogTheme.Text,
-                Cursor = Cursors.Hand,
-                Checked = DevSettings.ShowReferences
-            };
-            referencesToggle.CheckedChanged += (s, e) =>
-                DevSettings.ShowReferences = referencesToggle.Checked;
-            card.Controls.Add(referencesToggle);
+            AddDebugToggle(
+                card,
+                "Show structure boxes",
+                "Structure is the document indexing itself — a note heading's number, a "
+                + "contents-row page number, the ordinal opening a footnote. Nothing in "
+                + "it is a click target today.",
+                DevSettings.ShowStructure,
+                value => DevSettings.ShowStructure = value);
 
-            card.Controls.Add(DialogTheme.CreateCaption(
-                "References identify rather than measure — an invoice number, a phone "
-                + "number, a note citation. They are click targets either way; this "
-                + "draws their boxes.",
-                new Point(CardPadding + 18, 192)));
-
-            var noiseToggle = new CheckBox
-            {
-                Text = "Show refused spans",
-                AutoSize = true,
-                Location = new Point(CardPadding, 214),
-                Font = DialogTheme.BodyFont,
-                ForeColor = DialogTheme.Text,
-                Cursor = Cursors.Hand,
-                Checked = DevSettings.ShowValueNoise
-            };
-            noiseToggle.CheckedChanged += (s, e) =>
-                DevSettings.ShowValueNoise = noiseToggle.Checked;
-            card.Controls.Add(noiseToggle);
-
-            card.Controls.Add(DialogTheme.CreateCaption(
-                "Draws the spans the detector refused as neither value nor reference "
-                + "(page numbers, footnote markers), labelled with the rule that "
-                + "refused each one.",
-                new Point(CardPadding + 18, 236)));
+            AddDebugToggle(
+                card,
+                "Show refused spans",
+                "Draws what is left once values, references and structure are taken: "
+                + "damaged tokens, running headers, statute years.",
+                DevSettings.ShowValueNoise,
+                value => DevSettings.ShowValueNoise = value);
 
             var openLogsBtn = new Button
             {
                 Text = "Open Log Folder",
-                Size = new Size(140, 30),
-                Location = new Point(CardPadding, 264)
+                Size = new Size(140, 30)
             };
             DialogTheme.StyleSecondaryButton(openLogsBtn);
             openLogsBtn.Click += OpenLogFolder;
+            openLogsBtn.Tag = DevelopmentRowTag.Footer;
             card.Controls.Add(openLogsBtn);
 
+            LayoutDevelopmentRows(card);
+            int laidOutAt = card.ClientSize.Width;
+            card.SizeChanged += (sender, args) =>
+            {
+                // Height is this method's own output, so only a width change means
+                // the text has to be measured again.
+                if (card.ClientSize.Width == laidOutAt) return;
+                laidOutAt = card.ClientSize.Width;
+                LayoutDevelopmentRows(card);
+            };
+
             return card;
+        }
+
+        /// <summary>What part a control plays when the development card is flowed.</summary>
+        private enum DevelopmentRowTag
+        {
+            Toggle,
+            Caption,
+            Footer
+        }
+
+        /// <summary>One debugging switch and the sentence explaining it.</summary>
+        private void AddDebugToggle(
+            CardPanel card, string text, string caption, bool initial, Action<bool> apply)
+        {
+            var toggle = new CheckBox
+            {
+                Text = text,
+                AutoSize = true,
+                Font = DialogTheme.BodyFont,
+                ForeColor = DialogTheme.Text,
+                Cursor = Cursors.Hand,
+                Checked = initial,
+                Tag = DevelopmentRowTag.Toggle
+            };
+            toggle.CheckedChanged += (sender, args) => apply(toggle.Checked);
+            card.Controls.Add(toggle);
+
+            var hint = DialogTheme.CreateCaption(caption, Point.Empty);
+            hint.Tag = DevelopmentRowTag.Caption;
+            card.Controls.Add(hint);
+        }
+
+        /// <summary>
+        /// Stack the card's rows top to bottom at the width it currently has, then
+        /// size the card to whatever that came to.
+        /// </summary>
+        private void LayoutDevelopmentRows(CardPanel card)
+        {
+            int available = card.ClientSize.Width - (CardPadding * 2);
+            if (available <= 0) return;
+
+            int y = DevelopmentRowsTop;
+            Control footer = null;
+
+            foreach (Control control in card.Controls)
+            {
+                if (!(control.Tag is DevelopmentRowTag tag)) continue;
+                if (tag == DevelopmentRowTag.Footer) { footer = control; continue; }
+
+                bool isCaption = tag == DevelopmentRowTag.Caption;
+                int indent = isCaption ? CaptionIndent : 0;
+                DialogTheme.WrapAt(control, available - indent);
+                control.Location = new Point(CardPadding + indent, y);
+                y = control.Bottom + (isCaption ? RowGap : CaptionGap);
+            }
+
+            if (footer != null)
+            {
+                footer.Location = new Point(CardPadding, y + 6);
+                y = footer.Bottom;
+            }
+
+            card.Height = y + CardPadding;
         }
 
         /// <summary>Version actions plus the scrollable release history.</summary>

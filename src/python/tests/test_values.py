@@ -5,9 +5,10 @@ import json
 import unittest
 from pathlib import Path
 
+from engines.values import categories
 from engines.values.spans import cut_token, recognize_spans, token_spans
 
-from documents import detect, detect_pages, geometry as _geometry, cell as _cell, line as _line, noise as _noise, published as _published, references as _references
+from documents import detect, detect_pages, geometry as _geometry, cell as _cell, line as _line, label as _label, noise as _noise, published as _published, refused as _refused, references as _references
 
 
 FIXTURE = Path(__file__).parent / "fixtures" / "values" / "span-oracle.json"
@@ -22,8 +23,50 @@ def detect_model(model, *, tables=None, diagnostics=None):
 
 
 def _detect(pages):
+    """Published texts, everything refused, and the diagnostics."""
     result = detect_pages(pages)
-    return _published(result), _noise(result), result.diagnostics
+    return _published(result), _refused(result), result.diagnostics
+
+class ContractVocabularyTests(unittest.TestCase):
+    """The producer's vocabulary and the contract's closed enums are one thing.
+
+    The viewer already checks this from its side; a detector that publishes a
+    kind the contract does not define would otherwise be caught only there,
+    after the span had been silently dropped by the decoder.
+    """
+
+    CONTRACT = Path(__file__).resolve().parents[3] / "contracts" / "document-values-v1.json"
+
+    def _definitions(self) -> dict:
+        return json.loads(self.CONTRACT.read_text(encoding="utf-8"))["definitions"]
+
+    def test_every_vocabulary_matches_the_contract(self) -> None:
+        definitions = self._definitions()
+        for name, field, published in (
+            ("Reference", "kind", categories.REFERENCE_KINDS),
+            ("Structure", "kind", categories.STRUCTURE_KINDS),
+            ("Noise", "reason", categories.NOISE_REASONS),
+        ):
+            with self.subTest(definition=name):
+                self.assertEqual(
+                    sorted(definitions[name]["properties"][field]["enum"]),
+                    sorted(published),
+                )
+
+    def test_noise_is_never_clickable_by_construction(self) -> None:
+        definitions = self._definitions()
+        self.assertEqual(definitions["Noise"]["properties"]["clickable"], {
+            "const": False,
+            "description": definitions["Noise"]["properties"]["clickable"]["description"],
+        })
+        for kind in categories.NOISE_REASONS:
+            self.assertFalse(categories.is_clickable(categories.NOISE, kind))
+
+    def test_clickability_is_stated_for_every_category(self) -> None:
+        self.assertEqual(
+            sorted(categories.CLICKABLE_BY_DEFAULT), sorted(categories.CATEGORIES)
+        )
+
 
 class SpanOracleTests(unittest.TestCase):
     def test_recognizer_matches_oracle(self) -> None:
@@ -214,7 +257,7 @@ class SuppressionTests(unittest.TestCase):
         page += _line("(1)", y=0.20, line_index=1, height=0.006)
         published, rejected, _ = _detect([page])
         self.assertEqual(published, ["1,234"])
-        self.assertEqual([item["reason"] for item in rejected], ["superscript"])
+        self.assertEqual([_label(item) for item in rejected], ["superscript"])
 
     def test_an_identifier_label_only_condemns_what_follows_it(self) -> None:
         published, _, _ = _detect([_line("Total 1,234 CUSIP 037833100", y=0.1, line_index=0)])
@@ -241,6 +284,7 @@ class SuppressionTests(unittest.TestCase):
             [{
                 "id": page["noise"][0]["id"],
                 "kind": "number",
+                "clickable": False,
                 "text": "1,2",
                 "bounds": page["noise"][0]["bounds"],
                 "reason": "partial-token",
@@ -280,7 +324,7 @@ class PageFurnitureTests(unittest.TestCase):
     def test_a_running_footer_is_not_content(self) -> None:
         published, rejected, _ = _detect(self._pages("Apple Inc. | 2025 Form 10-K | 7"))
         self.assertNotIn("2025", published)
-        self.assertEqual({item["reason"] for item in rejected}, {"page-furniture"})
+        self.assertEqual({_label(item) for item in rejected}, {"page-furniture"})
 
     def test_a_period_caption_survives_repeating_on_every_page(self) -> None:
         published, _, _ = _detect(self._pages("As of December 31, 2025"))
@@ -336,7 +380,7 @@ class ListMarkerTests(unittest.TestCase):
         ])])
         self.assertEqual(published, [])
         self.assertEqual(
-            [(item["reason"], item["text"]) for item in noise],
+            [(_label(item), item["text"]) for item in noise],
             [
                 ("list-marker", "3.1"),
                 ("list-marker", "3.2"),
@@ -374,7 +418,7 @@ class ListMarkerTests(unittest.TestCase):
         ]])
         self.assertEqual(published, [])
         self.assertEqual(
-            [item["reason"] for item in noise], ["list-marker"] * 3
+            [_label(item) for item in noise], ["list-marker"] * 3
         )
 
 
@@ -401,7 +445,7 @@ class FootnoteTests(unittest.TestCase):
         published, noise, _ = _detect([self._page()])
         self.assertEqual(published, [])
         self.assertEqual(
-            sorted((item["reason"], item["text"]) for item in noise),
+            sorted((_label(item), item["text"]) for item in noise),
             [
                 ("footnote-marker", "(1)"),
                 ("footnote-marker", "(2)"),
@@ -486,14 +530,14 @@ class SharedFootnoteTests(unittest.TestCase):
         published, noise, _ = _detect([self._page()])
         self.assertEqual(published, ["64,377", "64,377"])
         self.assertEqual(
-            sorted(item["reason"] for item in noise),
+            sorted(_label(item) for item in noise),
             ["footnote-marker", "footnote-reference", "footnote-reference"],
         )
 
     def test_a_single_mark_is_enough(self) -> None:
         _published, noise, _ = _detect([self._page(rows=1)])
         self.assertEqual(
-            sorted(item["reason"] for item in noise),
+            sorted(_label(item) for item in noise),
             ["footnote-marker", "footnote-reference"],
         )
 

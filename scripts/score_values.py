@@ -35,15 +35,13 @@ ORACLE = ROOT / "src" / "python" / "tests" / "fixtures" / "values" / "span-oracl
 # spans a tier above claimed whole, which carry whatever punctuation their
 # sentence needs.
 _STRONG_MARKS = "$€£¥₹₩,%"
-_NON_VALUE_NOISE_REASONS = frozenset({
-    "partial-token",
-    "note-header",
-    "item-header",
-    "item-toc-entry",
-    "list-marker",
-    "footnote-marker",
-    "footnote-reference",
-})
+_NON_VALUE_NOISE_REASONS = frozenset({"partial-token"})
+
+# Structure spans are printed apparatus, not refused values, so they carry
+# whatever punctuation their heading or contents row carries. The gate that
+# matters for them is that a real figure never lands here -- watched with the
+# same currency-and-percent test the reference layer gets.
+_STRUCTURE_MARKS = "$€£¥₹₩%"
 
 # The sibling gate, and the reason it exists: categories can lose a value two
 # ways now. Noise can swallow one, which the set above watches, and a cue rule
@@ -99,6 +97,7 @@ def score_document(pdf: Path) -> dict:
 
     published = [value for page in model["pages"] for value in page["values"]]
     references = [item for page in model["pages"] for item in page.get("references", [])]
+    structure_spans = [item for page in model["pages"] for item in page.get("structure", [])]
     rejected = [item for page in model["pages"] for item in page.get("noise", [])]
     page_count = len(model["pages"]) or 1
     suspicious = [
@@ -111,6 +110,10 @@ def score_document(pdf: Path) -> dict:
         for reference in references
         if reference["kind"] not in _CLAIMED_REFERENCE_KINDS
         and any(mark in reference["text"] for mark in _REFERENCE_MARKS)
+    ] + [
+        {"category": "structure", "label": span["kind"], "text": span["text"]}
+        for span in structure_spans
+        if any(mark in span["text"] for mark in _STRUCTURE_MARKS)
     ]
     return {
         "document": pdf.name,
@@ -120,10 +123,15 @@ def score_document(pdf: Path) -> dict:
         "published": len(published),
         "publishedPerPage": round(len(published) / page_count, 2),
         "references": len(references),
+        "structure": len(structure_spans),
         "rejected": len(rejected),
-        "recognized": len(published) + len(references) + len(rejected),
+        "recognized": len(published) + len(references) + len(structure_spans) + len(rejected),
         "publishedByKind": dict(Counter(value["kind"] for value in published)),
         "referencesByKind": dict(Counter(item["kind"] for item in references)),
+        "structureByKind": dict(Counter(item["kind"] for item in structure_spans)),
+        "clickable": sum(
+            1 for span in published + references + structure_spans if span["clickable"]
+        ),
         "rejectedByReason": dict(Counter(candidate["reason"] for candidate in rejected)),
         "apparatus": structure.model["apparatus"],
         "notes": len(structure.model["notes"]),

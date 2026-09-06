@@ -36,6 +36,9 @@ namespace DocuLink.Addin.Modules.WebView
         public void SendReferencesVisible(bool visible) =>
             _controller.SendReferencesVisible(visible);
 
+        public void SendStructureVisible(bool visible) =>
+            _controller.SendStructureVisible(visible);
+
         public void SendValueNoiseVisible(bool visible) =>
             _controller.SendValueNoiseVisible(visible);
 

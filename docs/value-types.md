@@ -5,27 +5,39 @@ describes `document-values-v1` and the parts of `fs-structure-v1` that resolve
 against it. The rules live in `src/python/engines/values/`; this document is the
 reader's view of them, not a second copy.
 
-## 1. The three categories
+## 1. The four categories
 
 Every span the recognizer touches lands in exactly one category. The category is
-a property of the span, never of the document: a span kind that is clickable on
-one document is clickable on all of them, so an auditor sampling invoices
-captures the invoice number as readily as the amount.
+a property of the span, never of the document: what a span is does not change
+because it was printed on an invoice rather than a 10-K.
 
-| Category | What it is | Click target | Published in |
+| Category | What it is | Published in | Clickable today |
 |---|---|---|---|
-| **value** | a measured quantity: an amount, a proportion, a point in time | yes | `pages[].values` |
-| **reference** | printed data that identifies rather than measures | yes | `pages[].references` |
-| **noise** | an artifact of setting the page, or a token too damaged to read | **never** | `pages[].noise` |
+| **value** | a measured quantity: an amount, a proportion, a point in time | `pages[].values` | yes |
+| **reference** | printed data identifying something outside the document | `pages[].references` | yes |
+| **structure** | the document indexing itself | `pages[].structure` | no |
+| **noise** | damage, and spans nothing could identify | `pages[].noise` | never |
 
-Noise is diagnostic. It is drawn only behind a development toggle, takes no
-pointer events, and no consumer may treat it as data.
+**Category and clickability are separate facts.** Every span carries a required
+`clickable`, and that field — not the category — decides whether the viewer
+creates a click target. A consumer must read it and never re-derive it, because
+the separation is the point: a kind of span can become capturable by changing
+one line in the detector, with no contract change and no viewer change.
 
-A fourth thing exists and is not a span category at all: **structure** — note
-headings, filing-item headings and contents rows. Those are printed text with
-meaning, so they live in `fs-structure-v1` with their full text and geometry.
-What `document-values-v1` carries for them is only the integer printed inside
-one, refused as noise so it cannot be read as a figure.
+The right-hand column above is therefore today's policy, not a rule. It lives in
+`categories.CLICKABLE_BY_DEFAULT`, with `CLICKABLE_KINDS` there for a single kind
+that should differ from its category — deliberately empty, because nothing needs
+the exception yet.
+
+Noise is the one category where clickability is not a policy: the contract pins
+it to `false`, because a click target the detector could not identify would be a
+button with nothing behind it. Noise is also the category that should *shrink*
+as detection improves — it is the residue after the other three are taken.
+
+A structure span is not the same thing as the heading it sits in. The heading is
+one printed thing and lives in `fs-structure-v1` with its full text and geometry;
+what appears here is the integer printed inside it, which has a place on the page
+of its own.
 
 ## 2. Values
 
@@ -113,6 +125,7 @@ the whole date.
 |---|---|
 | `id` | content-addressed span identity (§5) |
 | `bounds` | the box enclosing the printing glyphs, normalized 0–1, top-left origin |
+| `clickable` | whether the viewer makes a click target of it (§1) |
 | `confidence` | how ornate the text is, **not** how sure we are it is a value |
 | `segments` | present only when one logical value occupies more than one physical region — a wrapped date, a wrapped magnitude. `bounds` remains the first segment; clicking any segment creates the whole value |
 
@@ -125,9 +138,10 @@ that lands.
 
 ## 3. References
 
-Printed data that names something rather than measuring it. A reference carries
-`id`, `kind`, `text` and `bounds`, and nothing else: no normalized value, no
-confidence, because there is no reading to be sure about.
+Printed data that names something outside the document rather than measuring it.
+A reference carries `id`, `kind`, `text`, `bounds` and `clickable`, and nothing
+else: no normalized value, no confidence, because there is no reading to be sure
+about.
 
 | Kind | What it names | Reached by |
 |---|---|---|
@@ -156,43 +170,60 @@ A citation is one printed span resolved possibly twice — `Notes 3.1 and IV`
 produces one reference and two catalogue entries, both pointing at it by
 `spanId`.
 
-## 4. Noise
+## 4. Structure
 
-Refused: neither a measurement nor printed data worth capturing. Ten reasons,
-each naming the rule that refused the span.
+The apparatus a document indexes itself with. Printed text with meaning, which
+is what separates it from noise, and measuring nothing, which is what separates
+it from a value. Six kinds.
 
-| Reason | What it refuses |
+| Kind | What it is |
 |---|---|
-| `partial-token` | a token that held a figure but did not parse in full. `1,2 34` publishes `34` and reports `1,2` — this is what makes OCR fragmentation visible instead of silently publishing a damaged figure |
-| `page-furniture` | a line repeating across pages as a running header, footer or page number |
 | `note-header` | the number printed inside a financial-statement note heading |
 | `item-header` | the number printed inside a filing-item heading |
 | `item-toc-entry` | a number printed in a contents row — including the page number the row points at |
 | `list-marker` | the ordinal opening a list item: a number *of* the list, not *in* it |
 | `footnote-marker` | the ordinal opening a footnote below the text it explains |
 | `footnote-reference` | an indicator pointing at a footnote printed nearby |
-| `superscript` | a glyph set below 0.72 of the ordinary line height around it, so a footnote mark rather than a figure |
-| `citation-year` | a year reached through a citation — `the Act of 1934` names a law, not a period |
 
-Three of these are worth understanding as a group, because no token can be
-refused on its own. `(1)` under a compensation table and `(1)` in a tax schedule
+The last three are worth understanding as a group, because no token can be
+assigned on its own. `(1)` under a compensation table and `(1)` in a tax schedule
 are printed identically, and one of them is a real loss of one. What separates
 them is the **chain**: ordinals that step through a list in order, each leading
 prose, holding one left edge across pages. `lists.py` documents that machinery;
 the categories here only record its verdict.
 
-`page-furniture` works the same way — by identity plus role rather than by
-position. A running footer is found by its skeleton (the line with digit runs
-masked) repeating across pages, or, for a bare page number, by the constant
-offset it keeps from the page index.
+The first three arrive differently. The financial tier finds a heading or a
+contents row, fences the range it occupies, and names the role; anything
+value-shaped inside that range is published here rather than read as a figure.
+The catalogue entry the span belongs to is joined by enclosure — the occurrence
+in `fs-structure-v1` whose bounds contain it on the same page.
 
-## 5. Identity
+## 5. Noise
+
+What is left once the other three are taken: damage, and spans the detector
+refused without being able to say what they were. Four reasons.
+
+| Reason | What it refuses |
+|---|---|
+| `partial-token` | a token that held a figure but did not parse in full. `1,2 34` publishes `34` and reports `1,2` — this is what makes OCR fragmentation visible instead of silently publishing a damaged figure |
+| `page-furniture` | a line repeating across pages as a running header, footer or page number |
+| `superscript` | a glyph set below 0.72 of the ordinary line height around it, so a mark rather than a figure |
+| `citation-year` | a year reached through a citation — `the Act of 1934` names a law, not this document's structure |
+
+`page-furniture` is found by identity plus role rather than by position. A
+running footer is found by its skeleton (the line with digit runs masked)
+repeating across pages, or, for a bare page number, by the constant offset it
+keeps from the page index. It sits here rather than in structure because it is
+chrome the reader never cites, but it is the category boundary most open to
+revisiting.
+
+## 6. Identity
 
 A span's id is a hash over its category, page index, normalized text and bounds
 rounded to three decimals, prefixed by category:
 
 ```
-val-3eebd72172e76020    ref-174abef2b5a3634c    noi-b8e24e436aad613f
+val-3eebd72172e76020   ref-174abef2b5a3634c   str-31deb41d2a29791f   noi-c18c0788b2c1
 ```
 
 Two consequences follow, and both are load-bearing.
@@ -210,7 +241,7 @@ artifacts with no lookup table and no ordering guarantee.
 The honest limit: this is stable across *detector* versions, not across a
 re-OCR. Rebuilt geometry moves bounds, and a moved span is a new id.
 
-## 6. Context
+## 7. Context
 
 Each page and the document carry a `context`, holding what the figures on them
 are denominated in.
@@ -230,12 +261,12 @@ Note what this does not yet parse: "in thousands, **except per share data**".
 The exception clause is invisible to the current inference, so a per-share row
 under a thousands caption is a known gap rather than a bug to file.
 
-## 7. Where each thing is defined
+## 8. Where each thing is defined
 
 | Concern | Home |
 |---|---|
 | Contract shapes and closed enums | `contracts/document-values-v1.json`, `contracts/fs-structure-v1.json` |
-| Category, kind and reason vocabulary | `src/python/engines/values/categories.py` |
+| Category, kind and reason vocabulary, and the clickability policy | `src/python/engines/values/categories.py` |
 | What a piece of text looks like | `src/python/engines/values/spans.py` |
 | Which category a recognized span belongs to | `src/python/engines/values/evidence.py` |
 | Document-level facts: furniture, glyph heights | `src/python/engines/values/profile.py` |

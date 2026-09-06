@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { getValueLinkBounds } from "../src/components/viewer/span-link-bounds.ts";
+import { getSpanLinkTarget, getValueLinkBounds } from "../src/components/viewer/span-link-bounds.ts";
 
 test("uses the union of every segment for a wrapped date on one page", () => {
   const clickedBounds = { x: 0.2, y: 0.1, width: 0.3, height: 0.04 };
@@ -52,4 +52,22 @@ test("keeps the clicked bounds when date segments do not share a page", () => {
   }, 0);
 
   assert.equal(bounds, clickedBounds);
+});
+
+test("a reference and a structure span link as they stand", () => {
+  const bounds = { x: 0.2, y: 0.3, width: 0.1, height: 0.02 };
+  assert.deepEqual(
+    getSpanLinkTarget(
+      { category: "reference", reference: { id: "ref-1", kind: "identifier", text: "A-1", bounds, clickable: true } },
+      0,
+    ),
+    { rect: bounds, text: "A-1" },
+  );
+  assert.deepEqual(
+    getSpanLinkTarget(
+      { category: "structure", structure: { id: "str-1", kind: "list-marker", text: "3", bounds, clickable: true } },
+      0,
+    ),
+    { rect: bounds, text: "3" },
+  );
 });

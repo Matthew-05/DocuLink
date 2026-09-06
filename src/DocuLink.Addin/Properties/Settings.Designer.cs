@@ -74,6 +74,18 @@ namespace DocuLink.Addin.Properties {
         [global::System.Configuration.UserScopedSettingAttribute()]
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
         [global::System.Configuration.DefaultSettingValueAttribute("False")]
+        public bool ShowStructure {
+            get {
+                return ((bool)(this["ShowStructure"]));
+            }
+            set {
+                this["ShowStructure"] = value;
+            }
+        }
+        
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("False")]
         public bool ShowValueNoise {
             get {
                 return ((bool)(this["ShowValueNoise"]));

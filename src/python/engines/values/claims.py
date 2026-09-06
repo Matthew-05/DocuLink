@@ -20,11 +20,11 @@ class ClaimedSpan:
 
     A `REFERENCE` claim is published whole, under `identifier`, and nothing
     inside it is recognized separately -- the citation is the thing, not the
-    digit in it. A `NOISE` claim is not published whole: it fences a range, and
-    any value-shaped text found inside is published as noise carrying `label`.
-    That is the difference between a heading, which is structure and belongs to
-    the model above, and the integer printed inside it, which is a refusal and
-    belongs here.
+    digit in it. A `STRUCTURE` claim is not published whole: it fences a range,
+    and any value-shaped text found inside is published as a structure span
+    carrying `label` as its kind. That is the difference between a heading,
+    which is one printed thing and belongs to the catalogue above, and the
+    integer inside it, which has a place on the page and belongs here.
     """
 
     line_index: int

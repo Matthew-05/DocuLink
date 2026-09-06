@@ -85,5 +85,19 @@ def references(model: dict) -> list[dict]:
     return [item for page in model["pages"] for item in page.get("references", [])]
 
 
+def structure(model: dict) -> list[dict]:
+    return [item for page in model["pages"] for item in page.get("structure", [])]
+
+
 def noise(model: dict) -> list[dict]:
     return [item for page in model["pages"] for item in page.get("noise", [])]
+
+
+def refused(model: dict) -> list[dict]:
+    """Everything the detector declined to publish as a value or a reference."""
+    return structure(model) + noise(model)
+
+
+def label(item: dict) -> str:
+    """What a refusal called itself: a noise reason, or a structure kind."""
+    return item.get("reason") or item["kind"]

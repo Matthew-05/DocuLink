@@ -20,6 +20,9 @@ namespace DocuLink.Addin.Modules.Infrastructure
         /// <summary>Raised after <see cref="ShowReferences"/> changes.</summary>
         internal static event EventHandler<bool> ReferencesChanged;
 
+        /// <summary>Raised after <see cref="ShowStructure"/> changes.</summary>
+        internal static event EventHandler<bool> StructureChanged;
+
         /// <summary>Raised after <see cref="ShowValueNoise"/> changes.</summary>
         internal static event EventHandler<bool> ValueNoiseChanged;
 
@@ -117,6 +120,40 @@ namespace DocuLink.Addin.Modules.Infrastructure
                     DocuLinkLog.Trace($"Could not persist ShowReferences: {ex.Message}");
                 }
                 ReferencesChanged?.Invoke(null, value);
+            }
+        }
+
+        /// <summary>
+        /// Whether the document viewer draws the structure layer: the document
+        /// indexing itself -- the number in a note heading, the ordinal that opens a
+        /// footnote, a figure printed in a contents row. Nothing in it is a click
+        /// target today, but that is each span's own <c>clickable</c> field to say;
+        /// this decides only whether the boxes are drawn.
+        /// </summary>
+        internal static bool ShowStructure
+        {
+            get
+            {
+                try { return Settings.Default.ShowStructure; }
+                catch (Exception ex)
+                {
+                    DocuLinkLog.Trace($"Could not read ShowStructure: {ex.Message}");
+                    return false;
+                }
+            }
+            set
+            {
+                if (ShowStructure == value) return;
+                try
+                {
+                    Settings.Default.ShowStructure = value;
+                    Settings.Default.Save();
+                }
+                catch (Exception ex)
+                {
+                    DocuLinkLog.Trace($"Could not persist ShowStructure: {ex.Message}");
+                }
+                StructureChanged?.Invoke(null, value);
             }
         }
 

@@ -23,7 +23,7 @@ import { TextContentCache } from "../../services/text-content-cache.js";
 import { TableStructureCache } from "../../services/table-structure-cache.js";
 import { ValuesCache } from "../../services/values-cache.js";
 import { ValuesOverlay } from "./values-overlay.js";
-import { getValueLinkBounds } from "./span-link-bounds.js";
+import { getSpanLinkTarget } from "./span-link-bounds.js";
 import { extractText } from "@doculink/shared";
 import {
   detectCopiedTable,
@@ -75,6 +75,9 @@ interface DocuLinkDebugApi {
   toggleReferences: () => boolean;
   showReferences: () => void;
   hideReferences: () => void;
+  toggleStructure: () => boolean;
+  showStructure: () => void;
+  hideStructure: () => void;
   toggleValueNoise: () => boolean;
   showValueNoise: () => void;
   hideValueNoise: () => void;
@@ -651,15 +654,12 @@ export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLEleme
   valuesOverlay.onSpanClicked((pdfId, page, span) => {
     const selectedType = linkTypeSelector.getLinkType();
     const linkType = selectedType === "table" ? "auto" : selectedType;
-    // A reference is one printed thing and links as it stands; only a value can
-    // wrap across lines and need its segments gathered back together.
-    const value = span.category === "value" ? span.value : span.reference;
-    const rect = span.category === "value" ? getValueLinkBounds(span.value, page) : span.reference.bounds;
+    const { rect, text } = getSpanLinkTarget(span, page);
     sendLinkRectangleCreated({
       pdfId,
       page,
       rect,
-      text: value.text,
+      text,
       linkType,
     });
     renderer.addRectangle({
@@ -778,6 +778,9 @@ export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLEleme
     toggleReferences: () => valuesOverlay.toggleReferences(),
     showReferences: () => valuesOverlay.showReferences(),
     hideReferences: () => valuesOverlay.hideReferences(),
+    toggleStructure: () => valuesOverlay.toggleStructure(),
+    showStructure: () => valuesOverlay.showStructure(),
+    hideStructure: () => valuesOverlay.hideStructure(),
     toggleValueNoise: () => valuesOverlay.toggleNoise(),
     showValueNoise: () => valuesOverlay.showNoise(),
     hideValueNoise: () => valuesOverlay.hideNoise(),
@@ -853,6 +856,10 @@ export function initializeViewer(viewer: PdfViewer): { toolbarElement: HTMLEleme
       onSetReferencesVisible: (visible) => {
         if (visible) valuesOverlay.showReferences();
         else valuesOverlay.hideReferences();
+      },
+      onSetStructureVisible: (visible) => {
+        if (visible) valuesOverlay.showStructure();
+        else valuesOverlay.hideStructure();
       },
       onSetValueNoiseVisible: (visible) => {
         if (visible) valuesOverlay.showNoise();

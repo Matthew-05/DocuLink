@@ -5,7 +5,7 @@ import { ValuesCache } from "../src/services/values-cache.ts";
 test("indexes a stored model by document and page", async () => {
   const model = {
     version: 1, coordinateSpace: "normalized", detectorVersion: "test", documentContext: {},
-    pages: [{ pageIndex: 2, context: {}, values: [{ id: "n", kind: "number", text: "100", bounds: { x: 0.1, y: 0.1, width: 0.1, height: 0.02 }, confidence: 0.9 }] }],
+    pages: [{ pageIndex: 2, context: {}, values: [{ id: "val-n", kind: "number", text: "100", bounds: { x: 0.1, y: 0.1, width: 0.1, height: 0.02 }, clickable: true, confidence: 0.9 }] }],
   };
   const cache = new ValuesCache(async () => model as never);
   await cache.build("pdf", "encoded");
@@ -24,8 +24,8 @@ test("indexes every segment of one wrapped logical value", async () => {
   const model = {
     version: 1, coordinateSpace: "normalized", detectorVersion: "test", documentContext: {},
     pages: [{ pageIndex: 0, context: {}, values: [{
-      id: "n", kind: "number", text: "$1 million", normalizedValue: "1000000", magnitude: 1000000,
-      bounds: { x: 0.8, y: 0.9, width: 0.1, height: 0.02 }, confidence: 0.9,
+      id: "val-n", kind: "number", text: "$1 million", normalizedValue: "1000000", magnitude: 1000000,
+      bounds: { x: 0.8, y: 0.9, width: 0.1, height: 0.02 }, clickable: true, confidence: 0.9,
       segments: [
         { pageIndex: 0, text: "$1", bounds: { x: 0.8, y: 0.9, width: 0.1, height: 0.02 } },
         { pageIndex: 1, text: "million", bounds: { x: 0.1, y: 0.1, width: 0.2, height: 0.02 } },
@@ -46,16 +46,22 @@ test("keeps refused spans separate from the values they were kept from", async (
     pages: [{
       pageIndex: 0,
       context: {},
-      values: [{ id: "v", kind: "number", text: "1,234", bounds: { x: 0.1, y: 0.1, width: 0.1, height: 0.02 }, confidence: 0.94 }],
-      noise: [{ id: "n", kind: "number", text: "10", bounds: { x: 0.5, y: 0.1, width: 0.02, height: 0.02 }, reason: "page-furniture" }],
+      values: [{ id: "val-v", kind: "number", text: "1,234", bounds: { x: 0.1, y: 0.1, width: 0.1, height: 0.02 }, clickable: true, confidence: 0.94 }],
+      noise: [{ id: "noi-n", kind: "number", text: "10", bounds: { x: 0.5, y: 0.1, width: 0.02, height: 0.02 }, clickable: false, reason: "page-furniture" }],
+      structure: [{ id: "str-n", kind: "note-header", text: "7", bounds: { x: 0.6, y: 0.1, width: 0.02, height: 0.02 }, clickable: false }],
     }],
   };
   const cache = new ValuesCache(async () => model as never);
   await cache.build("pdf", "encoded");
   assert.deepEqual(cache.valuesOnPage("pdf", 0).map((value) => value.text), ["1,234"]);
   assert.deepEqual(cache.noiseOnPage("pdf", 0).map((entry) => entry.text), ["10"]);
+  assert.deepEqual(cache.structureOnPage("pdf", 0).map((entry) => entry.kind), ["note-header"]);
   assert.equal(cache.valueCount("pdf"), 1);
   assert.equal(cache.noiseCount("pdf"), 1);
+  assert.equal(cache.structureCount("pdf"), 1);
+  // Nothing outside the value and reference layers is a click target today,
+  // and the field says so rather than the layer implying it.
+  assert.equal(cache.structureOnPage("pdf", 0)[0]?.clickable, false);
 });
 
 test("reports no noise for a document with no analyzed artifact", async () => {
@@ -74,8 +80,8 @@ test("keeps references clickable and joins them to the structure by span id", as
       context: {},
       values: [],
       references: [
-        { id: "ref-aaaaaaaaaaaaaaaa", kind: "note", text: "Note 3.1", bounds },
-        { id: "ref-bbbbbbbbbbbbbbbb", kind: "identifier", text: "BPXINV-00550", bounds },
+        { id: "ref-aaaaaaaaaaaaaaaa", kind: "note", text: "Note 3.1", bounds, clickable: true },
+        { id: "ref-bbbbbbbbbbbbbbbb", kind: "identifier", text: "BPXINV-00550", bounds, clickable: true },
       ],
     }],
   };

@@ -1,10 +1,15 @@
 """Build the document-values-v1 model from text geometry.
 
-Three categories, one decision each. A **value** measures and is published with
-everything known about its reading. A **reference** identifies -- an invoice
-number, an area code, a citation -- and is published as a click target with
-nothing further claimed about it. **Noise** is refused: an artifact of setting
-the page, or a token too damaged to read.
+Four categories, one decision each. A **value** measures and is published with
+everything known about its reading. A **reference** identifies something outside
+the document -- an invoice number, an area code, a citation. **Structure** is the
+document indexing itself: the number in a note heading, the ordinal opening a
+footnote. **Noise** is the residue: damage, and spans nothing could identify.
+
+Whether a span becomes a click target is published per span, in `clickable`, and
+decided by `categories.is_clickable`. The viewer reads that field and never
+re-derives it, which is what lets a kind of span become capturable without any
+change here or in the contract.
 
 This is the value tier, and it runs on every document. What a financial document
 additionally knows about itself arrives as claims from `engines.fs`; nothing
@@ -22,8 +27,10 @@ from typing import Iterable, Sequence
 from .categories import (
     NOISE,
     REFERENCE,
+    STRUCTURE,
     TOKEN_SHAPE_CATEGORY,
     VALUE,
+    is_clickable,
 )
 from .claims import ClaimedSpan
 from .evidence import classify, reference_kind
@@ -58,6 +65,7 @@ def _value_payload(span: RecognizedSpan, bounds: dict, identifier: str, inherite
         "kind": span.kind,
         "text": span.text,
         "bounds": bounds,
+        "clickable": is_clickable(VALUE, span.kind),
         "confidence": span.confidence,
     }
     if span.normalized_value:
@@ -190,12 +198,17 @@ def _attach_wrapped_magnitude(
     return True
 
 
+_DIAGNOSTIC_BUCKET = {
+    REFERENCE: "value_references",
+    STRUCTURE: "value_structure",
+    NOISE: "value_noise",
+}
+
+
 def _count(diagnostics: dict | None, category: str, label: str) -> None:
-    if diagnostics is None:
+    if diagnostics is None or category == VALUE:
         return
-    if category == VALUE:
-        return
-    bucket = "value_noise" if category == NOISE else "value_references"
+    bucket = _DIAGNOSTIC_BUCKET[category]
     diagnostics[bucket] = diagnostics.get(bucket, 0) + 1
     key = f"{bucket}_{label.replace('-', '_')}"
     diagnostics[key] = diagnostics.get(key, 0) + 1
@@ -220,24 +233,28 @@ def detect_values(
     document = geometry if isinstance(geometry, PreparedDocument) else prepare(geometry)
     ids = SpanIds()
 
-    values_by_page: dict[int, list[dict]] = {index: [] for index in document.page_indexes}
-    references_by_page: dict[int, list[dict]] = {index: [] for index in document.page_indexes}
-    noise_by_page: dict[int, list[dict]] = {index: [] for index in document.page_indexes}
+    by_page: dict[str, dict[int, list[dict]]] = {
+        category: {index: [] for index in document.page_indexes}
+        for category in (VALUE, REFERENCE, STRUCTURE, NOISE)
+    }
 
     def publish(page_index: int, category: str, kind: str, text: str, bounds: dict, label: str, identifier: str = "") -> None:
+        """Publish one non-value span under `label`: its kind, or its refusal.
+
+        A reference and a structure span are named by what they are for; only a
+        refusal is named by the shape the recognizer read, so noise keeps `kind`
+        and carries the rule in `reason`.
+        """
         payload = {
             "id": identifier or ids.assign(category, page_index, text, bounds),
-            # A reference is named by what it identifies; only a value or a
-            # refusal is named by the shape the recognizer read.
-            "kind": label if category == REFERENCE else kind,
+            "kind": kind if category == NOISE else label,
             "text": text,
             "bounds": bounds,
+            "clickable": is_clickable(category, label),
         }
-        if category == REFERENCE:
-            references_by_page[page_index].append(payload)
-        else:
+        if category == NOISE:
             payload["reason"] = label
-            noise_by_page[page_index].append(payload)
+        by_page[category][page_index].append(payload)
         _count(diagnostics, category, label)
 
     claims_by_line: dict[int, list[ClaimedSpan]] = defaultdict(list)
@@ -267,7 +284,8 @@ def detect_values(
             )
 
     # Ordinal markers after the claims, so a heading that opens with a number
-    # keeps the classification the tier above gave it.
+    # keeps the classification the tier above gave it. A marker numbers a list
+    # rather than measuring anything, so it is structure.
     for marker in detect_lists(list(document.text_lines)).markers:
         line_index = marker.fragment.line_index
         if overlaps_ranges(marker.fragment.start, marker.fragment.end, occupied_by_line.get(line_index, [])):
@@ -276,13 +294,18 @@ def detect_values(
         bounds = bounds_for(marker.fragment.start, marker.fragment.end, line.source)
         if bounds is None:
             continue
-        publish(line.page_index, NOISE, "number", marker.text, bounds, marker.reason)
+        publish(line.page_index, STRUCTURE, "number", marker.text, bounds, marker.reason)
         occupied_by_line[line_index].append((marker.fragment.start, marker.fragment.end))
 
     def claim_label(line_index: int, start: int, end: int) -> str | None:
-        """The noise label a fenced range imposes on anything found inside it."""
+        """The structural role a fenced range imposes on anything inside it.
+
+        The heading itself belongs to the catalogue that published it; what is
+        printed inside one is a structure span here, so the integer in
+        "Note 12" is never read as the figure twelve.
+        """
         for claim in claims_by_line.get(line_index, []):
-            if claim.category == NOISE and start < claim.end and end > claim.start:
+            if claim.category == STRUCTURE and start < claim.end and end > claim.start:
                 return claim.label
         return None
 
@@ -311,7 +334,7 @@ def detect_values(
                 continue
             label = claim_label(line_index, token.start, token.end)
             if label is not None:
-                publish(page_index, NOISE, "number", token.text, bounds, label)
+                publish(page_index, STRUCTURE, "number", token.text, bounds, label)
                 continue
             if overlaps_ranges(token.start, token.end, fenced):
                 continue
@@ -323,7 +346,7 @@ def detect_values(
         for start, end, span, bounds, segments in sorted(candidates, key=lambda item: item[0]):
             label = claim_label(line_index, start, end)
             if label is not None:
-                publish(page_index, NOISE, span.kind, span.text, bounds, label)
+                publish(page_index, STRUCTURE, span.kind, span.text, bounds, label)
                 continue
             if overlaps_ranges(start, end, fenced):
                 continue
@@ -351,19 +374,18 @@ def detect_values(
                 and _ends_line(span, line.text)
             ):
                 _attach_wrapped_magnitude(value, span, page_index, document.lines[line_index + 1])
-            values_by_page[page_index].append(value)
+            by_page[VALUE][page_index].append(value)
 
     pages: list[dict] = []
     for page_index, page_context in zip(document.page_indexes, document.page_contexts):
         page = {
             "pageIndex": page_index,
             "context": dict(page_context),
-            "values": values_by_page[page_index],
+            "values": by_page[VALUE][page_index],
         }
-        if references_by_page[page_index]:
-            page["references"] = references_by_page[page_index]
-        if noise_by_page[page_index]:
-            page["noise"] = noise_by_page[page_index]
+        for category, key in ((REFERENCE, "references"), (STRUCTURE, "structure"), (NOISE, "noise")):
+            if by_page[category][page_index]:
+                page[key] = by_page[category][page_index]
         pages.append(page)
 
     return {
